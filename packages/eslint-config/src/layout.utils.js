@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { exportsProblems } from './exports.utils.js';
 import { manifestProblems, readSheavlyJson } from './extension-manifest.utils.js';
-import { NOT_SOURCE } from './layout.js';
+import { LAUNCHER_ENTRIES, NOT_SOURCE } from './layout.js';
 import { workspaceDirs } from './rules/workspace-types.js';
 
 /**
@@ -24,6 +24,9 @@ export const LAYOUT_RULE_OPTIONS = {
 
 export const DOMAINS = ['generic', 'coding', 'tooling'];
 const SCOPE = '@sheavly/';
+const LAUNCHER_NAME = 'sheavly';
+const LAUNCHER_DIR = 'apps/sheavly';
+const ENTRY_FIELDS = ['main', 'module', 'browser'];
 const toPosix = (file) => file.split(path.sep).join('/');
 
 /** Every workspace on disk (each `workspaces` match): where it is and its manifest. */
@@ -77,6 +80,9 @@ export function readLayout(params) {
         // A way into the harness from outside its process (the HTTP server): only an app starts
         // one, so the library always runs in-process without it.
         transport: manifest.sheavly?.transport === true,
+        // The one app that may depend on other apps: the product's command line.
+        // Read as written, so a value other than `true` is reported instead of ignored.
+        launcher: manifest.sheavly?.launcher,
         appOnlyModules:
           manifest.sheavly?.appOnlyModules === undefined ? [] : manifest.sheavly.appOnlyModules,
         dependsOn: workspaceDeps({ deps: manifest.dependencies, names }),
@@ -84,6 +90,8 @@ export function readLayout(params) {
         // The public surface: its package.json `exports`, by file kind (`./*.types`), its
         // module folders and their files, and the modules its README documents as API.
         exports: manifest.exports,
+        // The fields Node falls back to when `exports` is missing, so an app can be held to none.
+        entryFields: ENTRY_FIELDS.filter((field) => manifest[field] !== undefined),
         modules: modulesOf(path.join(root, relative)),
         // What a publish ships, and what builds it first.
         files: manifest.files,
@@ -166,8 +174,18 @@ export function edgeProblem(params) {
 
   if (!target) return `${name} depends on ${dependency}, which isn't a workspace`;
 
-  if (target.kind === 'app') {
+  if (target.launcher === true) {
+    return `${name} depends on ${dependency}, an app: nothing imports an app, the launcher included`;
+  }
+
+  // Only the launcher composes apps, and only those it is listed for; every other edge rule below
+  // still applies to it.
+  if (target.kind === 'app' && entry.launcher !== true) {
     return `${name} depends on ${dependency}, an app: nothing imports an app`;
+  }
+
+  if (target.kind === 'app' && !Object.hasOwn(LAUNCHER_ENTRIES, dependency)) {
+    return `${name} depends on ${dependency}, an app it doesn't launch: the launcher runs only ${Object.keys(LAUNCHER_ENTRIES).join(', ')}. A new one is a reviewed entry in LAUNCHER_ENTRIES (packages/eslint-config/src/layout.js)`;
   }
 
   if (target.transport && entry.kind !== 'app') {
@@ -189,8 +207,42 @@ export function edgeProblem(params) {
   return null;
 }
 
+/**
+ * The launcher is the product's command line, so exactly one workspace sets `sheavly.launcher`:
+ * `apps/sheavly`, named `sheavly`. The flag is what lets it depend on apps, so it is never
+ * trusted on any other workspace.
+ */
+function launcherProblems(params) {
+  const { name, entry, layout } = params;
+
+  if (entry.launcher === undefined) return [];
+
+  if (entry.launcher !== true) {
+    return [`${name} sets sheavly.launcher to something other than true: remove it`];
+  }
+
+  const problems = [];
+  const launchers = Object.entries(layout).filter(([, other]) => other.launcher === true);
+
+  if (launchers.length > 1) {
+    const names = launchers.map(([launcherName]) => launcherName).join(', ');
+
+    problems.push(
+      `${name} sets sheavly.launcher, but so do ${names}: exactly one workspace is the launcher`,
+    );
+  }
+
+  if (entry.dir !== LAUNCHER_DIR) {
+    problems.push(
+      `${name} sets sheavly.launcher, but only ${LAUNCHER_DIR} is the launcher: \`npm pkg delete sheavly.launcher${workspaceFlag(entry.dir)}\``,
+    );
+  }
+
+  return problems;
+}
+
 function identityProblems(params) {
-  const { name, entry } = params;
+  const { name, entry, layout } = params;
   const problems = [];
 
   if (!DOMAINS.includes(entry.domain)) {
@@ -199,12 +251,20 @@ function identityProblems(params) {
 
   const folder = path.posix.basename(entry.dir);
 
-  // A root with source has no folder of its own to be named after.
-  if (entry.dir !== '.' && name !== `${SCOPE}${folder}`) {
+  if (entry.launcher === true) {
+    if (name !== LAUNCHER_NAME) {
+      problems.push(`${name} is the launcher, so it must be named ${LAUNCHER_NAME}, not ${name}`);
+    }
+  } else if (name === LAUNCHER_NAME) {
+    problems.push(
+      `${name} is the launcher's name, but it doesn't set sheavly.launcher: only the launcher is named ${LAUNCHER_NAME}`,
+    );
+  } else if (entry.dir !== '.' && name !== `${SCOPE}${folder}`) {
+    // A root with source has no folder of its own to be named after.
     problems.push(`${name} must be named ${SCOPE}${folder}, after its folder`);
   }
 
-  return problems;
+  return [...problems, ...launcherProblems({ name, entry, layout })];
 }
 
 function appOnlyModuleProblems(params) {
@@ -263,11 +323,11 @@ export function entryProblems(params) {
   });
 
   return [
-    ...identityProblems({ name, entry }),
+    ...identityProblems({ name, entry, layout }),
     ...appOnlyModuleProblems({ name, entry }),
     ...entry.dependsOn.map((dependency) => edgeProblem({ name, entry, dependency, layout })),
     ...devProblems,
-    ...exportsProblems({ name, entry }),
+    ...exportsProblems({ name, entry, layout }),
     ...manifestProblems({ name, entry, layout }),
   ].filter(Boolean);
 }

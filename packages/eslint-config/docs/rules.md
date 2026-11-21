@@ -52,10 +52,19 @@ is split by responsibility only when it does several jobs, not to fit a number. 
   from the workspaces (a domain, one of `generic`, `coding` or `tooling`; `tooling` is a workspace
   source never imports, such as this one, so a dependency on it must be a dev dependency; named
   after its folder, no app or coding-from-generic edge, and
-  a transport such as `@sheavly/client`, `sheavly.transport`, only from an app), and
+  a transport such as `@sheavly/client`, `sheavly.transport`, only from an app; the one
+  exception to "no app edge" is the launcher, `sheavly.launcher: true`, set with
+  `npm pkg set sheavly.launcher=true -w apps/sheavly`: exactly one workspace, `apps/sheavly`
+  named `sheavly`, may depend on the apps `LAUNCHER_ENTRIES` (`src/layout.js`) lists, and it
+  keeps every other edge rule and is itself imported by nothing; the flag on any other
+  workspace, a second launcher, or the name `sheavly` without the flag fails; such an app may
+  `exports` only its entry files that list names, one by one (`./run-server/run-server.helper`),
+  no app sets `main`, `module` or `browser`, and `harness/imports` then fails an import of any
+  other subpath of it or of its bare name), and
   imports follow the graph: another workspace only if `package.json` depends on it (dev
   dependencies for tests), test-only workspaces only from tests and fakes, no relative import
-  across workspace roots. Modules marked by `sheavly.appOnlyModules` accept value imports only
+  across workspace roots. A dynamic `import()` is checked when its specifier is a string or a
+  template literal with no `${}`; a computed one is not. Modules marked by `sheavly.appOnlyModules` accept value imports only
   from apps, tests, fakes and their own module internals; package tools cannot select them either.
   Type-only imports are allowed. The check includes package subpaths (including self-imports),
   relative imports, re-exports and literal dynamic imports; layout validates the metadata against

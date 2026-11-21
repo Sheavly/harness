@@ -18,7 +18,8 @@
 // `.fake.d.ts` file, a `#` subpath import, and a name matched without its structure.
 import { EXTENSION_PACKAGE, readExtensionContract } from '../extension-contract.utils.js';
 import { LAYOUT_RULE_OPTIONS } from '../layout.utils.js';
-import { extensionRootOf, literalText } from './extension-source.utils.js';
+import { extensionRootOf } from './extension-source.utils.js';
+import { literalText } from './literal.utils.js';
 
 const HOST_PACKAGE = '@sheavly/host';
 const OWN_PACKAGES = '@sheavly/';

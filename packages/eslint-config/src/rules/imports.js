@@ -5,8 +5,8 @@
 //   for tests and fakes); a test-only workspace only from tests and fakes;
 // - no relative import that leaves the importing workspace (`../../packages/core/...`): import
 //   another workspace by its package name;
-// - a package only through its public API, the subpaths its package.json `exports` lists (plus
-//   `./testing/*`, its fakes, from tests only);
+// - a package (or the app the launcher runs) only through its public API, the subpaths its
+//   package.json `exports` lists (plus `./testing/*`, its fakes, from tests only);
 // - in a package's source, no other workspace's `*.tool` module, unless it is a tool itself:
 //   which tools a run includes is the UI's choice, so only apps (and tests) put tools together;
 // - modules marked by `sheavly.appOnlyModules` are app-selected: package value imports are
@@ -21,6 +21,7 @@ import {
   workspaceOfFile,
 } from '../layout.utils.js';
 import { isTestOrFake } from '../test-paths.utils.js';
+import { literalText } from './literal.utils.js';
 import { findRoot } from './workspace-types.js';
 
 function toPosix(file) {
@@ -48,6 +49,7 @@ export const importsRule = {
       appOnlyModule: `{{target}}/{{module}} is marked app-only in sheavly.appOnlyModules: package source cannot select it. Take its contract as an option and let the app inject the implementation. Only the marked module itself may import its internal helpers.`,
       crossesWorkspace: `This relative import leaves {{from}} for {{target}}. Import it by package name (\`@sheavly/...\`), and depend on it in package.json.`,
       notExported: `{{specifier}} isn't part of {{target}}'s public API: its package.json \`exports\` doesn't export that file's kind. Import what it exports, or, if every file of that kind should be public, add the kind in review (\`npm run export -- <dir> <kind>\`).`,
+      appRoot: `{{specifier}} is an app's bare name: an app exports only the entry files the launcher runs (LAUNCHER_ENTRIES in packages/eslint-config/src/layout.js), never itself. Import the entry file by its subpath.`,
       fakeInSource: `{{specifier}} is a fake ({{target}}'s \`testing/\`): only tests and other fakes import it.`,
       composesRun: `{{from}} may not include {{target}}'s tool in a run: which tools a run gets is the UI's choice. Export what the tool needs (its services, its options) and let the app add it.`,
     },
@@ -142,7 +144,15 @@ export const importsRule = {
       const { node, specifier, target } = params;
       const subpath = specifier.slice(target.length + 1);
 
-      if (!subpath || layout[target].kind === 'app') return;
+      // An app has no root entry: without this, an app with no `exports` (and a `main`) would hand
+      // the launcher any file it holds through its bare name.
+      if (!subpath) {
+        if (layout[target].kind === 'app') {
+          context.report({ node, messageId: 'appRoot', data: { specifier } });
+        }
+
+        return;
+      }
 
       if (!isExported({ exports: layout[target].exports, subpath })) {
         context.report({ node, messageId: 'notExported', data: { specifier, target, subpath } });
@@ -190,7 +200,7 @@ export const importsRule = {
       ImportDeclaration: (node) => check(node, node.source.value),
       ExportNamedDeclaration: (node) => node.source && check(node, node.source.value),
       ExportAllDeclaration: (node) => check(node, node.source.value),
-      ImportExpression: (node) => node.source.type === 'Literal' && check(node, node.source.value),
+      ImportExpression: (node) => check(node, literalText(node.source)),
     };
   },
 };

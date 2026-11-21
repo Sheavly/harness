@@ -19,7 +19,8 @@ import {
   moduleOf,
   readHarnessRegistries,
 } from '../harness-registry-types.utils.js';
-import { extensionRootOf, literalText } from './extension-source.utils.js';
+import { extensionRootOf } from './extension-source.utils.js';
+import { literalText } from './literal.utils.js';
 
 /** The host helper whose `createHarness` builds the registries. */
 const HOST_HELPER = '@sheavly/host/host/host.helper';
