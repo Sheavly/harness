@@ -8,13 +8,21 @@ import { prepareSetup } from '../setup/setup.helper.js';
 import { startScreenChat } from '../tui/screen-chat.helper.js';
 import { runLineChat } from './line-chat.helper.js';
 
-/** Owns startup and shutdown, including setup before a conversation exists. */
-export async function runTerminalChat(): Promise<void> {
+/**
+ * Owns startup and shutdown, including setup before a conversation exists. It reads its settings
+ * from `env` and `args` (the process's own by default, so a command in the same process passes
+ * its own) and works in the current folder: the caller changes it first, as `chat.ts` does for
+ * npm. Throws what could not start: a `SetupError`, a `BackendError`; `reportChatFailure` says
+ * how those end the process.
+ */
+export async function runTerminalChat(
+  params: { env?: NodeJS.ProcessEnv; args?: readonly string[] } = {},
+): Promise<void> {
+  const { env = process.env, args = process.argv.slice(2) } = params;
   const write = (text: string) => void process.stdout.write(text);
-  const args = process.argv.slice(2);
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
-  const workspace = path.resolve(process.env.WORKSPACE_ROOT ?? process.cwd());
-  const session = await openSessionInterruptibly({ write, args, workspace, interactive });
+  const workspace = path.resolve(env.WORKSPACE_ROOT ?? process.cwd());
+  const session = await openSessionInterruptibly({ write, args, env, workspace, interactive });
 
   if (!session) {
     process.exitCode = 130;
@@ -32,7 +40,7 @@ export async function runTerminalChat(): Promise<void> {
   process.once('SIGTERM', onTerminate);
 
   try {
-    if (interactive && !process.env.SHEAVLY_PLAIN) {
+    if (interactive && !env.SHEAVLY_PLAIN) {
       const skills = (await conversation.skills()).map(({ name, description }) => ({
         name,
         description,
@@ -79,10 +87,11 @@ export async function runTerminalChat(): Promise<void> {
 async function openSessionInterruptibly(params: {
   write: (text: string) => void;
   args: readonly string[];
+  env: NodeJS.ProcessEnv;
   workspace: string;
   interactive: boolean;
 }): Promise<Awaited<ReturnType<typeof openSession>> | undefined> {
-  const { write, args, workspace, interactive } = params;
+  const { write, args, env, workspace, interactive } = params;
 
   // Setup binds a profile and sets the default; a run on a named profile changes neither.
   if (args.includes('--setup') && profileArgs(args).profile) {
@@ -101,7 +110,7 @@ async function openSessionInterruptibly(params: {
 
   try {
     return await openSession({
-      env: process.env,
+      env,
       args: args.filter((arg) => arg !== '--setup'),
       write,
       workspace,

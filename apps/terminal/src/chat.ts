@@ -19,8 +19,8 @@
  * running prompt, /<skill> anywhere in a message runs that skill, /exit ends the conversation.
  * Calls the real API, so it costs money.
  */
+import { reportChatFailure } from './chat/chat-failure.helper.js';
 import { runTerminalChat } from './chat/start.helper.js';
-import { SetupCancelledError } from './errors/setup.errors.js';
 
 // npm runs a workspace's script inside apps/terminal; work from the folder it was started in
 // (npm's INIT_CWD), so the default workspace is the user's.
@@ -29,6 +29,5 @@ if (process.env.INIT_CWD) process.chdir(process.env.INIT_CWD);
 try {
   await runTerminalChat();
 } catch (caughtError) {
-  console.error(caughtError instanceof Error ? caughtError.message : String(caughtError));
-  process.exitCode = caughtError instanceof SetupCancelledError ? 130 : 1;
+  reportChatFailure(caughtError);
 }
