@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Dev, tests and typecheck read the .ts source (the `@sheavly/source` export condition);
+    // `tsconfig.build.json` compiles it to `outDir` for plain Node.
+    // `rootDir` makes an import from outside the workspace a type error.
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": true
+  },
+  "include": ["src"]
+}

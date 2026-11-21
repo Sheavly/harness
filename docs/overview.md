@@ -59,6 +59,7 @@ flowchart BT
   subgraph group_apps ["apps"]
     backend["@sheavly/backend"]
     terminal["@sheavly/terminal"]
+    sheavly["sheavly"]
   end
   agents --> extension
   agents --> tools
@@ -89,6 +90,8 @@ flowchart BT
   tools --> runtime
   web --> agents
   workspace --> runtime
+  sheavly --> backend
+  sheavly --> terminal
 ```
 
 <!-- graph:end -->

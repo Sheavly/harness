@@ -1,0 +1,26 @@
+{
+  "name": "sheavly",
+  "version": "0.0.0",
+  "description": "The sheavly command line: the one command of the whole product, which runs the server and the terminal.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -b tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run --config ../../vitest.config.ts"
+  },
+  "type": "module",
+  "license": "Apache-2.0",
+  "sheavly": {
+    "domain": "coding",
+    "launcher": true
+  },
+  "private": true,
+  "dependencies": {
+    "@sheavly/backend": "^0.0.0",
+    "@sheavly/terminal": "^0.0.0",
+    "zod": "^4.6.7"
+  },
+  "bin": {
+    "sheavly": "dist/cli.js"
+  }
+}

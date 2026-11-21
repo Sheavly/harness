@@ -52,6 +52,14 @@ adds nothing to it; the stores keep it as written.
 | `run-server/` | `runServer`: settings, `Conversations`, the API, the lock, and shutting it all down, as one function        |
 | `serve.ts`    | The entry point: it only calls `runServer`                                                                  |
 
+The `sheavly` command (`apps/sheavly`, the launcher) starts the server in its own process, so the
+backend exports `@sheavly/backend/run-server/run-server.helper` (`runServer({ env, args, exit })`,
+the process's own by default; [serving](docs/serve.md#runserver)) and, for that command's tests,
+its server-process fake and its types (`testing/serve-process.fake`, `testing/serve-process.types`,
+from source only). Nothing else is public:
+the layout check refuses an export `LAUNCHER_ENTRIES` doesn't list
+(`packages/eslint-config/docs/layout.md`).
+
 ## Docs
 
 - [Serving conversations](docs/serve.md): its settings, how a UI starts it, an example with `curl`.

@@ -39,5 +39,17 @@
     "@sheavly/client": "^0.0.0",
     "@sheavly/process": "^0.0.0",
     "@sheavly/testing": "^0.0.0"
+  },
+  "exports": {
+    "./run-server/run-server.helper": {
+      "@sheavly/source": "./src/run-server/run-server.helper.ts",
+      "default": "./dist/run-server/run-server.helper.js"
+    },
+    "./testing/serve-process.fake": {
+      "@sheavly/source": "./src/testing/serve-process.fake.ts"
+    },
+    "./testing/serve-process.types": {
+      "@sheavly/source": "./src/testing/serve-process.types.ts"
+    }
   }
 }
