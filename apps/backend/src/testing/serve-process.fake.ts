@@ -20,14 +20,16 @@ type Listened = { url: string } | { failure: string };
  * and `XDG_RUNTIME_DIR` (the real ones are never used), a made-up token and port 0; `extra` adds
  * or, with `undefined`, removes a variable. `start` waits for the `listening` line,
  * `startAndWaitForExit` for the process to end. Every child is killed and the folders removed
- * when the test ends.
+ * when the test ends. `entry` is what node runs after tsx (the arguments of `node`: a script, or
+ * `--input-type=module --eval …`), `serve.ts` by default, and each call's `args` come after it
+ * (another command line that starts a server, or runs something else, passes its own).
  */
-export function useServeProcesses(): {
+export function useServeProcesses(options: { entry?: readonly string[] } = {}): {
   folders: () => ServeFolders;
-  start: (extra?: Extra) => Promise<ServeProcess>;
-  startAndWaitForExit: (extra?: Extra) => Promise<ServeProcess>;
+  start: (extra?: Extra, args?: readonly string[]) => Promise<ServeProcess>;
+  startAndWaitForExit: (extra?: Extra, args?: readonly string[]) => Promise<ServeProcess>;
   /** Spawns the server and returns at once, for a test that acts while it is still starting. */
-  begin: (extra?: Extra) => ServeProcess;
+  begin: (extra?: Extra, args?: readonly string[]) => ServeProcess;
 } {
   let current: ServeFolders | undefined;
   const started: { process: ServeProcess; kill: () => void }[] = [];
@@ -63,7 +65,10 @@ export function useServeProcesses(): {
     return current;
   }
 
-  function launch(extra: Extra): { process: ServeProcess; listening: Promise<Listened> } {
+  function launch(
+    extra: Extra,
+    args: readonly string[],
+  ): { process: ServeProcess; listening: Promise<Listened> } {
     const { home, xdg, project, token, base } = folders();
     const env: Extra = {
       PATH: process.env.PATH,
@@ -77,7 +82,7 @@ export function useServeProcesses(): {
     };
     const child = spawn(
       process.execPath,
-      ['--conditions=@sheavly/source', '--import', 'tsx', SERVE],
+      ['--conditions=@sheavly/source', '--import', 'tsx', ...(options.entry ?? [SERVE]), ...args],
       { cwd: BACKEND_DIR, env: definedOnly(env), stdio: ['pipe', 'pipe', 'pipe'] },
     );
     let out = '';
@@ -126,8 +131,8 @@ export function useServeProcesses(): {
 
   return {
     folders,
-    start: async (extra = {}) => {
-      const { process: made, listening } = launch(extra);
+    start: async (extra = {}, args = []) => {
+      const { process: made, listening } = launch(extra, args);
 
       const result = await listening;
 
@@ -135,9 +140,9 @@ export function useServeProcesses(): {
 
       return { ...made, url: result.url };
     },
-    begin: (extra = {}) => launch(extra).process,
-    startAndWaitForExit: async (extra = {}) => {
-      const { process: made } = launch(extra);
+    begin: (extra = {}, args = []) => launch(extra, args).process,
+    startAndWaitForExit: async (extra = {}, args = []) => {
+      const { process: made } = launch(extra, args);
 
       await made.exited;
 

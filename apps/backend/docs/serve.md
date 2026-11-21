@@ -6,6 +6,18 @@ with its own switch between that profile's models (so changing its model leaves 
 and the run [harness.md](harness.md) describes. The
 routes, streams and errors are in [the API](api.md).
 
+## `runServer`
+
+The whole start is one function, `runServer({ env, args, exit })` in
+`src/run-server/run-server.helper.ts`; `src/serve.ts` only calls it, so `npm run serve` is that
+call. `env` and `args` default to the process's own (`process.env`, the arguments after the
+script) and `exit` to `process.exit`; a command in the same process passes its own. The steps and
+their order are the contract: the startup-signal guard is installed before anything is taken, the
+backend is built (every setting error comes here) before the lock is claimed, the lock before
+anything listens or prints, the stop handlers before the guard comes off, and the `listening`
+line last. A refused start (another server holds the lock) calls `exit(1)`, a failing setting or
+listen throws. It resolves once the server listens and keeps the process alive.
+
 ## Settings
 
 | Setting                     | Default                                  | What it does                                                                                                                                                                                                                               |

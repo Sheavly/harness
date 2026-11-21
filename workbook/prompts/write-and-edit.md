@@ -24,6 +24,7 @@ check:
         'apps/terminal/src/render',
         'apps/terminal/src/client',
         'apps/backend/src/serve.ts',
+        'apps/backend/src/run-server',
         'packages/client/src',
       ],
     'expect':
