@@ -265,6 +265,19 @@ describe.each(WORKSPACES.map((dir) => [path.relative(REPO_ROOT, dir) || '.', dir
       ).toEqual([]);
     });
 
+    // The rule itself exempts the server and storage; no `files:` override may carve out more.
+    it('keeps every source file on the server finder', async () => {
+      expect(
+        await filesWithRuleOff({
+          dir,
+          rule: 'harness/server-through-finder',
+          allowed: /$^/,
+          sourceOnly: true,
+        }),
+        `${name} turns \`harness/server-through-finder\` off for some files. Reach the running server through findRunningServer with verifyServer instead.`,
+      ).toEqual([]);
+    });
+
     it('keeps the key holders imported only by the backend app', async () => {
       expect(
         await filesWithRuleOff({

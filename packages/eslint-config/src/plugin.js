@@ -24,6 +24,7 @@ import { noSilentCatch } from './rules/no-silent-catch.js';
 import { permissionStoreRoot } from './rules/permission-store-root.js';
 import { SYNTAX_RULES, syntaxRule } from './rules/syntax-rules.js';
 import { pureImports } from './rules/pure-imports.js';
+import { serverThroughFinder } from './rules/server-through-finder.js';
 import { promptLocation } from './rules/prompt-location.js';
 import { singleDefinition } from './rules/single-definition.js';
 import { systemPromptReview } from './rules/system-prompt-review.js';
@@ -68,6 +69,7 @@ const RULES = {
   'permission-store-root': permissionStoreRoot,
   'pure-imports': pureImports,
   'prompt-location': promptLocation,
+  'server-through-finder': serverThroughFinder,
   'single-definition': singleDefinition,
   'system-prompt-review': systemPromptReview,
   ...Object.fromEntries(

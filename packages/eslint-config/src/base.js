@@ -203,6 +203,12 @@ export function baseConfig(params) {
       ignores: testFiles,
       rules: { 'harness/no-discovery-path': 'error' },
     },
+    // --- A client of the running server finds it only through the finder and its handshake ---
+    {
+      files: SOURCE_FILES,
+      ignores: testFiles,
+      rules: { 'harness/server-through-finder': 'error' },
+    },
     // --- A file changed whole goes through LockedChange, not a bare in-process queue ---
     {
       files: SOURCE_FILES,

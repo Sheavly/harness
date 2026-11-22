@@ -3,13 +3,16 @@
 // the finder that reads and verifies it.
 // The terminal app spreads `connectBackendConfinement` into its config; its files are relative to
 // that app, and only the folder that holds `connectBackend` is confined: the `sheavly` command
-// reads the discovery file elsewhere.
+// finds the server through the finder, elsewhere.
+import { SERVER_INTERNAL_MODULES } from './server-modules.js';
 
 const MESSAGE =
   'connectBackend starts a backend of its own and must never find or attach to a stable server: it cannot read the discovery file, touch the server lock or use the server finder. Finding a server belongs to the code that connects to the installed server, outside this folder.';
 
-const PATHS =
-  '/^@sheavly\\/storage\\/(discovery-file|server-lock|server-runtime|server-finder)\\//';
+/** The server's own modules, and here the finder too. */
+const CONFINED = [...SERVER_INTERNAL_MODULES, 'server-finder'];
+
+const PATHS = `/^@sheavly\\/storage\\/(${CONFINED.join('|')})\\//`;
 
 export const connectBackendConfinement = {
   files: ['src/client/**/*.{ts,tsx,js,mjs}'],
@@ -21,12 +24,7 @@ export const connectBackendConfinement = {
       {
         patterns: [
           {
-            group: [
-              '@sheavly/storage/discovery-file/*',
-              '@sheavly/storage/server-lock/*',
-              '@sheavly/storage/server-runtime/*',
-              '@sheavly/storage/server-finder/*',
-            ],
+            group: CONFINED.map((module) => `@sheavly/storage/${module}/*`),
             message: MESSAGE,
           },
         ],
