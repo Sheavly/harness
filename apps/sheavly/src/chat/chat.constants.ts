@@ -2,10 +2,15 @@ export const CHAT_NAME = 'chat';
 
 export const CHAT_SUMMARY = 'Talk to the harness in the terminal';
 
+/** The last line when no server was found: nothing starts one for the user, so the user does. */
+export const START_SERVER_HINT =
+  'Start one with `sheavly serve` in another terminal, then run `sheavly chat` again.';
+
 export const CHAT_HELP = `Usage: sheavly chat [options] [first message]
 
-Opens the terminal chat, as \`npm run dev:terminal\` does: it starts a backend of its own (or uses
-the one BACKEND_URL and BACKEND_TOKEN name) and stops it on the way out.
+Opens the terminal chat on your running server, which it finds through the discovery file and
+checks with its handshake before it sends the token (or on the one BACKEND_URL names, with
+BACKEND_TOKEN). It never starts a server: run \`sheavly serve\` in another terminal first.
 
 Options:
   --trust              Trust the workspace's .sheavly/ folder (its hooks and settings)

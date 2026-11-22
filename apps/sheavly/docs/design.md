@@ -52,12 +52,26 @@ several (a settings error lists its issues).
   ([serving](../../backend/docs/serve.md)). It passes its arguments on and keeps no list of its
   own: the server refuses one it doesn't read before anything starts, so `serve --version` exits
   1 with the server's one-line message and starts nothing.
-- **`chat`** runs `runTerminalChat({ env, args })` of the terminal and hands a failure to the
-  terminal's `reportChatFailure`, so it ends with the same message and exit code (130 for a
-  cancelled setup, 1 otherwise). It connects as the terminal does today: `BACKEND_URL` and
-  `BACKEND_TOKEN`, or a backend of its own started through npm, which needs the checkout's
-  `npm_config_local_prefix`, so run it through `npm run sheavly`. It does not read the discovery
-  file.
+- **`chat`** finds the user's running server and runs `runTerminalChat({ env, args, server })` of
+  the terminal on it, handing a failure to the terminal's `reportChatFailure`, so it ends with
+  the same message and exit code (130 for a cancelled setup, 1 otherwise). `findChatServer`
+  (`chat/find-server.helper.ts`) calls `findRunningServer` of `@sheavly/storage` with
+  `verifyServer` of `@sheavly/client` as the handshake: the file is read through the safe reader,
+  a free lock means the file is left over and nothing is contacted, and the token is handed on
+  only after the server proved it holds it. With none it exits 1, saying why for each folder it
+  looked in and to run `sheavly serve` in another terminal; a server of another protocol is
+  refused with which side is older. Neither message holds the token, and it never starts a
+  server. A non-empty `BACKEND_URL` skips the file, and the terminal connects to that server with
+  `BACKEND_TOKEN`, which it requires; `BACKEND_TOKEN` alone changes nothing. The terminal sends
+  `--trust` to the found server's trust route for its folder, as it does for `BACKEND_URL`.
+
+  Two gaps are known. The server is proven once, when it is found: if it dies mid-chat,
+  whatever takes its port next gets the later requests with the token, a stream's reconnects
+  included, as with `BACKEND_URL` ([#461](https://github.com/Sheavly/harness/issues/461)). And on
+  Windows nothing checks the discovery file's owner or access, and any local user can create the
+  lock's pipe, so the Sheavly home must not be a folder others can write to: there, someone
+  else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
+  user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
 
 ## Adding a command
 

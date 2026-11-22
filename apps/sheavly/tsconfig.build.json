@@ -12,7 +12,9 @@
   },
   "references": [
     { "path": "../backend/tsconfig.build.json" },
-    { "path": "../terminal/tsconfig.build.json" }
+    { "path": "../terminal/tsconfig.build.json" },
+    { "path": "../../packages/client/tsconfig.build.json" },
+    { "path": "../../packages/storage/tsconfig.build.json" }
   ],
   "exclude": ["src/**/__tests__", "src/testing"]
 }
