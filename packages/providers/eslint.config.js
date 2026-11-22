@@ -1,7 +1,9 @@
-import { baseConfig } from '@sheavly/eslint-config';
+import { baseConfig, modelFetchConfinement } from '@sheavly/eslint-config';
 
 export default [
   ...baseConfig({ tsconfigRootDir: import.meta.dirname }),
+  // A model call goes through the injected `deps.fetch`, never Node's global `fetch`.
+  modelFetchConfinement,
   {
     // The shared decisions of every protocol: a protocol reads a body, a retry-after header and a
     // reasoning item's source only through the helpers that own them (see the rule's comment).
@@ -19,5 +21,10 @@ export default [
     // The one reader of server-sent events: every protocol's reply goes through `readReply`.
     files: ['src/http/reply-reader.helper.ts'],
     rules: { 'harness/no-handrolled-reply-reader': 'off' },
+  },
+  {
+    // The model fetch itself: it builds undici's pool and probes OpenSSL's groups with `node:tls`.
+    files: ['src/http/model-fetch.helper.ts'],
+    rules: { 'no-restricted-imports': 'off' },
   },
 ];

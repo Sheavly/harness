@@ -258,6 +258,23 @@ export const SYNTAX_RULES = {
         'Do not queue a read-modify-write with a bare `SerialQueue`: it orders only this process, so two processes on one `~/.sheavly` lose updates. Change a file through `LockedChange` (`packages/storage/src/serial-queue/locked-change.service.ts`): a queue in the process and a lock file across processes. A queue that guards no file (the append-only logs, the profile queue that orders a check with a delete) is a `files:` override with its reason in packages/storage/eslint.config.js.',
     },
   ],
+  // Model calls go out through `createModelFetch` (`packages/providers/src/http/model-fetch.helper.ts`),
+  // whose TLS ClientHello fits in one TCP segment. Node's global fetch sends one that spans two on
+  // Node 22.20+, 24.5+ and 26, and gateways that read one segment (Azure AI Foundry) reset it. So
+  // the `fetch` an adapter registry is built with, written in the call, is `createModelFetch()`;
+  // with no deps the registry uses it already. Tests and fakes pass their own. It reads the names
+  // as written, called directly or as a member (`providers.createDefaultRegistry`), with `fetch` a
+  // plain or quoted key. Not covered: deps held in a variable or spread in, a renamed import of
+  // either name, a subclass's `super({ fetch })`, or a registry built another way; a renamed
+  // `createModelFetch` is flagged, so import it by its name.
+  'no-raw-model-fetch': [
+    {
+      selector:
+        ":matches(CallExpression[callee.name='createDefaultRegistry'], CallExpression[callee.property.name='createDefaultRegistry'], NewExpression[callee.name='AdapterRegistry'], NewExpression[callee.property.name='AdapterRegistry']) > ObjectExpression > Property:matches([key.name='fetch'], [key.value='fetch']):not([value.type='CallExpression'][value.callee.name='createModelFetch'])",
+      message:
+        "Build an adapter registry with `fetch: createModelFetch()` (`@sheavly/providers/http/model-fetch.helper`), or with no deps at all, which uses it too. Node's global `fetch` sends a TLS ClientHello that spans two TCP segments on Node 22.20+, 24.5+ and 26, and gateways that read only one (Azure AI Foundry) reset the connection. A test or a fake passes its own `fetch`. See 'The model fetch' in packages/providers/docs/backends.md.",
+    },
+  ],
   // A protocol's reply is read by `readReply` (`http/reply-reader.helper.ts`), which owns the
   // event loop: unknown events skipped, cut-off versus abort, `done` only after a complete reply.
   // A protocol that imports the SSE reader itself is a fourth copy of that loop. Only the shared

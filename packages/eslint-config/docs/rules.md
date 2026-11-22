@@ -393,6 +393,42 @@ is split by responsibility only when it does several jobs, not to fit a number. 
   `packages/storage/eslint.config.js`; `no-raw-serial-queue.test.js` pins where the rule is on and
   off. It sees the construction only, so a queue passed in from elsewhere, or a lock written by
   hand, is left to review.
+- **The model fetch** (`harness/no-raw-model-fetch`, source files):
+  - **What it rejects:** a `fetch` written in a `createDefaultRegistry({ … })` or
+    `new AdapterRegistry({ … })` call must be `createModelFetch()`
+    (`packages/providers/src/http/model-fetch.helper.ts`). Passing no deps is fine, since the
+    registry uses the model fetch by default.
+  - **Why:** Node's global `fetch` sends a TLS ClientHello that spans two TCP segments on Node
+    22.20+, 24.5+ and 26, and gateways that read only one (Azure AI Foundry) reset it.
+  - **Where it's off:** tests and fakes are exempt by file role, since they pass a fake.
+    `no-raw-model-fetch.test.js` pins where it is on and off.
+  - **What it sees:** the names as written, called directly or as a member
+    (`providers.createDefaultRegistry`), with `fetch` as a plain or quoted key.
+  - **What it can't see:** deps held in a variable or spread in, a renamed import of either name,
+    a subclass's `super({ fetch })`, or a registry built another way. These are left to review.
+    A renamed `createModelFetch` is flagged, so import it by its name.
+- **No global fetch in the providers** (`modelFetchConfinement`, the providers workspace's
+  source, spread into `packages/providers/eslint.config.js`):
+  - **What it rejects:**
+    - Node's global `fetch`, called or passed (`fetch(…)`, `const send = fetch`), through
+      `no-restricted-globals`.
+    - The same through `globalThis`, `global`, `self` or `window`, including
+      `globalThis['fetch']` and `const { fetch } = globalThis`, through
+      `no-restricted-properties`.
+    - The other ways to open a connection: an import of `undici` (its own `fetch` or `request`
+      uses its default pool) or of `http`, `https`, `http2`, `tls` or `net`, through
+      `no-restricted-imports`.
+  - **What it allows:** a local binding named `fetch`, such as `sendRequest`'s parameter or a
+    destructured dep, since it isn't the global. A model call goes through the injected
+    `deps.fetch`.
+  - **Where it's off:** tests and fakes. The model fetch's own file
+    (`packages/providers/src/http/model-fetch.helper.ts`) is the one `files:` exception, for the
+    imports only.
+    `model-fetch-confinement.test.js` pins the rejections, and checks that every providers source
+    file resolves the rules with these options, so an override that drops them fails.
+  - **What it can't see:** a key held in a variable (`globalThis[name]`), a chained or sequence
+    object (`globalThis.globalThis.fetch`, `(0, globalThis).fetch`), or `Reflect.get(globalThis,
+'fetch')`.
 - **Reading a model reply** (`harness/no-handrolled-reply-reader`, source files): no import of the
   SSE reader (`http/sse.utils`). A protocol gives `readReply`
   (`packages/providers/src/http/reply-reader.helper.ts`) its `parse`, `step` and `finish`, so
