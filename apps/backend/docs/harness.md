@@ -272,6 +272,10 @@ The models a conversation runs on are the user's, kept in their folder (`~/.shea
   through the adapter registry (`@sheavly/providers`), and puts them behind one `ProviderSwitch`
   keyed by model id. Each conversation gets its own switch, so changing one conversation's model
   leaves the others alone; `PUT /conversations/:id/model` (the chat's `/model`) switches it.
+  Its registry sends every model call, and every key check, through `createModelFetch()`, never
+  Node's global `fetch`. Its TLS ClientHello fits in one TCP segment, which Azure AI Foundry
+  needs on Node 22.20+, 24.5+ and 26. See
+  [the model fetch](../../../packages/providers/docs/backends.md#the-model-fetch-one-tcp-segment-per-clienthello).
 - **Where it starts.** A new conversation starts on the profile's last model (the one chosen last
   in any of its conversations), else its first. A switch is remembered for the next conversation
   without touching the ones running. Profiles keep `lastModelSelection` (the model/effort pair)
