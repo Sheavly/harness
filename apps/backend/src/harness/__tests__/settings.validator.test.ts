@@ -1,6 +1,54 @@
 import { describe, expect, it } from 'vitest';
+import { UnknownArgumentError } from '../../errors/arguments.errors.js';
 import { DEFAULT_WEB_SEARCH_BACKENDS, REQUEST, SERVER } from '../harness.constants.js';
-import { parseRequestEnv, parseRunEnv, parseServerEnv } from '../settings.validator.js';
+import {
+  parseCliSettings,
+  parseRequestEnv,
+  parseRunEnv,
+  parseServerEnv,
+} from '../settings.validator.js';
+
+describe('parseCliSettings', () => {
+  it('reads --trust, and no arguments as not trusting', () => {
+    expect(parseCliSettings({ env: {}, args: [] }).trustWorkspace).toBe(false);
+    expect(parseCliSettings({ env: {}, args: ['--trust'] }).trustWorkspace).toBe(true);
+  });
+
+  it('refuses an argument the server does not read, naming it and what it takes', () => {
+    for (const args of [['--version'], ['--trust', '--port=1'], ['x'], ['--trust=false']]) {
+      expect(() => parseCliSettings({ env: {}, args }), args.join(' ')).toThrow(
+        UnknownArgumentError,
+      );
+    }
+
+    expect(() => parseCliSettings({ env: {}, args: ['--trust', '--version'] })).toThrow(
+      'Unknown argument "--version": the server takes --trust',
+    );
+  });
+
+  it('names an option it refuses but never repeats a value or a bare word, which may be a secret', () => {
+    const refusal = (argument: string) => {
+      try {
+        parseCliSettings({ env: {}, args: [argument] });
+      } catch (caughtError) {
+        return caughtError instanceof Error ? caughtError.message : String(caughtError);
+      }
+
+      return 'accepted';
+    };
+    const secret = 'sk-live-0123456789abcdefghij';
+
+    expect(refusal(`--key=${secret}`)).toBe('Unknown argument "--key=…": the server takes --trust');
+    expect(refusal(secret)).toBe(
+      `Unknown argument of ${String(secret.length)} characters: the server takes --trust`,
+    );
+    expect(refusal('x'.repeat(100_000))).toBe(
+      'Unknown argument of 100000 characters: the server takes --trust',
+    );
+    expect(refusal('--')).toBe('Unknown argument "--": the server takes --trust');
+    expect(refusal('-h')).toBe('Unknown argument "-h": the server takes --trust');
+  });
+});
 
 describe('parseServerEnv', () => {
   it('listens on localhost by default, and on a free port with SERVER_PORT=0', () => {

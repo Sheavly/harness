@@ -15,6 +15,12 @@ export const REQUEST = { responseTimeoutMs: 60_000, retries: 2, retryDelayMs: 10
  */
 export const SERVER = { host: '127.0.0.1', port: 4310 } as const;
 
+/**
+ * The arguments the server reads from its command line (`--trust`: trust the workspace's
+ * `.sheavly/`); its other settings are environment variables. Anything else is refused.
+ */
+export const SERVER_ARGUMENTS: readonly string[] = ['--trust'];
+
 /** The search backends `WEB_SEARCH_BACKENDS` can name, all usable without an API key. */
 export const WEB_SEARCH_BACKEND_NAMES = [
   'tavily',

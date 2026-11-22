@@ -45,7 +45,11 @@ The models and keys are in the user's profile, not here, and not in a `.env`: se
 `MODEL_RETRIES`, `MODEL_RETRY_DELAY_MS`) is in [harness.md](harness.md#settings). `--trust` trusts
 the workspace's `.sheavly/` folder: its hooks, and a `.sheavly/settings.json` even when there are no
 hooks (see "Layered extension settings" in [harness.md](harness.md#the-run)):
-`npm run serve -w @sheavly/backend -- --trust`. The `settings.json` files of the user's folder
+`npm run serve -w @sheavly/backend -- --trust`. It is the only argument the server reads
+(`SERVER_ARGUMENTS`): any other exits 1 with `Unknown argument "--it"` before the lock, the file or
+a token, so a mistyped flag never starts a server. The message names an option as typed
+(`--key=…` for one with a value) and only the length of anything else, which may be a secret
+pasted in the wrong place. The `settings.json` files of the user's folder
 (`SHEAVLY_HOME`) are read at each conversation's start.
 
 Without `SERVER_TOKEN` it makes one and prints it once, at start. Once it listens it prints

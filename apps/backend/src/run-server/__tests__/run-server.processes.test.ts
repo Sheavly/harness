@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -86,6 +87,15 @@ describe.skipIf(process.platform === 'win32')('runServer, started through its mo
 
     expect({ code, stdout: second.stdout() }).toEqual({ code: 1, stdout: '' });
     expect(second.stderr()).toMatch(pattern);
+  }, 60_000);
+
+  it('refuses an argument it does not read with exit 1, before it takes the lock or prints a token', async () => {
+    const server = await viaScript.startAndWaitForExit({}, ['--version']);
+
+    expect(await server.exited).toEqual({ code: 1, signal: null });
+    expect(server.stderr()).toContain('Unknown argument "--version": the server takes --trust');
+    expect(server.stdout()).toBe('');
+    expect(existsSync(viaScript.folders().home)).toBe(false);
   }, 60_000);
 
   it('exits 1 with a message naming the setting, and prints nothing, when a setting is wrong', async () => {
