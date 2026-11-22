@@ -22,9 +22,14 @@ type Listened = { url: string } | { failure: string };
  * `startAndWaitForExit` for the process to end. Every child is killed and the folders removed
  * when the test ends. `entry` is what node runs after tsx (the arguments of `node`: a script, or
  * `--input-type=module --eval …`), `serve.ts` by default, and each call's `args` come after it
- * (another command line that starts a server, or runs something else, passes its own).
+ * (another command line that starts a server, or runs something else, passes its own). Each
+ * child's stdin is a pipe left open, as a UI holds a backend's (`SERVER_EXIT_WITH_PARENT` reads
+ * it); with `stdin: 'closed'` it is ended as the child starts, so a command that reads input (a
+ * chat with no terminal) reads its end at once.
  */
-export function useServeProcesses(options: { entry?: readonly string[] } = {}): {
+export function useServeProcesses(
+  options: { entry?: readonly string[]; stdin?: 'open' | 'closed' } = {},
+): {
   folders: () => ServeFolders;
   start: (extra?: Extra, args?: readonly string[]) => Promise<ServeProcess>;
   startAndWaitForExit: (extra?: Extra, args?: readonly string[]) => Promise<ServeProcess>;
@@ -85,6 +90,11 @@ export function useServeProcesses(options: { entry?: readonly string[] } = {}): 
       ['--conditions=@sheavly/source', '--import', 'tsx', ...(options.entry ?? [SERVE]), ...args],
       { cwd: BACKEND_DIR, env: definedOnly(env), stdio: ['pipe', 'pipe', 'pipe'] },
     );
+
+    // Ended rather than spawned as 'ignore': the child reads its end of input all the same, and
+    // every stream stays a pipe, which is what `spawn` types `stdout` and `stderr` as present for.
+    if (options.stdin === 'closed') child.stdin.end();
+
     let out = '';
     let err = '';
     const exited = new Promise<ServeExit>((resolve) => {

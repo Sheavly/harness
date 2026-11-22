@@ -6,8 +6,8 @@ export type ReceivedRequest = {
   body: string;
 };
 
-/** What a `recordingServer` answers with. */
-export type RecordedAnswer = { status: number; body?: string };
+/** What a `recordingServer` answers with; `contentType` is `application/json` unless set. */
+export type RecordedAnswer = { status: number; body?: string; contentType?: string };
 
 /** A plain `http` listener on loopback that records everything it is sent. */
 export type RecordingServer = {

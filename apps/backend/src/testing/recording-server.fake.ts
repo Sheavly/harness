@@ -44,10 +44,12 @@ export function useRecordingServers(): {
           };
 
           requests.push(recorded);
-          void Promise.resolve(answer(recorded)).then(({ status, body }) => {
-            response.writeHead(status, { 'content-type': 'application/json' });
-            response.end(body ?? '');
-          });
+          void Promise.resolve(answer(recorded)).then(
+            ({ status, body, contentType = 'application/json' }) => {
+              response.writeHead(status, { 'content-type': contentType });
+              response.end(body ?? '');
+            },
+          );
         });
       });
 

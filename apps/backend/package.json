@@ -50,6 +50,18 @@
     },
     "./testing/serve-process.types": {
       "@sheavly/source": "./src/testing/serve-process.types.ts"
+    },
+    "./testing/held-server.fake": {
+      "@sheavly/source": "./src/testing/held-server.fake.ts"
+    },
+    "./testing/recording-server.fake": {
+      "@sheavly/source": "./src/testing/recording-server.fake.ts"
+    },
+    "./testing/recording-server.types": {
+      "@sheavly/source": "./src/testing/recording-server.types.ts"
+    },
+    "./testing/handshake-only.fake": {
+      "@sheavly/source": "./src/testing/handshake-only.fake.ts"
     }
   }
 }
