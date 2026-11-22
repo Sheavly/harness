@@ -19,6 +19,14 @@ describe('runTerminalChat with --profile', () => {
     expect(connectBackend).not.toHaveBeenCalled();
   });
 
+  it('connects to a server it is given and never starts a backend', async () => {
+    // Nothing listens on port 9, so the session fails at its first request, past the connect.
+    await expect(
+      runTerminalChat({ env: {}, args: [], server: { url: 'http://127.0.0.1:9', token: 'x' } }),
+    ).rejects.toThrow();
+    expect(connectBackend).not.toHaveBeenCalled();
+  });
+
   it('reads the arguments it is given, not the process', async () => {
     await expect(
       runTerminalChat({ args: ['--setup', '--profile', WORK], env: {} }),

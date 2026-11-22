@@ -7,7 +7,7 @@ import { describeProfile, settleProfile } from './session-profile.helper.js';
 import { Renderer } from '../render/render.service.js';
 import { projectTrustNotice } from '../render/render.utils.js';
 import { connectBackend } from './backend.helper.js';
-import type { Backend } from './client.types.js';
+import type { Backend, FoundBackend } from './client.types.js';
 import { openConversation } from './conversation.helper.js';
 import type { RemoteConversation } from './conversation.service.js';
 import { trustFolderOnAttached } from './trust-attached.helper.js';
@@ -15,9 +15,10 @@ import { trustFolderOnAttached } from './trust-attached.helper.js';
 /**
  * A terminal CLI's conversation, as the chat and the demo open it: the backend (started with
  * `env` and `--trust` from `args`, its output written as it comes), a new conversation on it, its
- * details and a renderer. A backend that was already running (`BACKEND_URL`) gets `--trust` sent
- * to it for this terminal's folder before the conversation opens, and that same folder is the
- * conversation's workspace (`trustFolderOnAttached`). `prompt` is the rest of `args`.
+ * details and a renderer. A backend that was already running (`BACKEND_URL`, or a `server` the
+ * caller found) gets `--trust` sent to it for this terminal's folder before the conversation opens,
+ * and that same folder is the conversation's workspace (`trustFolderOnAttached`). `prompt` is the
+ * rest of `args`.
  * Prints what the run is: the model, the workspace, the permission mode and why `.sheavly/` hooks
  * didn't load.
  */
@@ -30,6 +31,8 @@ export async function openSession(params: {
   signal?: AbortSignal;
   /** A chat may configure the backend before opening its first conversation. */
   prepare?: (backend: Backend) => Promise<ModelId | undefined>;
+  /** A backend the caller found: used instead of `BACKEND_URL` or starting one. */
+  server?: FoundBackend;
 }): Promise<{
   backend: Backend;
   conversation: RemoteConversation;
@@ -40,12 +43,14 @@ export async function openSession(params: {
   const { env, args, write } = params;
   const resume = resumeArgs(args);
   const chosen = profileArgs(resume.args);
-  const backend = await connectBackend({
-    env,
-    args: args.filter((arg) => arg === '--trust'),
-    onOutput: write,
-    ...(params.signal && { signal: params.signal }),
-  });
+  const backend = params.server
+    ? attachedTo(params.server)
+    : await connectBackend({
+        env,
+        args: args.filter((arg) => arg === '--trust'),
+        onOutput: write,
+        ...(params.signal && { signal: params.signal }),
+      });
   let conversation: RemoteConversation | undefined;
 
   try {
@@ -101,6 +106,11 @@ export async function closeSession(params: {
   } finally {
     await params.backend.stop();
   }
+}
+
+/** A found backend as the terminal holds one it only connected to: nothing to stop on the way out. */
+function attachedTo(server: FoundBackend): Backend {
+  return { url: server.url, token: server.token, attached: true, stop: async () => undefined };
 }
 
 function resumeArgs(args: readonly string[]) {

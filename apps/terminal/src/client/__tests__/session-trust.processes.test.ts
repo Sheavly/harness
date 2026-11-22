@@ -69,6 +69,28 @@ async function trustedRoots(): Promise<string[]> {
   return workspaces.map(({ root }) => root);
 }
 
+describe.skipIf(process.platform === 'win32')('a backend the caller found', () => {
+  it('is connected to with no BACKEND_URL, gets --trust for the folder, and keeps running after', async () => {
+    const written: string[] = [];
+    // No BACKEND_URL and no PATH: starting a backend instead could only fail.
+    const session = await openSession({
+      env: { WORKSPACE_ROOT: project },
+      args: ['--trust'],
+      write: (text) => written.push(text),
+      server: { url: backend.url, token: backend.token },
+    });
+
+    expect(session.backend.url).toBe(backend.url);
+    expect(session.details.workspace).toBe(await realpath(project));
+
+    await closeSession(session);
+
+    expect(await trustedRoots()).toEqual([await realpath(project)]);
+    expect((await fetch(new URL('/health', backend.url))).ok).toBe(true);
+    expect(written.join('')).not.toContain(backend.token);
+  }, 60_000);
+});
+
 describe.skipIf(process.platform === 'win32')(
   '--trust against a backend that is already running',
   () => {
