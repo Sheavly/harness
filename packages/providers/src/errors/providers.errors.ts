@@ -66,6 +66,23 @@ export class RequestSigningError extends Error {
   }
 }
 
+/**
+ * The model fetch was given what undici's own `fetch` can't take: a global `Request` as its input,
+ * or a global `FormData` as its body. A bug in the caller, not a failure of the call: `sendRequest`
+ * passes it through as it came and never retries it. Pass a URL and a string body, as it does.
+ */
+export class ModelFetchError extends Error {
+  override name = 'ModelFetchError';
+  readonly reason: 'request_input' | 'form_data_body';
+
+  constructor(params: { reason: 'request_input' | 'form_data_body'; message: string }) {
+    const { reason, message } = params;
+
+    super(message);
+    this.reason = reason;
+  }
+}
+
 /** The provider switch can't serve: an unknown provider name, or none active yet. */
 export class ProviderSwitchError extends Error {
   override name = 'ProviderSwitchError';

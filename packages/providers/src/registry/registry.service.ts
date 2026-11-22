@@ -3,6 +3,7 @@ import type { Provider } from '@sheavly/core/provider/provider.types';
 import { parseOrThrow } from '@sheavly/core/validation/validation.validator';
 import type { AdapterDescription, KeyCheck } from '@sheavly/protocol/model/model.types';
 import { AdapterError } from '../errors/providers.errors.js';
+import { createModelFetch } from '../http/model-fetch.helper.js';
 import { checkHostOf } from './check-message.utils.js';
 import { checkProvider } from './check.helper.js';
 import { definitionProblems } from './definition.utils.js';
@@ -13,7 +14,7 @@ import type { DefinitionProblem } from './registry.types.js';
 export class AdapterRegistry {
   private readonly adapters = new Map<string, Adapter>();
 
-  constructor(private readonly deps: AdapterDeps = { fetch: globalThis.fetch }) {}
+  constructor(private readonly deps: AdapterDeps = { fetch: createModelFetch() }) {}
 
   register(adapter: Adapter): this {
     if (this.adapters.has(adapter.kind)) {
