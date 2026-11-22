@@ -40,7 +40,8 @@ const GROUPS = [
   { id: 'apps', title: 'apps', match: (entry) => entry.kind === 'app' },
 ];
 
-const short = (name) => name.slice(SCOPE.length);
+// The launcher is the one workspace named without the scope (`sheavly`): its name is its short name.
+const short = (name) => (name.startsWith(SCOPE) ? name.slice(SCOPE.length) : name);
 const nodeId = (name) => short(name).replaceAll('-', '_');
 
 /** Everything `name` reaches through its runtime dependencies, itself excluded. */

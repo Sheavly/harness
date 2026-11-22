@@ -1,5 +1,5 @@
-// The one part of the workspace layout that code can't tell, written here on purpose: what isn't
-// source. Everything else is read from the workspaces themselves (`layout.utils.js`, `readLayout`):
+// The parts of the workspace layout that code can't tell, written here on purpose: what isn't
+// source, and what the launcher may take from the apps. Everything else is read from the workspaces themselves (`layout.utils.js`, `readLayout`):
 //
 //   which workspaces   the root package.json `workspaces`
 //   kind               the folder: `packages/*` is a package, `apps/*` an app
@@ -18,4 +18,18 @@
 export const NOT_SOURCE = {
   '*.config.ts': 'root tool configs (Vitest), loaded by the tool, not part of any workspace',
   'workbook/workspaces/**': 'the projects the workbook agent reads and writes, not harness source',
+};
+
+/**
+ * The apps the launcher (`apps/sheavly`) may depend on, and the only files each may export to it
+ * (`<module>/<file>.<kind>`): a reviewed exception, never derived, so a new edge or a new export of
+ * an app (its backend spawn, say) is an edit here. Fakes are for the launcher's tests.
+ */
+export const LAUNCHER_ENTRIES = {
+  '@sheavly/backend': [
+    'run-server/run-server.helper',
+    'testing/serve-process.fake',
+    'testing/serve-process.types',
+  ],
+  '@sheavly/terminal': ['chat/start.helper', 'chat/chat-failure.helper'],
 };

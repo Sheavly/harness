@@ -59,6 +59,7 @@ flowchart BT
   subgraph group_apps ["apps"]
     backend["@sheavly/backend"]
     terminal["@sheavly/terminal"]
+    sheavly["sheavly"]
   end
   agents --> extension
   agents --> tools
@@ -89,6 +90,8 @@ flowchart BT
   tools --> runtime
   web --> agents
   workspace --> runtime
+  sheavly --> backend
+  sheavly --> terminal
 ```
 
 <!-- graph:end -->
@@ -181,7 +184,8 @@ Its fakes are `./testing/*`, from source only, for tests. TypeScript finds each 
 
 Any other kind is internal: `harness/imports` fails an import of it, and `harness/layout` fails
 an entry for one file, a kind that doesn't exist or other targets. `npm run export -- packages/<pkg> <kind>`
-makes a kind public, in review; an app exports nothing. A module that holds a public kind but
+makes a kind public, in review; an app exports nothing, except the entry files the launcher
+(`apps/sheavly`) runs. A module that holds a public kind but
 isn't API is closed (`"./hooks/*": null`), and the README's API table lists exactly the open
 modules. The library packages are set up to ship only `dist/` and `docs/`, built by `prepack`, for when they
 are published; the two apps and `@sheavly/testing` are not yet, and none is published (see

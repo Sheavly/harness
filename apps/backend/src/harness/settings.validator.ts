@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { contextWindowSchema } from '@sheavly/protocol/model/model.validator';
+import { UnknownArgumentError } from '../errors/arguments.errors.js';
 import {
   DEFAULT_WEB_SEARCH_BACKENDS,
   MAX_RETRIES,
   REQUEST,
   SERVER,
+  SERVER_ARGUMENTS,
   WEB_SEARCH_BACKEND_NAMES,
 } from './harness.constants.js';
 
@@ -154,13 +156,18 @@ export function parseRunEnv(env: Record<string, string | undefined>) {
 
 /**
  * What the backend reads from its command line and environment: `--trust`, and the settings that
- * shape a run.
+ * shape a run. Throws `UnknownArgumentError` for an argument outside `SERVER_ARGUMENTS`.
  */
 export function parseCliSettings(params: {
   env: Record<string, string | undefined>;
   args: readonly string[];
 }) {
   const { env, args } = params;
+  const unknown = args.find((arg) => !SERVER_ARGUMENTS.includes(arg));
+
+  if (unknown !== undefined) {
+    throw new UnknownArgumentError({ argument: unknown, known: SERVER_ARGUMENTS });
+  }
 
   return {
     /** `--trust`: trust this workspace's `.sheavly/` hooks (remembered until `.sheavly/` changes). */

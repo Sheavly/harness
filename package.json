@@ -31,7 +31,8 @@
     "dev:terminal": "tsx --tsconfig apps/terminal/tsconfig.json --conditions=@sheavly/source apps/terminal/src/chat.ts",
     "theme:smoke": "tsx --conditions=@sheavly/source scripts/theme-smoke.mjs",
     "lint:prompt": "npm exec -w @sheavly/host -- eslint src/instructions/instructions.prompt.ts",
-    "replay": "tsx --conditions=@sheavly/source apps/terminal/src/replay.ts"
+    "replay": "tsx --conditions=@sheavly/source apps/terminal/src/replay.ts",
+    "sheavly": "tsx --tsconfig apps/sheavly/tsconfig.source.json --conditions=@sheavly/source apps/sheavly/src/cli.ts"
   },
   "type": "module",
   "devDependencies": {

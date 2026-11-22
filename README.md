@@ -203,6 +203,8 @@ npm run new -- app <name> --domain <generic|coding|tooling> --description "…" 
 
 The layout check holds every workspace to the graph, its configs, its public API and its README
 and docs/; what it checks is in [@sheavly/eslint-config](packages/eslint-config/docs/layout.md).
+Nothing imports an app except the launcher, `apps/sheavly` (`sheavly.launcher: true`), the
+product's command line; see [the launcher](packages/eslint-config/docs/layout.md#the-launcher).
 
 ### Dead code and duplication (knip, jscpd)
 

@@ -5,17 +5,6 @@ import { findRoot } from './workspace-types.js';
 
 const SOURCE_FILE = /\.[cm]?tsx?$/;
 
-/** The text of a string literal or an expression-free template, else undefined (a computed path). */
-export function literalText(node) {
-  if (node?.type === 'Literal' && typeof node.value === 'string') return node.value;
-
-  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) {
-    return node.quasis[0].value.cooked ?? undefined;
-  }
-
-  return undefined;
-}
-
 /**
  * The repo root when the linted file is extension source (a TypeScript file of an extension
  * workspace that is not a test or a fake), else undefined: the rule then has nothing to check.

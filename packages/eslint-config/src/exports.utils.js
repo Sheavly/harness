@@ -11,6 +11,7 @@
 // - It ships what `exports` points at: `files` holds `dist` and `docs`, never `src`, and
 //   `prepack` builds it.
 import { extensionsOf, FILE_KINDS } from './file-kinds.js';
+import { LAUNCHER_ENTRIES } from './layout.js';
 
 const TESTING_EXPORT = './testing/*';
 const TESTING_TARGET = { '@sheavly/source': './src/testing/*.ts' };
@@ -185,17 +186,86 @@ function publishProblems(params) {
   return problems;
 }
 
+/** What is wrong with one `exports` entry of an app the launcher runs; null when it is fine. */
+function appExportProblem(params) {
+  const { name, entry, key, target } = params;
+  const subpath = /^\.\/([a-z0-9-]+\/[a-z0-9-]+\.[a-z]+)$/.exec(key)?.[1];
+  const [module, file] = subpath?.split('/') ?? [];
+  const exists = entry.modules?.some(
+    (found) => found.name === module && found.files.includes(file),
+  );
+
+  if (!exists) {
+    return `${name} exports ${key}: an app exports the entry files of its modules, as \`./<module>/<file>.<kind>\``;
+  }
+
+  // Existing is not enough: the launcher takes only what was reviewed, so an app can't hand it
+  // something like its backend spawn by exporting it.
+  const listed = Object.hasOwn(LAUNCHER_ENTRIES, name) ? LAUNCHER_ENTRIES[name] : [];
+
+  if (!listed.includes(subpath)) {
+    return `${name} exports ${key}, which the launcher isn't listed to import: an app exports only its entries in LAUNCHER_ENTRIES (packages/eslint-config/src/layout.js), a reviewed edit. Remove it, or add it there if the launcher runs it`;
+  }
+
+  // A fake is not built (its folder is out of the build): it is exported from source only.
+  const expected =
+    module === 'testing'
+      ? { '@sheavly/source': `./src/${subpath}.ts` }
+      : { '@sheavly/source': `./src/${subpath}.ts`, default: `./dist/${subpath}.js` };
+
+  return JSON.stringify(target) === JSON.stringify(expected)
+    ? null
+    : `${name} exports ${key} with other targets: make it ${JSON.stringify(expected)}`;
+}
+
+/**
+ * What is wrong with an app's `exports`. Only the launcher imports an app, so an app exports
+ * nothing unless the launcher depends on it, and then only the entry files it runs, one by one
+ * and listed in `LAUNCHER_ENTRIES` (`./run/run.helper`): an app has no public kinds to open.
+ */
+function appExportsProblems(params) {
+  const { name, entry, layout } = params;
+  const { exports } = entry;
+  // Node reads these when `exports` is missing, which would open any file past the list.
+  const entryFieldProblems = (entry.entryFields ?? []).map(
+    (field) =>
+      `${name} sets \`${field}\`: an app is reached only through the entries LAUNCHER_ENTRIES lists in its \`exports\`. Remove it: \`npm pkg delete ${field} -w ${entry.dir}\``,
+  );
+
+  if (entryFieldProblems.length > 0) return entryFieldProblems;
+
+  const launcherUsesIt = Object.values(layout ?? {}).some(
+    (other) => other.launcher === true && other.dependsOn.includes(name),
+  );
+
+  if (!launcherUsesIt) {
+    return exports
+      ? [`${name} has exports, but nothing imports an app but the launcher: remove them`]
+      : [];
+  }
+
+  // Without an `exports` map Node resolves every file of the app, so the list would hold nothing.
+  if (!exports || typeof exports !== 'object' || Array.isArray(exports)) {
+    return [
+      `${name} is run by the launcher but has no \`exports\` map: without one Node opens every file of it. Export each of its LAUNCHER_ENTRIES (packages/eslint-config/src/layout.js), as \`./<module>/<file>.<kind>\``,
+    ];
+  }
+
+  return Object.entries(exports)
+    .map(([key, target]) => appExportProblem({ name, entry, key, target }))
+    .filter(Boolean);
+}
+
 /**
  * What is wrong with a workspace's public API. A package declares it by file kind, closes the
- * module folders that aren't API, and documents every one that is. An app exports nothing.
+ * module folders that aren't API, and documents every one that is. An app exports nothing, except
+ * the entry files the launcher imports.
  */
 export function exportsProblems(params) {
-  const { name, entry } = params;
+  const { name, entry, layout } = params;
   const { exports } = entry;
 
-  if (entry.kind === 'app') {
-    return exports ? [`${name} has exports, but nothing imports an app: remove them`] : [];
-  }
+  if (entry.kind === 'app') return appExportsProblems({ name, entry, layout });
 
   if (entry.domain === 'tooling') return [];
 

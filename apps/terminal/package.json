@@ -35,5 +35,15 @@
     "@sheavly/testing": "^0.0.0",
     "@types/luxon": "^3.7.6",
     "@types/react": "^19.3.0"
+  },
+  "exports": {
+    "./chat/start.helper": {
+      "@sheavly/source": "./src/chat/start.helper.ts",
+      "default": "./dist/chat/start.helper.js"
+    },
+    "./chat/chat-failure.helper": {
+      "@sheavly/source": "./src/chat/chat-failure.helper.ts",
+      "default": "./dist/chat/chat-failure.helper.js"
+    }
   }
 }

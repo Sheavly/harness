@@ -35,6 +35,24 @@ describe('the workspace graph', () => {
     expect(block).not.toContain('lint');
   });
 
+  it('draws the launcher, which is named without the scope, with a node of its own', () => {
+    const layout = {
+      ...LAYOUT,
+      sheavly: entry({
+        kind: 'app',
+        domain: 'coding',
+        launcher: true,
+        dependsOn: ['@sheavly/cli'],
+      }),
+    };
+    const block = graphBlock(layout);
+
+    expect(block).toContain('sheavly["sheavly"]');
+    expect(block).toContain('sheavly --> cli');
+    expect(block).not.toMatch(/^\s+\["/m);
+    expect(block).not.toMatch(/^\s+-->/m);
+  });
+
   it('fails a diagram that no longer matches the workspaces, and one with no markers', () => {
     const root = createTempRepo({
       'package.json': JSON.stringify({ name: 'monorepo', workspaces: ['packages/*'] }),

@@ -27,7 +27,7 @@ Only `NOT_SOURCE` (reviewed exceptions) is written in `packages/eslint-config/sr
 purpose.
 
 `scripts/check-layout.mjs` holds the workspaces to it: each has a domain, is named
-`@sheavly/<folder>`, depends on no app, a generic one on
+`@sheavly/<folder>`, depends on no app (the launcher, below, excepted), a generic one on
 no coding one (its tests neither), and on tooling or test-only ones only as dev dependencies
 (tests may use any workspace below, to drive the real code with); each has an
 `eslint.config.js` calling `baseConfig` and a `tsconfig.json` extending `tsconfig.base.json` with
@@ -45,7 +45,29 @@ A package's `exports` is its public API, by file kind: `"./*.types": { "@sheavly
 module needs no entry. Its fakes are `./testing/*`, from source only. `harness/imports` fails an
 import of a kind not exported, and `harness/layout` (in lint and the layout check) fails an entry
 for one file, a kind that doesn't exist, other targets, fakes exported as a kind, and `exports` on
-an app. `npm run export -- packages/<pkg> <kind>` makes a kind public, in review.
+an app the launcher doesn't depend on. `npm run export -- packages/<pkg> <kind>` makes a kind
+public, in review.
+
+## The launcher
+
+`sheavly` is the command line of the whole product, so one workspace has to depend on the apps it
+starts. The flag `sheavly.launcher: true` (`npm pkg set sheavly.launcher=true -w apps/sheavly`,
+never by hand) allows that, for exactly one workspace:
+
+- the flagged workspace is `apps/sheavly` and is named `sheavly`, unscoped (the only name the
+  identity rule does not take from `@sheavly/<folder>`); a flag elsewhere, a second launcher, a
+  launcher with another name, and `sheavly` without the flag all fail;
+- the flag weakens no other edge rule: the launcher keeps the domain, transport, extension and
+  tooling rules, and is still an app, so nothing, not even another launcher, depends on it;
+- the launcher depends only on the apps `LAUNCHER_ENTRIES` (`src/layout.js`) lists, today
+  `@sheavly/backend` and `@sheavly/terminal`; an edge to any other app fails;
+- such an app exports only its files that list names, one by one, as `./<module>/<file>.<kind>`
+  with the source and `dist` targets (a fake in `testing/`, from source only, so the launcher's
+  tests can start the real server): the launcher imports them (`harness/imports` fails any other
+  subpath, and the app's bare name). A file that exists but is not listed (the terminal's backend
+  spawn, say) fails, so a new entry is a reviewed edit of the list. An app nobody launches exports
+  nothing, and no app sets `main`, `module` or `browser`, the fields Node falls back to without
+  `exports`.
 
 Every package is treated as published, so `exports` is its semver contract:
 

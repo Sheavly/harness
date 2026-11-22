@@ -6,6 +6,18 @@ with its own switch between that profile's models (so changing its model leaves 
 and the run [harness.md](harness.md) describes. The
 routes, streams and errors are in [the API](api.md).
 
+## `runServer`
+
+The whole start is one function, `runServer({ env, args, exit })` in
+`src/run-server/run-server.helper.ts`; `src/serve.ts` only calls it, so `npm run serve` is that
+call. `env` and `args` default to the process's own (`process.env`, the arguments after the
+script) and `exit` to `process.exit`; a command in the same process passes its own. The steps and
+their order are the contract: the startup-signal guard is installed before anything is taken, the
+backend is built (every setting error comes here) before the lock is claimed, the lock before
+anything listens or prints, the stop handlers before the guard comes off, and the `listening`
+line last. A refused start (another server holds the lock) calls `exit(1)`, a failing setting or
+listen throws. It resolves once the server listens and keeps the process alive.
+
 ## Settings
 
 | Setting                     | Default                                  | What it does                                                                                                                                                                                                                               |
@@ -33,7 +45,11 @@ The models and keys are in the user's profile, not here, and not in a `.env`: se
 `MODEL_RETRIES`, `MODEL_RETRY_DELAY_MS`) is in [harness.md](harness.md#settings). `--trust` trusts
 the workspace's `.sheavly/` folder: its hooks, and a `.sheavly/settings.json` even when there are no
 hooks (see "Layered extension settings" in [harness.md](harness.md#the-run)):
-`npm run serve -w @sheavly/backend -- --trust`. The `settings.json` files of the user's folder
+`npm run serve -w @sheavly/backend -- --trust`. It is the only argument the server reads
+(`SERVER_ARGUMENTS`): any other exits 1 with `Unknown argument "--it"` before the lock, the file or
+a token, so a mistyped flag never starts a server. The message names an option as typed
+(`--key=…` for one with a value) and only the length of anything else, which may be a secret
+pasted in the wrong place. The `settings.json` files of the user's folder
 (`SHEAVLY_HOME`) are read at each conversation's start.
 
 Without `SERVER_TOKEN` it makes one and prints it once, at start. Once it listens it prints

@@ -18,6 +18,7 @@ const root = tempWorkspace({
   'packages/coding2/package.json': { name: '@x/coding2' },
   'apps/cli/package.json': { name: '@x/cli' },
   'apps/web/package.json': { name: '@x/web' },
+  'apps/launch/package.json': { name: 'launch' },
 });
 /** The `exports` of a package that makes these file kinds public, plus its fakes if listed. */
 const kinds = (...names) =>
@@ -68,7 +69,25 @@ const layout = {
     exports: {},
   },
   '@x/cli': { dir: 'apps/cli', kind: 'app', domain: 'coding', dependsOn: ['@x/core', '@x/coding'] },
-  '@x/web': { dir: 'apps/web', kind: 'app', domain: 'coding', dependsOn: ['@x/core'] },
+  '@x/web': {
+    dir: 'apps/web',
+    kind: 'app',
+    domain: 'coding',
+    dependsOn: ['@x/core'],
+    exports: {
+      './run/run.helper': {
+        '@sheavly/source': './src/run/run.helper.ts',
+        default: './dist/run/run.helper.js',
+      },
+    },
+  },
+  launch: {
+    dir: 'apps/launch',
+    kind: 'app',
+    domain: 'coding',
+    launcher: true,
+    dependsOn: ['@x/web'],
+  },
 };
 const at = (file) => path.join(root, file);
 const options = [{ root, layout }];
@@ -119,6 +138,11 @@ new RuleTester({ languageOptions: { parser: tseslint.parser } }).run(
       {
         code: "import { createReadTool } from '@x/coding/read/read.tool';",
         filename: at('apps/cli/src/main/__tests__/main.test.ts'),
+      },
+      // The launcher running an app through the entry file the app exports.
+      {
+        code: "import { run } from '@x/web/run/run.helper';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
       },
       // A package's fakes, from a test.
       {
@@ -184,6 +208,55 @@ new RuleTester({ languageOptions: { parser: tseslint.parser } }).run(
       {
         code: "import { x } from '@x/web/main';",
         filename: at('apps/cli/src/main.ts'),
+        errors: error('notInGraph'),
+      },
+      // The launcher reaching into an app past its exported entry files.
+      {
+        code: "import { x } from '@x/web/main/main.helper';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('notExported'),
+      },
+      // An app the launcher doesn't depend on.
+      {
+        code: "import { x } from '@x/cli/main';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('notInGraph'),
+      },
+      // The launcher taking an app by its bare name, past its listed entry files (a `main`).
+      {
+        code: "import * as web from '@x/web';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('appRoot'),
+      },
+      {
+        code: "const web = await import('@x/web');",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('appRoot'),
+      },
+      {
+        code: "export * from '@x/web';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('appRoot'),
+      },
+      {
+        code: "export { run } from '@x/web';",
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('appRoot'),
+      },
+      {
+        code: 'const web = await import(`@x/web`);',
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('appRoot'),
+      },
+      // A dynamic import in backticks is checked as one in quotes.
+      {
+        code: 'const x = await import(`@x/web/main/main.helper`);',
+        filename: at('apps/launch/src/main/main.helper.ts'),
+        errors: error('notExported'),
+      },
+      {
+        code: 'const x = await import(`@x/coding/files/files.utils`);',
+        filename: CORE_FILE,
         errors: error('notInGraph'),
       },
       // The test-only package from source.

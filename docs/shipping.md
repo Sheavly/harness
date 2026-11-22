@@ -70,6 +70,19 @@ wait with it.
   backend it started already got `--trust` as its own flag. A refused or failed request is
   reported, naming the folder and never the token, as one line of at most 200 characters; a
   backend that does not answer in 10 s fails the start.
+- **The `sheavly` command exists and runs from the checkout** (`apps/sheavly`, the one workspace
+  named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve` and `chat`, or
+  `node apps/sheavly/dist/cli.js` after `npm run build` (where `chat` needs `BACKEND_URL` and
+  `BACKEND_TOKEN`, since the backend it starts runs through npm from the checkout, until
+  [#446](https://github.com/Sheavly/harness/issues/446) and [#450](https://github.com/Sheavly/harness/issues/450)).
+  It imports the backend's `runServer` and the terminal's `runTerminalChat` in its own process,
+  through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
+  apps and entry files `LAUNCHER_ENTRIES` lists; see the layout doc in `@sheavly/eslint-config`). `serve`
+  starts the server exactly as `npm run serve` does (the same settings, lock, discovery file,
+  output and stop), and `chat` runs the terminal as `npm run dev:terminal` does, connecting the
+  way it does today: it does not use the finder yet ([#446](https://github.com/Sheavly/harness/issues/446)).
+  The package is not packed or installed yet ([#450](https://github.com/Sheavly/harness/issues/450)),
+  and `update`, `doctor` and `setup` are not built.
 - **Every package is private at version `0.0.0`** and is consumed from source inside this repository.
 
 ## Decisions
@@ -132,11 +145,14 @@ libraries.
 
 ### The `sheavly` package
 
-`sheavly` will be a thin package: its command imports the backend and the terminal and depends on
-the built-in extensions, `@sheavly/agents`, `@sheavly/coding` and `@sheavly/web`. It holds the
-command line and nothing else, so that the backend and the terminal stay usable on their own. This
-is a decision of this page, and [#392](https://github.com/Sheavly/harness/issues/392) must be
-updated to match.
+`sheavly` is a thin package: its command imports the backend and the terminal, and will depend on
+the built-in extensions, `@sheavly/agents`, `@sheavly/coding` and `@sheavly/web`, once something
+in the command composes them (today the backend does, and an unused dependency fails the dead-code
+check). It holds the command line and nothing else, so that the backend and the terminal stay
+usable on their own. It is built as the workspace `apps/sheavly`, the one launcher: the layout
+lets exactly that workspace depend on apps, and the backend and the terminal export only the entry
+files it runs (`runServer`, `runTerminalChat`). This is a decision of this page, and
+[#392](https://github.com/Sheavly/harness/issues/392) must be updated to match.
 
 ### One backend per user
 
@@ -149,7 +165,8 @@ every front end uses, not in each terminal.
 ### Starting it
 
 `sheavly chat` will look for the server through the discovery file, with the finder that is built
-(see "The discovery file"); the command is not. When none is running and the
+(see "The discovery file"); the command exists but does not use it yet, and connects as
+`npm run dev:terminal` does. When none is running and the
 service is installed, it starts the service. When the service is not installed it says so and tells
 the user to run `sheavly service install`; it does not start a private server of its own, so there
 is one server and nothing is lost when a terminal closes. That the first command a new user runs

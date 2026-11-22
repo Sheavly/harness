@@ -1,0 +1,8 @@
+{
+  // What `npm run sheavly` hands tsx, and nothing else reads it. tsx applies a tsconfig's options
+  // only to the files it includes, so with `tsconfig.json` (this workspace's `src`) the terminal's
+  // .tsx were compiled with the classic JSX runtime and failed with "React is not defined". The
+  // command loads other workspaces' source from the checkout, so this includes all of them.
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "../*/src", "../../packages/*/src", "../../extensions/*/src"]
+}

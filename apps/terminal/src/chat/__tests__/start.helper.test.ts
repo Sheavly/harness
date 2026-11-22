@@ -18,4 +18,10 @@ describe('runTerminalChat with --profile', () => {
     await expect(runTerminalChat()).rejects.toThrow('--setup cannot be combined with --profile');
     expect(connectBackend).not.toHaveBeenCalled();
   });
+
+  it('reads the arguments it is given, not the process', async () => {
+    await expect(
+      runTerminalChat({ args: ['--setup', '--profile', WORK], env: {} }),
+    ).rejects.toThrow('--setup cannot be combined with --profile');
+  });
 });
