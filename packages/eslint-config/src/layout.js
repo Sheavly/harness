@@ -28,6 +28,10 @@ export const NOT_SOURCE = {
 export const LAUNCHER_ENTRIES = {
   '@sheavly/backend': [
     'run-server/run-server.helper',
+    'testing/handshake-only.fake',
+    'testing/held-server.fake',
+    'testing/recording-server.fake',
+    'testing/recording-server.types',
     'testing/serve-process.fake',
     'testing/serve-process.types',
   ],
