@@ -55,6 +55,7 @@ A report that was not delivered when the process ended is not lost. The registry
 | Session                       | `packages/runtime/src/sessions/sessions.service.ts`                                                                                                     | `sessionInfoSchema` rejects a snapshot whose `state`, `lastOutcome` and `endedAt` contradict each other; the registry still writes the three fields itself, so only parsing enforces it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Background task               | `packages/runtime/src/tasks/tasks.service.ts`                                                                                                           | a run that reports exit code 0 is `completed` even if aborted; `silent`, `delivery`, `group`, `#ready` mean "notified"; `start` still takes an optional owner, so only a direct call (a test) can leave a task to `cancelAll`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Background work, as a concept | `WorkDefinition` kinds (`packages/runtime/src/tasks/work.utils.ts`), started by `startWork`                                                             | one registry per run, shared by every session (ids unique; a session's reads and shutdown are scoped to what it owns); the tool picks the kind (`run_command` finite, `start_service` service, `start_agent` agent: finite, named apart) and the kinds own the completion policy, asked through `isFiniteKind`; `WorkInput` requires the owner, and a foreign id reads as unknown in every task tool                                                                                                                                                                                                                                                                                                                         |
+| Node (not built, #438)        | the node registry of #423                                                                                                                               | decided to replace the Session and Background task rows: one lifecycle for every kind of node, tabled in "Node lifecycle" below; both rows stand, as no node registry exists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Notices                       | `packages/runtime/src/tasks`, the loop's delivery helpers                                                                                               | lifetime (transient or persistent) still decided at each call site; `hook-failed` is persistent, one per hook and handler, then a count                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Approval                      | `packages/runtime/src/approvals` (`APPROVAL_TABLE`, `ApprovalStates`)                                                                                   | the runtime table is the one source of an approval's state (requested, then answered, cancelled or expired, once); a released session cancels its open approvals; command approval (the permission store, the workbook's `CheckApprovals`) and the apps' `unknown_approval` handling are still separate                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Conversation run              | `packages/host/src/conversation/conversation.helper.ts`, table in `conversation.constants.ts`                                                           | one union, tabled below: `idle`, `prompt` or `wake`, moved only along `CONVERSATION_RUN_TRANSITIONS` (a move outside it throws `ConversationRunError`); `conversation.state` is the one answer to what runs, and the session's `running`/`idle` and the stream's `run_state` report it. Wake policy stays flags beside it (`wakesSuppressed` by a stop, `wakesDeferred` while a line waits, the yield's grace timer)                                                                                                                                                                                                                                                                                                         |
@@ -146,6 +147,50 @@ A tool name is vouched for only once the extension is `merged`: `ServiceConsumer
 is empty while it is `activating` or `verified` and again in every final state. This is a
 behaviour change: it used to be filled before the merge, so for the rest of an activation an
 extension could be attributed a tool another extension also contributed.
+
+## Node lifecycle (decided in #438, not built)
+
+Today there are two machines for one thing: a **session** (the loop's view: `running`, `idle`, or
+one of six ended states) and a **background task** (`running`, `completed`, `failed`,
+`cancelled`), joined for a sub-agent only by the tool call id. The wire model
+(`packages/protocol/docs/wire-model.md`) replaces both with one **node** and one lifecycle for the
+root agent, sub-agents, commands, services and the kinds an extension adds. The two rows above
+stand, since no node registry exists (#423), and this section is the machine that replaces them.
+It is written by hand and is not in `STATUS_TABLE`, so the generated block below does not list it;
+the schema work (#422) puts it there, and its generated block replaces this table.
+
+| State       | Kinds       | May move to                                                                         |
+| ----------- | ----------- | ----------------------------------------------------------------------------------- |
+| `running`   | all         | `idle` (agents), `completed`, `failed`, `cancelled`, `lost` (at a reopen, not live) |
+| `idle`      | agents only | `running`, `completed`, `failed`, `cancelled`, `lost` (at a reopen, not live)       |
+| `completed` | all         | final                                                                               |
+| `failed`    | all         | final                                                                               |
+| `cancelled` | all         | final                                                                               |
+| `lost`      | all         | final                                                                               |
+
+- **One machine for every kind** (rule 5 above). An extension's kind (`<extension>.<name>`) uses
+  these states and cannot add one, because every front end has to understand state. It can add
+  status text.
+- **A terminal state is reached once**, and the node's channel ends with one `closed` entry that
+  carries it, the outcome and, for a command, the exit code. Cleanup runs on every path into it:
+  a cancel, a failure and `lost` alike.
+- **`lost` is not a live transition.** It is written only when a conversation is reopened, for a
+  node whose channel has no `closed` entry because the server stopped, so it is reached from
+  `running` or `idle` and never while the node is live.
+- **`idle` is for agents.** A command or service has no between-prompts state.
+- **The outcome keeps the detail the state does not.** For an agent it is today's `RunOutcome`
+  (`completed`, `interrupted`, `max_turns`, `max_tokens`, `context_window_exceeded`, `failed`), for
+  a command its exit code.
+- **How today's states map (proposed; #438 does not decide it).** A session `running` and `idle`
+  are the same. An ended session becomes the terminal state of its outcome: `completed` is
+  `completed`, `interrupted` is `cancelled`, `failed` is `failed`, and the three limits
+  (`max_turns`, `max_tokens`, `context_window_exceeded`) are `failed` with the limit as the
+  outcome, since the work did not finish and a parent reading the state should not mistake it for
+  success. A task's `completed`, `failed` and `cancelled` are unchanged. The limits and
+  `interrupted` as `cancelled` are both open until the schema work (#422) writes and confirms them.
+- **The tests to write with the registry** (#423) list these transitions and the moves that must
+  be refused (a terminal state moving anywhere, `lost` from a live node, `idle` for a command),
+  before the change, as "How to treat a state machine" says.
 
 ## The status table
 
