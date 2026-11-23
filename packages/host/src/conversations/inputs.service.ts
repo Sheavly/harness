@@ -6,7 +6,7 @@ import type {
   SendPromptResponse,
 } from '@sheavly/protocol/server/server.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
-import type { LiveConversation, SentPrompt } from './conversations.types.js';
+import type { LiveConversation, PromptFailure, SentPrompt } from './conversations.types.js';
 import { partsText } from '@sheavly/protocol/message/message.utils';
 import { prepareForSend, refuseOverlappingSend, releaseOnAbort } from './prompt.helper.js';
 import { PromptQueue } from './prompt-queue.service.js';
@@ -49,12 +49,12 @@ export class ConversationInputs {
   /** Each conversation's running prompt's stop switch. */
   readonly #running = new Map<ConversationId, AbortController>();
   readonly #storage: StorageChecks;
-  readonly #onPromptFailure: ((error: unknown) => void) | undefined;
+  readonly #onPromptFailure: ((failure: PromptFailure) => void) | undefined;
 
   constructor(params: {
     store: ConversationStore | undefined;
     storage: StorageChecks;
-    onPromptFailure?: ((error: unknown) => void) | undefined;
+    onPromptFailure?: ((failure: PromptFailure) => void) | undefined;
   }) {
     this.#queues = new ConversationQueues({ store: params.store });
     this.#storage = params.storage;
@@ -85,7 +85,7 @@ export class ConversationInputs {
         harness.sessions.publishQueue({ sessionId: harness.mainSession.id, update }),
       keep: (lines) => this.#queues.replace({ id, queued: lines }),
       onStoreFailure: (failure) => announceStorageFailure({ live, failure }),
-      onStartFailure: (error) => this.#onPromptFailure?.(error),
+      onStartFailure: (error) => this.#onPromptFailure?.({ id, error }),
       // Closed, or closed and reopened: either way this queue starts nothing more.
       closed: () => this.#lines.get(id) !== queue,
     });
@@ -249,7 +249,7 @@ export class ConversationInputs {
     prompt: SendPromptRequest;
     left: () => readonly string[];
   }): Promise<void> {
-    const { live, prompt, left } = params;
+    const { id, live, prompt, left } = params;
     const { harness } = live;
     const text = 'text' in prompt ? prompt.text : partsText(prompt.parts);
     const { events } = await this.#send({
@@ -261,16 +261,19 @@ export class ConversationInputs {
         }),
     });
 
-    void this.#readToEnd(events);
+    void this.#readToEnd({ id, events });
   }
 
   /** Reads a run nobody else reads; a failed one is on the stream already, and the app logs it. */
-  async #readToEnd(events: AsyncIterable<AgentEvent>): Promise<void> {
+  async #readToEnd(params: {
+    id: ConversationId;
+    events: AsyncIterable<AgentEvent>;
+  }): Promise<void> {
     try {
-      for await (const _event of events);
+      for await (const _event of params.events);
     } catch (caughtError) {
       // Nothing awaits this run: rethrowing would be an unhandled rejection that stops the host.
-      this.#onPromptFailure?.(caughtError);
+      this.#onPromptFailure?.({ id: params.id, error: caughtError });
     }
   }
 }

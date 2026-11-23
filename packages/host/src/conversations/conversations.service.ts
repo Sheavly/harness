@@ -10,6 +10,7 @@ import { ModelChanges } from './model-changes.service.js';
 import type {
   CreateConversation,
   LiveConversation,
+  PromptFailure,
   SentPrompt,
   StartConversationParams,
 } from './conversations.types.js';
@@ -54,10 +55,11 @@ export class Conversations {
     create: CreateConversation;
     store?: ConversationStore;
     /**
-     * Told when a prompt the conversation runs itself (one `submit` started or queued) fails:
-     * clients see it on the stream (`run_failed`), and nothing awaits it, so the app logs it.
+     * Told when a prompt the conversation runs itself (one `submit` started or queued) fails, with
+     * the conversation's id: clients see it on the stream (`run_failed`), and nothing awaits it,
+     * so the app logs it.
      */
-    onPromptFailure?: (error: unknown) => void;
+    onPromptFailure?: (failure: PromptFailure) => void;
   }) {
     this.#create = params.create;
     this.#store = params.store;
