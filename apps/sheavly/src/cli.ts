@@ -12,6 +12,7 @@
  */
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { startEmbeddedServer } from '@sheavly/backend/run-server/embedded-server.helper';
 import { runServer } from '@sheavly/backend/run-server/run-server.helper';
 import { reportChatFailure } from '@sheavly/terminal/chat/chat-failure.helper';
 import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
@@ -73,6 +74,9 @@ const code = await dispatch({
     createSetupCommand({
       runSetup: runTerminalSetup,
       findServer: findChatServer,
+      // The one command handed a way to start a server (`serverStartConfinement` keeps it so).
+      startServer: startEmbeddedServer,
+      interactive: process.stdin.isTTY && process.stdout.isTTY,
       reportFailure: reportChatFailure,
       streams,
     }),

@@ -12,6 +12,14 @@ export class NoServerError extends Error {
 }
 
 /**
+ * No server is running for this home at all (as against one the command can't use, a protocol
+ * mismatch). The only case in which `sheavly setup` may start a short-lived server of its own.
+ */
+export class ServerNotRunningError extends NoServerError {
+  override name = 'ServerNotRunningError';
+}
+
+/**
  * `sheavly connection` was given an environment it cannot use: `BACKEND_URL` that is not a web
  * URL, or without `BACKEND_TOKEN`. One line naming the variable; it never holds a value, since
  * one of them is the token.

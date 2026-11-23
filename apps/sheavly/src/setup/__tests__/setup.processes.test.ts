@@ -1,12 +1,15 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { startEmbeddedServer } from '@sheavly/backend/run-server/embedded-server.helper';
 import { createClient } from '@sheavly/client/client/client.helper';
+import { serverNameHash } from '@sheavly/storage/server-runtime/server-runtime.helper';
 import { runTerminalSetup } from '@sheavly/terminal/setup/run-setup.helper';
 import { findChatServer } from '../../chat/find-server.helper.js';
 import { useFinderScenarios } from '../../testing/finder-scenarios.fake.js';
 import { answerSetupByTitle } from '../../testing/setup-answers.fake.js';
 import { createSetupCommand } from '../setup.helper.js';
+import type { StartPrivateServer } from '../setup.types.js';
 
 // No input: a chat with no terminal reads its end at once, so one prompt runs and the chat ends.
 const scenarios = useFinderScenarios();
@@ -16,24 +19,39 @@ const NEW = ['new', 'terminal-settings'];
 
 /** The environment of the child processes, which the in-process setup reads the same way. */
 function childEnv(): NodeJS.ProcessEnv {
-  const { home, xdg, project } = cli.folders();
+  const { home, xdg, project, base } = cli.folders();
 
-  return { SHEAVLY_HOME: home, XDG_RUNTIME_DIR: xdg, WORKSPACE_ROOT: project };
+  // PATH and HOME for a server that starts in this process, as the child servers get them.
+  return {
+    PATH: process.env.PATH,
+    HOME: base,
+    SHEAVLY_HOME: home,
+    XDG_RUNTIME_DIR: xdg,
+    WORKSPACE_ROOT: project,
+  };
 }
+
+/** A server start for a test that must not start one: a failure of the test, not of the command. */
+const STARTS_NONE: StartPrivateServer = () =>
+  Promise.reject(new Error('this test expects setup to start no server'));
 
 /**
  * `sheavly setup` run in this process, on the server the finder finds, answered by `ui`, with
- * `extraEnv` added to the environment.
+ * `extraEnv` added to the environment. `startServer` is the real embedded server for a test of a
+ * first run, and starts none otherwise.
  */
 async function setUp(
   ui: ReturnType<typeof answerSetupByTitle>['ui'],
   extraEnv: NodeJS.ProcessEnv = {},
+  startServer: StartPrivateServer = STARTS_NONE,
 ) {
   const out: string[] = [];
   const reportFailure = vi.fn();
   const command = createSetupCommand({
     runSetup: (params) => runTerminalSetup({ ...params, ui }),
     findServer: findChatServer,
+    startServer,
+    interactive: true,
     reportFailure,
     streams: { out: (text) => out.push(text), err: (text) => out.push(text) },
   });
@@ -41,6 +59,13 @@ async function setUp(
   await command.run({ args: [], env: { ...childEnv(), ...extraEnv } });
 
   return { out: out.join(''), reportFailure };
+}
+
+/** What is left in the runtime folder of the test's home: a server's lock and file. */
+async function runtimeLeftovers(): Promise<string[]> {
+  const { home, xdg } = cli.folders();
+
+  return readdir(path.join(xdg, 'sheavly', await serverNameHash({ home })));
 }
 
 /** What a first setup answers: a new profile, a custom model at `baseUrl`, and the key. */
@@ -235,4 +260,116 @@ describe.skipIf(process.platform === 'win32')('the sheavly setup command line', 
     expect(exit.code).toBe(2);
     expect(made.stderr()).toContain('"sheavly setup" takes no arguments');
   }, 60_000);
+});
+
+describe.skipIf(process.platform === 'win32')('sheavly setup with no server running', () => {
+  it('sets up a profile on a clean home on a server of its own, and leaves no server, lock or file behind', async () => {
+    const model = await scenarios.fakeModel();
+    const answers = firstSetup(model.baseUrl);
+    const { out, reportFailure } = await setUp(answers.ui, {}, startEmbeddedServer);
+
+    expect(reportFailure).not.toHaveBeenCalled();
+    // The server is gone, so the line says a chat needs one that stays.
+    expect(out).toContain('`sheavly serve`');
+    expect(await runtimeLeftovers()).toEqual([]);
+
+    // The lock is free and the setup was saved: a server started now on the same home takes the
+    // lock, and has the profile, the model and the key.
+    const server = await cli.start({}, ['serve']);
+    const { profiles } = await createClient({
+      url: server.url,
+      token: cli.folders().token,
+    }).call('getSetup', {});
+
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.ready).toBe(true);
+    expect(profiles[0]?.models[0]?.definition.baseUrl).toBe(model.baseUrl);
+    expect(profiles[0]?.models[0]?.credential).toBe('set');
+    // The key was asked as a secret, is in the credential store alone, and in no output.
+    expect(answers.asked.filter(({ secret }) => secret).map(({ title }) => title)).toEqual([
+      'API key',
+    ]);
+    expect(await filesHolding(KEY)).toHaveLength(1);
+    expect([out, answers.notices.join('\n')].join('\n')).not.toContain(KEY);
+  }, 120_000);
+
+  it('sends nothing to the address BACKEND_URL names: the key goes only to the server it started', async () => {
+    const model = await scenarios.fakeModel();
+    const named = await scenarios.listeners.start(() => ({ status: 404 }));
+    const { reportFailure } = await setUp(
+      firstSetup(model.baseUrl).ui,
+      { BACKEND_URL: named.url, BACKEND_TOKEN: 'a-token-that-must-not-be-sent' },
+      startEmbeddedServer,
+    );
+
+    expect(reportFailure).not.toHaveBeenCalled();
+    expect(named.requests()).toEqual([]);
+  }, 120_000);
+
+  it('stops the server it started when the wizard is cancelled, and leaves no lock or file', async () => {
+    const answers = firstSetup('http://127.0.0.1:9/v1');
+    const cancelling = {
+      ...answers.ui,
+      choose: () => Promise.reject(new Error('Setup cancelled.')),
+    };
+    const { out, reportFailure } = await setUp(cancelling, {}, startEmbeddedServer);
+
+    expect(reportFailure).toHaveBeenCalledTimes(1);
+    expect(out).toBe('');
+    expect(await runtimeLeftovers()).toEqual([]);
+
+    // Nothing holds the home: a server starts on it at once.
+    const server = await cli.start({}, ['serve']);
+
+    expect((await fetch(new URL('/health', server.url))).ok).toBe(true);
+  }, 120_000);
+
+  it('lets a setup that starts while another runs its wizard use that one’s server, and start none of its own', async () => {
+    const model = await scenarios.fakeModel();
+    const gate = Promise.withResolvers<undefined>();
+    const first = firstSetup(model.baseUrl);
+    // The first wizard waits at its first question until the second has run.
+    const gated = {
+      ...first.ui,
+      choose: async (question: Parameters<typeof first.ui.choose>[0]) => {
+        await gate.promise;
+
+        return first.ui.choose(question);
+      },
+    };
+    let asked = 0;
+    const counting: StartPrivateServer = (params) => {
+      asked += 1;
+
+      return startEmbeddedServer(params);
+    };
+    const one = setUp(gated, {}, counting);
+
+    try {
+      // Once the first has published its file, a second setup finds and verifies that server.
+      await vi.waitFor(async () => expect(await runtimeLeftovers()).toContain('server.json'), {
+        timeout: 60_000,
+      });
+
+      const cancelsAtOnce = {
+        ...answerSetupByTitle({}).ui,
+        choose: () => Promise.reject(new Error('second setup reached its first question')),
+      };
+      const two = await setUp(cancelsAtOnce, {}, counting);
+
+      // It got as far as asking, on the first's server, and was asked to start none.
+      expect(two.reportFailure).toHaveBeenCalledTimes(1);
+      expect((two.reportFailure.mock.calls[0] as [Error])[0].message).toBe(
+        'second setup reached its first question',
+      );
+      expect(asked).toBe(1);
+    } finally {
+      gate.resolve(undefined);
+    }
+
+    const done = await one;
+
+    expect(done.reportFailure).not.toHaveBeenCalled();
+    expect(await runtimeLeftovers()).toEqual([]);
+  }, 120_000);
 });

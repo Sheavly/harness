@@ -40,7 +40,7 @@ export async function checkServer(params: {
     lines: [
       'none running',
       ...found.reasons.map(({ message }) => `  ${message}`),
-      '  Start one with `sheavly serve`.',
+      '  Start one with `sheavly serve` (`sheavly setup` starts a short-lived one for itself on a first run).',
       ...notes,
     ],
   };
