@@ -114,6 +114,33 @@ export function readCommitMessage(command) {
   return file ? { file } : { editor: true };
 }
 
+const LEADING_CD = /^\s*cd\s+(\S+)\s*(?:&&|;)/;
+const GIT_OPTIONS_BEFORE_COMMIT =
+  /(?:^|[;&|\n(]\s*|\s)(?:\S*\/)?git((?:\s+-[Cc]\s+\S+)*)\s+commit\b/;
+const unquoted = (value) => value.replace(/^["']|["']$/g, '');
+/** A word the shell expands (a variable, a command, `~`, a glob): its folder is not known here. */
+const EXPANDED = /[$`~*?]/;
+
+/**
+ * The folder the first `git commit` of `command` runs in: where the shell starts (`cwd`), moved by
+ * a leading `cd <dir> &&` and by each `git -C <dir>` before `commit`, as git applies them. A
+ * folder with spaces or variables in it is not read (the command's own `cwd` stands).
+ */
+export function commitDirectory(params) {
+  const { command, cwd } = params;
+  const cd = LEADING_CD.exec(command)?.[1];
+  const options = GIT_OPTIONS_BEFORE_COMMIT.exec(command)?.[1] ?? '';
+  const words = [
+    ...(cd ? [unquoted(cd)] : []),
+    ...[...options.matchAll(/\s+-C\s+(\S+)/g)].map(([, value]) => unquoted(value)),
+  ];
+
+  // One folder the shell would expand makes the whole chain unknown, not just that step.
+  if (words.some((word) => EXPANDED.test(word))) return cwd;
+
+  return words.reduce((dir, word) => path.resolve(dir, word), cwd);
+}
+
 /** The value of the first of `flags` (`-b x` or `--base=x`), or undefined. */
 export function flagValue(params) {
   const { args, flags } = params;

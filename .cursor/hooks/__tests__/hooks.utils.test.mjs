@@ -1,6 +1,9 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { formatTurboReport, hookNow, PROJECT_ROOT } from '../hooks.utils.mjs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { formatTurboReport, hookNow, PROJECT_ROOT, repoRoot, sameRepo } from '../hooks.utils.mjs';
 import { formatEslintReport } from '../lint-report.utils.mjs';
 
 it('reads integer epoch milliseconds without installing a clock library', () => {
@@ -73,5 +76,94 @@ describe('formatTurboReport', () => {
     const output = '  x Could not resolve workspaces.\n  `-> Missing `packageManager` field';
 
     expect(formatTurboReport(output)).toBe(output);
+  });
+});
+
+describe('repoRoot', () => {
+  const made = [];
+
+  afterEach(() => {
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A temp folder, with its real path (a temp folder may sit behind a link). */
+  const folder = () => {
+    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'hook-root-')));
+
+    made.push(dir);
+
+    return dir;
+  };
+
+  it('is the top folder of the checkout a folder is in, from the top or from below it', () => {
+    const dir = folder();
+
+    spawnSync('git', ['init', '-q'], { cwd: dir });
+    mkdirSync(path.join(dir, 'packages', 'loop'), { recursive: true });
+
+    expect(repoRoot(dir)).toBe(dir);
+    expect(repoRoot(path.join(dir, 'packages', 'loop'))).toBe(dir);
+  });
+
+  it('is the worktree’s own top folder, not the repo it belongs to', () => {
+    const main = folder();
+    const worktree = path.join(folder(), 'wt');
+
+    spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: main });
+    spawnSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x'],
+      {
+        cwd: main,
+      },
+    );
+    spawnSync('git', ['worktree', 'add', '-q', '-b', '13-other', worktree], { cwd: main });
+
+    expect(repoRoot(worktree)).toBe(realpathSync(worktree));
+    expect(repoRoot(main)).toBe(main);
+  });
+
+  it('is null for a folder that is not in a repo, and for one that does not exist', () => {
+    expect(repoRoot(folder())).toBeNull();
+    expect(repoRoot(path.join(folder(), 'missing'))).toBeNull();
+  });
+
+  describe('sameRepo', () => {
+    const initRepo = () => {
+      const dir = folder();
+
+      spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+      spawnSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x'],
+        { cwd: dir },
+      );
+
+      return dir;
+    };
+
+    it('holds for a checkout and its worktrees, and for two folders of one checkout', () => {
+      const main = initRepo();
+      const worktree = path.join(folder(), 'wt');
+
+      spawnSync('git', ['worktree', 'add', '-q', '-b', '13-other', worktree], { cwd: main });
+      mkdirSync(path.join(main, 'packages', 'loop'), { recursive: true });
+
+      expect(sameRepo(main, worktree)).toBe(true);
+      expect(sameRepo(worktree, main)).toBe(true);
+      expect(sameRepo(main, path.join(main, 'packages', 'loop'))).toBe(true);
+    });
+
+    it('does not hold for two repositories, even with the same branch and files', () => {
+      expect(sameRepo(initRepo(), initRepo())).toBe(false);
+    });
+
+    it('does not hold when either folder is not in a repo or does not exist', () => {
+      const main = initRepo();
+
+      expect(sameRepo(main, folder())).toBe(false);
+      expect(sameRepo(folder(), main)).toBe(false);
+      expect(sameRepo(main, path.join(folder(), 'missing'))).toBe(false);
+    });
   });
 });
