@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { ExtensionUndeclaredError } from '@sheavly/extension/errors/manifest.errors';
 import { ScopeDeactivatedError } from '@sheavly/extension/errors/scopes.errors';
-import { BACKGROUND_TASKS } from '@sheavly/extension/run-services/run-services.utils';
+import {
+  BACKGROUND_TASKS,
+  CHILD_SESSIONS,
+} from '@sheavly/extension/run-services/run-services.utils';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import type { SessionId } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import { TaskError } from '@sheavly/runtime/errors/tasks.errors';
-import { finiteWork } from '@sheavly/runtime/tasks/work.utils';
+import { agentWork, finiteWork } from '@sheavly/runtime/tasks/work.utils';
 import { scopeRun } from '../../testing/scope-run.fake.js';
 import { waitingWork as waiting } from '../../testing/waiting-work.fake.js';
 
@@ -32,6 +36,34 @@ async function activated(params: { names: string[]; held?: string[] }) {
   };
 }
 
+/**
+ * Starts a sub-agent's work through `tasks`, naming the session `agent` as the one it runs, and
+ * says how many nodes that opened: none when the task took its session's own node.
+ */
+async function startAgentTask(params: {
+  run: Awaited<ReturnType<typeof activated>>['run'];
+  tasks: ReturnType<Awaited<ReturnType<typeof activated>>['scope']>;
+  agent: SessionId;
+}) {
+  const { run, tasks, agent } = params;
+  const before = run.harness.nodes.list().length;
+  const task = tasks.start({
+    ...agentWork({
+      command: 'wait',
+      description: 'waits',
+      sessionId: run.harness.mainSession.id,
+      run: ({ signal }) =>
+        new Promise((resolve) => signal.addEventListener('abort', () => resolve({ exitCode: 1 }))),
+    }),
+    agentSessionId: agent,
+  });
+  const opened = run.harness.nodes.list().length - before;
+
+  await run.harness.tasks.cancelAll();
+
+  return { task, opened };
+}
+
 describe('the background-tasks service', () => {
   it('starts work for the main session, owns the task and reads and cancels it', async () => {
     const { main, scope } = await activated({ names: ['a'] });
@@ -42,6 +74,81 @@ describe('the background-tasks service', () => {
     expect(tasks.list().map((task) => task.id)).toEqual([started.id]);
     expect(tasks.report(started.id)).toBeUndefined();
     await expect(tasks.cancel(started.id)).resolves.toMatchObject({ status: 'cancelled' });
+  });
+
+  it('drops a session an extension names but did not start: it cannot take another’s child', async () => {
+    const { run, main, scope } = await activated({ names: ['a'] });
+    // A sub-agent some other code started under the main session, which the extension did not.
+    const theirs = run.harness.sessions.startChild({
+      parentId: main,
+      startedByCall: callIdSchema.parse('theirs'),
+      title: 'theirs',
+    });
+    const { task, opened } = await startAgentTask({ run, tasks: scope('a'), agent: theirs.id });
+
+    // The task has a node of its own and runs no session, so nothing of the session is taken or,
+    // later, released along with the task.
+    expect(opened).toBe(1);
+    expect(run.harness.tasks.agentSessionOf(task.id)).toBeUndefined();
+  });
+
+  it('keeps the session its own extension started: how the harness’s sub-agent tool pairs a task with its child', async () => {
+    const run = scopeRun();
+
+    await run.activate([
+      {
+        name: 'agents',
+        requires: [BACKGROUND_TASKS.name, CHILD_SESSIONS.name],
+        grants: [...allGrants, 'sub-agent:create'],
+      },
+    ]);
+
+    const mine = run
+      .servicesOf('agents')
+      .get(CHILD_SESSIONS)
+      .startChild({
+        parentId: run.harness.mainSession.id,
+        startedByCall: callIdSchema.parse('mine'),
+        title: 'mine',
+      });
+    const { task, opened } = await startAgentTask({
+      run,
+      tasks: run.servicesOf('agents').get(BACKGROUND_TASKS),
+      agent: mine.id,
+    });
+
+    // One sub-agent is one node: the task took its session's node and opened none.
+    expect(opened).toBe(0);
+    expect(run.harness.tasks.agentSessionOf(task.id)).toBe(mine.id);
+  });
+
+  it('keeps one extension’s children apart from another’s, though both hold both scopes', async () => {
+    const run = scopeRun();
+    const both = (name: string) => ({
+      name,
+      requires: [BACKGROUND_TASKS.name, CHILD_SESSIONS.name],
+      grants: [...allGrants, 'sub-agent:create'],
+    });
+
+    await run.activate([both('agents'), both('other')]);
+
+    const theirs = run
+      .servicesOf('agents')
+      .get(CHILD_SESSIONS)
+      .startChild({
+        parentId: run.harness.mainSession.id,
+        startedByCall: callIdSchema.parse('theirs'),
+        title: 'theirs',
+      });
+    const { task, opened } = await startAgentTask({
+      run,
+      tasks: run.servicesOf('other').get(BACKGROUND_TASKS),
+      agent: theirs.id,
+    });
+
+    // `other` started no child, so its ledger is empty: it cannot take `agents`' child or its node.
+    expect(opened).toBe(1);
+    expect(run.harness.tasks.agentSessionOf(task.id)).toBeUndefined();
   });
 
   it('refuses each verb without its grant, naming the extension and the grant', async () => {

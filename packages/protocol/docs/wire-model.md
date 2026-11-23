@@ -226,13 +226,14 @@ is addressed **by node**, and the effects arrive on the channels.
 **Answering an approval** stays `POST /conversations/{id}/approvals/{approval}`. It is answered by
 its id inside the conversation the path names, once, with a response among the options the
 request offered; an id that is not pending there is `unknown_approval`. The node id on the tree
-channel says who asked, for display, and is never what authorizes an answer. Today an approval id
-is a counter of its conversation's registry (`a1`, `a2`, …) that starts again when the
-conversation is reopened, so ids are not unique across conversations, and a stale client can
-answer a newer approval that has the same id. **Required of the node registry (#423), which
-makes the ids:** an approval id is unique within a conversation for as long as the server keeps
-it, reopening included, so an answer can only ever mean the approval it was made for. A schema
-cannot say "unique", so the protocol does not pin it.
+channel says who asked, for display, and is never what authorizes an answer. An approval id was a
+counter of its conversation's registry (`a1`, `a2`, …) that started again when the conversation
+was reopened, so ids were not unique across conversations, and a stale client could answer a newer
+approval that had the same id. **The approval registry makes the ids and holds this:** an id is
+`a-` and a random UUID, unique within a conversation for as long as the server keeps it, reopening
+included, so an answer can only ever mean the approval it was made for, and a registry made later
+refuses an id it never issued. A schema cannot say "unique", so the protocol does not pin it; the
+registry's tests do.
 
 Reading a command's or service's complete output, listing nodes and cancelling one are new: no
 route does them today.
@@ -284,10 +285,11 @@ The schemas bound these: a node's `command` is at most 131,072 characters, its `
 an `await_tasks` reason 1,000, its `output` 30,000 (the most the runtime keeps, pinned equal by a
 test there), an error text 2,000, a tool call's id 200, a queued line 20,000 and an entry's `type` 128. A cap is a bound for the wire and not a limit the system puts on a producer: `run_command`
 takes a line of any length, `await_tasks` a reason of any length and a failed task's error is its
-message as it is, so **the node registry shortens each when it makes the node** (#423), or a
-long one would have no valid node. A snapshot holds at most 1,000 nodes and as many approvals;
-the registry enforces the node bound as it spawns, and #423 the approval bound, since it holds
-the pending approvals, so a snapshot never has to be refused instead. A node id is lowercase, so
+message as it is, so **whoever builds a node's body for the wire shortens each**, or a long one
+would have no valid node (the node registry holds only a node's title and status, and shortens
+those). A snapshot holds at most 1,000 nodes and as many approvals: the node registry refuses a
+node past the first bound and the approval registry a request past the second, so a snapshot never
+has to be refused instead. A node id is lowercase, so
 two cannot differ by case on a disk that ignores it.
 
 What they do not bound, so a front end and a server must: an approval's own fields (`id`, `tool`,

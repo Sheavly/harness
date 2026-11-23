@@ -55,7 +55,7 @@ A report that was not delivered when the process ended is not lost. The registry
 | Session                       | `packages/runtime/src/sessions/sessions.service.ts`                                                                                                     | `sessionInfoSchema` rejects a snapshot whose `state`, `lastOutcome` and `endedAt` contradict each other; the registry still writes the three fields itself, so only parsing enforces it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Background task               | `packages/runtime/src/tasks/tasks.service.ts`                                                                                                           | a run that reports exit code 0 is `completed` even if aborted; `silent`, `delivery`, `group`, `#ready` mean "notified"; `start` still takes an optional owner, so only a direct call (a test) can leave a task to `cancelAll`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Background work, as a concept | `WorkDefinition` kinds (`packages/runtime/src/tasks/work.utils.ts`), started by `startWork`                                                             | one registry per run, shared by every session (ids unique; a session's reads and shutdown are scoped to what it owns); the tool picks the kind (`run_command` finite, `start_service` service, `start_agent` agent: finite, named apart) and the kinds own the completion policy, asked through `isFiniteKind`; `WorkInput` requires the owner, and a foreign id reads as unknown in every task tool                                                                                                                                                                                                                                                                                                                         |
-| Node (schema only, #438)      | `STATUS_TABLE.node`, and `NodeInfo` in `packages/protocol/src/node/`; the node registry of #423 is not built                                            | decided to replace the Session and Background task rows: one lifecycle for every kind of node, in "Node lifecycle" below and the generated table; nothing reads it yet, so both rows stand, as no node registry exists                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Node                          | `NodeRegistry` (`packages/runtime/src/nodes/node-registry.service.ts`), `STATUS_TABLE.node`, and `NodeInfo` in `packages/protocol/src/node/`            | one lifecycle for every kind of node, in "Node lifecycle" below and the generated table: a move the table does not list is refused and a terminal state is reached once; the Session and Background task rows above are views of it, so they describe what `SessionRegistry` and `TaskRegistry` report                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Notices                       | `packages/runtime/src/tasks`, the loop's delivery helpers                                                                                               | lifetime (transient or persistent) still decided at each call site; `hook-failed` is persistent, one per hook and handler, then a count                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Approval                      | `packages/runtime/src/approvals` (`APPROVAL_TABLE`, `ApprovalStates`)                                                                                   | the runtime table is the one source of an approval's state (requested, then answered, cancelled or expired, once); a released session cancels its open approvals; command approval (the permission store, the workbook's `CheckApprovals`) and the apps' `unknown_approval` handling are still separate                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Conversation run              | `packages/host/src/conversation/conversation.helper.ts`, table in `conversation.constants.ts`                                                           | one union, tabled below: `idle`, `prompt` or `wake`, moved only along `CONVERSATION_RUN_TRANSITIONS` (a move outside it throws `ConversationRunError`); `conversation.state` is the one answer to what runs, and the session's `running`/`idle` and the stream's `run_state` report it. Wake policy stays flags beside it (`wakesSuppressed` by a stop, `wakesDeferred` while a line waits, the yield's grace timer)                                                                                                                                                                                                                                                                                                         |
@@ -148,15 +148,18 @@ is empty while it is `activating` or `verified` and again in every final state. 
 behaviour change: it used to be filled before the merge, so for the rest of an activation an
 extension could be attributed a tool another extension also contributed.
 
-## Node lifecycle (decided in #438; states in the status table, registry not built)
+## Node lifecycle (the node registry owns it)
 
-Today there are two machines for one thing: a **session** (the loop's view: `running`, `idle`, or
-one of six ended states) and a **background task** (`running`, `completed`, `failed`,
-`cancelled`), joined for a sub-agent only by the tool call id. The wire model
-(`packages/protocol/docs/wire-model.md`) replaces both with one **node** and one lifecycle for the
-root agent, sub-agents, commands, services and the kinds an extension adds. The node's states are
-the `node` rows of the generated table below (`STATUS_TABLE.node`). The session and task rows
-stand, since no node registry exists (#423) and nothing reads the node rows yet.
+A **session** (the loop's view: `running`, `idle`, or one of six ended states) and a **background
+task** (`running`, `completed`, `failed`, `cancelled`) used to be two machines for one thing,
+joined for a sub-agent only by the tool call id. The wire model
+(`packages/protocol/docs/wire-model.md`) has one **node** and one lifecycle for the root agent,
+sub-agents, commands, services and the kinds an extension adds, and `NodeRegistry`
+(`packages/runtime/src/nodes/`) is where it runs. The node's states are the `node` rows of the
+generated table below (`STATUS_TABLE.node`). `SessionRegistry` and `TaskRegistry` keep their APIs
+and are views of it: a session is an agent node, a command or service is a node of its own, and a
+sub-agent's task is the agent node its session already is, so one sub-agent is one node. The
+session and task rows describe what those views report.
 
 - **One machine for every kind** (rule 5 above). An extension's kind (`<extension>.<name>`) uses
   these states and cannot add one, because every front end has to understand state. It can add
@@ -166,7 +169,10 @@ stand, since no node registry exists (#423) and nothing reads the node rows yet.
   a cancel, a failure and `lost` alike.
 - **`lost` is not a live transition.** It is written only when a conversation is reopened, for a
   node whose channel has no `closed` entry because the server stopped, so it is reached from
-  `running` or `idle` and never while the node is live.
+  `running` or `idle` and never while the node is live. The registry writes it only through
+  `lose`, which `SessionRegistry` calls for each sub-agent it finds open as it restores a stored
+  conversation (the session reads as `interrupted`, the nearest state a session has); a live end
+  goes through `endAgent` or `endWork`, which cannot produce it.
 - **`idle` is for agents.** A command or service has no between-prompts state.
 - **The outcome keeps the detail the state does not.** For an agent it is today's `RunOutcome`
   (`completed`, `interrupted`, `max_turns`, `max_tokens`, `context_window_exceeded`, `failed`), for
@@ -177,12 +183,25 @@ stand, since no node registry exists (#423) and nothing reads the node rows yet.
   three limits (`max_turns`, `max_tokens`, `context_window_exceeded`) are `failed` with the limit as
   the outcome, since the work did not finish and a parent reading the state should not mistake it
   for success. A task's `completed`, `failed` and `cancelled` are unchanged. The node schema
-  refuses an agent whose state its last outcome does not give, so cancelling an idle agent must set
-  `lastOutcome` to `interrupted` as it closes the node: the registry's to do (#423).
+  refuses an agent whose state its last outcome does not give, so the registry ends an agent with
+  `endAgent({ id, outcome })` and the state follows from the outcome: an idle agent cancelled with
+  `interrupted` closes as `cancelled`, and `endWork` refuses an agent, since a state alone leaves
+  its outcome unsaid.
 - **The protocol's status tests** (`status.utils.test.ts`) list every node transition and pin that a
   terminal state is final. What a table of states cannot say is held elsewhere: `idle` for agents
-  only by the node schema, and `lost` only at a reopen by the registry (#423), whose tests must
-  refuse `lost` for a live node and `idle` for a command, as "How to treat a state machine" says.
+  only by the node schema and by the registry, which refuses `idle` and `resume` for a command, a
+  service and an extension's kind, and `lost` only through `lose`. The registry's tests
+  (`packages/runtime/src/nodes/__tests__/node-lifecycle.test.ts`) run every kind through the same
+  table and show a terminal state is reached once on every path, an end after a `lose` and a `lose`
+  after an end included, as "How to treat a state machine" says.
+- **What a title and a status are.** A node's title and status text are one line of plain text, not
+  blank and capped, on the wire. The registry makes them so as it makes or changes a node, because
+  a command's description or an agent's status report can be anything: newlines and escape
+  sequences become spaces, a title left empty becomes `untitled`, and a status with nothing in it
+  changes nothing; a tool call's id is cut to the wire's cap. A session is not rewritten by this:
+  `SessionRegistry` keeps the title, status and call id it was given and reads them back as given
+  (a newline, a zero-width joiner in an emoji or in Persian text, a blank status), and only its node
+  holds the copy made fit for the wire.
 
 ## The status table
 

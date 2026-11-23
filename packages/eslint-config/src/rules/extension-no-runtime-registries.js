@@ -1,6 +1,6 @@
 // An extension gets run state through the scoped services the host supplies (`services.get(KEY)`
 // in `activate`), each built for that extension and narrowed to what its manifest grants. Taking
-// the full registries (sessions, tasks, approvals) or building a harness itself skips that, so a
+// the full registries (sessions, tasks, nodes, approvals) or building a harness itself skips that, so a
 // value import of those modules fails in the non-test source of `extensions/*`: an `import`, a
 // re-export, `export * from`, a dynamic `import()`, `require('…')` and `import x = require('…')`.
 // Type-only imports (`import type`, `import { type X }`, `export type`) are fine, and so are the

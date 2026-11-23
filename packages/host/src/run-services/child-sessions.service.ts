@@ -3,9 +3,10 @@ import type { SessionId, SessionRef } from '@sheavly/protocol/session/session.ty
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
-import { ChildRunningError } from '../errors/scopes.errors.js';
+import { ChildRunningError, ScopeLimitError } from '../errors/scopes.errors.js';
 import { runChildLoop } from './child-run.helper.js';
 import { requireOpenSession } from './open-session.helper.js';
+import { MAX_SCOPE_CHILDREN } from './run-services.constants.js';
 import type { RunLoop } from './run-services.types.js';
 import type { ScopeGuard } from './scope-guard.service.js';
 
@@ -25,6 +26,8 @@ export class ChildSessionsScope implements ChildSessionScope {
   readonly #owned = new Map<SessionId, SessionRef>();
   /** The children with a `runChild` in flight: a second run on one is refused. */
   readonly #running = new Set<SessionId>();
+  /** The children this extension has started, shared with its `background-tasks` scope. */
+  readonly #started: Set<SessionId>;
 
   constructor(params: {
     guard: ScopeGuard<'child-sessions'>;
@@ -32,7 +35,9 @@ export class ChildSessionsScope implements ChildSessionScope {
     tasks: TaskRegistry;
     main: SessionRef;
     runLoop: RunLoop;
+    started?: Set<SessionId>;
   }) {
+    this.#started = params.started ?? new Set();
     this.#guard = params.guard;
     this.#registry = params.registry;
     this.#tasks = params.tasks;
@@ -48,9 +53,12 @@ export class ChildSessionsScope implements ChildSessionScope {
 
     if (parentId !== this.#main.id) this.#requireOwned(parentId);
 
+    this.#requireRoom();
+
     const child = this.#registry.startChild({ parentId, startedByCall, title });
 
     this.#owned.set(child.id, Object.freeze({ ...child }));
+    this.#started.add(child.id);
 
     // A different object from the one kept: whatever the caller does to it, the scope's own
     // record (what the loop is handed) stays as the registry made it.
@@ -114,6 +122,23 @@ export class ChildSessionsScope implements ChildSessionScope {
       this.#running.delete(child.id);
     }
   };
+
+  /**
+   * Refuses a new child when the scope holds `MAX_SCOPE_CHILDREN` already. A child released
+   * elsewhere (the loop releases a delivered sub-agent) is forgotten first, so it stops counting.
+   */
+  #requireRoom(): void {
+    for (const id of new Set([...this.#owned.keys(), ...this.#started])) {
+      if (this.#registry.get(id)) continue;
+
+      this.#owned.delete(id);
+      this.#started.delete(id);
+    }
+
+    if (this.#owned.size >= MAX_SCOPE_CHILDREN) {
+      throw new ScopeLimitError({ limit: MAX_SCOPE_CHILDREN, what: 'sub-agents' });
+    }
+  }
 
   /** The session `id` if this scope started it; anything else is refused as unknown. */
   #requireOwned(id: SessionId): SessionRef {

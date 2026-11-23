@@ -55,8 +55,9 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   refusing what the terminal escapes, newline and tab included, and text that draws as nothing;
   a look-alike title is accepted, so a title is never an identity. A command's or service's
   `command`, `description`, reason, `output` (the runtime's preview size, held equal by a test
-  there) and error each have a cap, as `data` and `text` do, and the node registry shortens a
-  longer one as it makes the node. Its state is one of the `node` machine in `STATUS_TABLE`:
+  there) and error each have a cap, as `data` and `text` do, and whoever builds a node's body for
+  the wire shortens a longer one (the node registry holds a node's title and status, and shortens
+  those). Its state is one of the `node` machine in `STATUS_TABLE`:
   `running`, `idle` (an agent only), `completed`, `failed`, `cancelled` and `lost`. The node is not
   its own parent, and its state, end time and an agent's last outcome agree; an outcome becomes a
   state by `NODE_STATE_OF_OUTCOME`: `interrupted` is `cancelled`, and the three limits are
@@ -77,7 +78,8 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   every node (an ended one included) and every waiting approval, with the cursor to continue
   from, and refuses a node twice, a parent that is not in it, parents in a circle, an approval
   twice or from a node that is not in it, and more than `MAX_TREE_NODES` nodes or as many
-  approvals (the node registry enforces the first bound as it spawns, and #423 the second). A
+  approvals (the node registry refuses a node past the first bound, and the approval registry a
+  request past the second). A
   snapshot at its bounds is still a large document, which the route that serves it bounds.
 - **A subscription** (`subscription/`, `SubscribeRequest`): `{ subscriptions: [{ channel, from }],
 approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `tail:<n>` or a

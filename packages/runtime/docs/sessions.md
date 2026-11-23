@@ -10,6 +10,43 @@ later parent prompts do not reassign existing children. Restoring the stream reb
 from every entry, not only its retained tail. An entry may carry no ID, because only a typed prompt has one. The identity
 is diagnostic metadata, never model input.
 
+## The node registry under the sessions
+
+A session is an **agent node** of the run's `NodeRegistry` (`@sheavly/runtime/nodes/`), and
+`SessionRegistry` is the view that keeps the session API and the session ids. The node holds what a
+session has (its parent, title, status, state, last outcome, model and times), and the node machine
+moves it: starting, going idle, running again, reporting, switching model and ending each go
+through the node, so a move the status table does not list is refused there, and an ended session
+ends once. The node's state for an ended session is the one its outcome gives (`max_turns` is
+`failed`, `interrupted` is `cancelled`); the session reports how its last run ended.
+
+Each node has a **channel**: an in-memory log of `opened`, `updated` and `closed` entries numbered 0,
+1, 2 with no gap, each the node as it was then, and the conversation has a **tree channel** with
+every node's entries in one order. A channel keeps its newest `MAX_CHANNEL_ENTRIES`; a position
+before them, or past the end, is `cursor_out_of_range` and is never clamped. `snapshot()` is every
+node and the position to read on from. A registry holds at most `MAX_TREE_NODES` nodes, ended ones
+included, since the snapshot holds them all: a node past it is refused (`too_many_nodes`). Room
+comes from releasing: at each turn boundary the loop releases the tasks it has delivered or that
+were cancelled in silence, and the sub-agent session of each (`TaskRegistry.takeReleasedAgents`,
+which `release` fills, since a released task would otherwise leave its finished session behind). A
+sub-agent started through an extension's `child-sessions` scope that no task of `start_agent` runs,
+and work that never ends, stay until something releases or ends them; one scope holds at most
+`MAX_SCOPE_CHILDREN` (250) sub-agents, a quarter of the bound, so no one extension can fill the
+registry for the others. A reopened conversation does not bring back the sessions released before it
+closed (`StoredLog.released`), so they do not count. A channel's entries are shared between its
+readers and read only by contract. Nothing serves these channels yet: the stream below is still the
+one a UI reads.
+
+Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
+command's node sits under the node of the session that started it. A sub-agent's task is told the
+session it runs (`StartTask.agentSessionId`, which `start_agent` sets) and takes that session's
+node when it is an open agent under the session that owns the task and no other task has taken it;
+nothing is paired by the tool call id, which a provider may repeat and an extension may choose. A node's title and status are
+made one line of plain text, capped and non-blank as it is made, because a tool call's description
+or an agent's report can be anything and the protocol refuses what is not a line. That is the
+node's copy: a session reads back the title, status and tool call id it was given, unchanged, so
+nothing that reads sessions sees a different text than before nodes existed.
+
 ## Sessions
 
 `SessionRegistry` (`@sheavly/runtime/sessions/`) holds the session tree of one main run. A session
@@ -46,17 +83,20 @@ While idle it accepts messages, kept for its next prompt, but no status reports 
   sub-agent, recording the tool call in the parent's history that started it. It
   throws if the parent is unknown, has ended, or is at the depth cap.
 - Every refusal is a `SessionError` (`@sheavly/runtime/errors/`) with a `reason` (`unknown_session`,
-  `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`) and the `sessionId` it was
+  `duplicate_session` for an id a live session already has, `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`) and the `sessionId` it was
   about, so a caller tells the cases apart without reading the message.
 - `release(id)` forgets an ended session and every sub-agent under it, with their queued messages,
   last tokens and message ids, announces each as `session_released`, and returns how many sessions
-  went. It throws `session_running` if the session or a sub-agent under it is still open, and
-  releases nothing then. Entries already in the combined stream stay, and a filter on an ancestor's
+  went. It throws `session_running` if the session or a sub-agent under it is still open, or a
+  command or service started under one of them is, and releases nothing then. Entries already in the combined stream stay, and a filter on an ancestor's
   subtree still matches them; a later `publish` for a released session is refused with
   `session_released`. `isReleased(id)` tells it from an unknown id, and `releasedStarts()` lists them with when each started.
-- `releaseAgent(id)` is what the loop calls once a sub-agent's report is delivered: the same
-  release, but it returns false instead of throwing when a session under it is still open, and
-  leaves a main session alone. A reopened conversation restores every stored session.
+- `releaseAgent(id)` is what the loop calls once a sub-agent's task is released, its report
+  delivered or the task cancelled in silence: the same
+  release, but it returns false instead of throwing when a session, or work started under one, is
+  still open, and leaves a main session alone. A reopened conversation restores every stored
+  session that was not released, in the order they started, and keeps the released ones as
+  released.
 - `lineage(id)` walks a session up to the main session; `children(id)` lists the ones it started.
 - A run takes `session: { registry, ref }`. Without one it starts its own main session. Either
   way the loop ends the session with the run's outcome, and the `done` event carries its ref.
@@ -176,11 +216,23 @@ A stored conversation can be carried on: `SessionRegistry.readStoredLog(store)` 
 `new SessionRegistry({ store, resume })` continues from there. Numbering carries on from the last
 stored entry, the newest entries are the ones in memory, and every session is back as its last
 update left it. The main session is idle for its next prompt (`restoredMain()` is its ref). A
-sub-agent that was still open when the process ended is settled as `interrupted` and announced in
-the stream: it is not run again, since what it was doing is gone. If its report never reached the
+sub-agent that was still open when the process ended is closed as `lost` in its node (`lose`, the
+only way a node becomes `lost`), reads as `interrupted` as a session (the nearest state a session
+has), and is announced in the stream: it is not run again, since what it was doing is gone. If its report never reached the
 parent's history, `Conversations.reopen` (host) appends an `agent-report` notice for it, read from
 the sub-agent's stored history and with no task id, so the next prompt tells the model once. Stored entries with a gap throw
 a `StoreError` instead of resuming a conversation with a hole in it.
+
+Sessions that were released come back as released (`StoredLog.released`), not live, so a long
+conversation does not carry every sub-agent it ever had and they do not count toward the node bound.
+A sub-agent whose parent was released but whose own release was never written (a crash between the
+two writes) comes back released too. The reopen still owes the report of a released sub-agent whose
+notice never reached the history (the loop releases a sub-agent as its notice enters the history, and
+a crash can keep the release and lose the write), except one that ended `interrupted`: a task
+cancelled on request is released with no notice by design. A stored log that
+is otherwise corrupt (a session whose parent was never stored, an id stored twice, an ended session
+with no end time) fails the reopen loudly with a `SessionError` or `NodeError` rather than being
+repaired.
 
 The registry also keeps each session's last reported tokens: `lastTokens(id)` is what the session's
 newest `usage` event carried, not a total. A call that reported none clears it, since the old

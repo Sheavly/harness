@@ -117,6 +117,9 @@ export function createSubAgentTool(options: SubAgentOptions) {
           description: context.description,
           callId: context.callId,
           sessionId: context.session.id,
+          // The task and the child session are one node, paired by this id and never by the call
+          // id, which a provider may repeat.
+          agentSessionId: child.id,
           // The tools are built when the run starts, from the snapshot taken at this call; a
           // nested `start_agent` takes its own snapshot when it is called.
           run: ({ signal, onOutput }) =>

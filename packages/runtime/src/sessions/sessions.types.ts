@@ -25,13 +25,16 @@ export type RunSession = {
 
 /**
  * What a stored conversation leaves for a registry to carry on from (`readStoredLog`): the `seq`
- * the next entry gets, the newest entries as a live log keeps them, every session as its last
- * update left it, and what each one's last model call reported.
+ * the next entry gets, the newest entries as a live log keeps them, every live session as its last
+ * update left it, the sessions that had been released (as they last were: they come back as
+ * released, not live, so a long conversation does not carry every sub-agent it ever had), and what
+ * each one's last model call reported.
  */
 export type StoredLog = {
   next: number;
   tail: StreamEntry[];
   sessions: SessionInfo[];
+  released?: SessionInfo[];
   lastTokens: SessionTokens[];
   messageContexts?: SessionMessage[];
 };

@@ -8,7 +8,9 @@ import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
+import { ScopeLimitError } from '../../errors/scopes.errors.js';
 import { scopeRun } from '../../testing/scope-run.fake.js';
+import { MAX_SCOPE_CHILDREN } from '../run-services.constants.js';
 
 /** The session registry's methods that add to the combined stream: no scope may hand one out. */
 const PUBLISHERS = Object.getOwnPropertyNames(SessionRegistry.prototype).filter((name) =>
@@ -135,6 +137,28 @@ describe('the child-sessions service: starting', () => {
 
     expect(other).not.toBe(childOfA);
     expect(Object.isFrozen(other)).toBe(true);
+  });
+});
+
+describe('the child-sessions service: how many sub-agents a scope holds', () => {
+  it('refuses a child past its share, leaves another scope’s room alone, and takes one again once one is released', async () => {
+    const { run, a, b, childOfA, parentId } = await twoOwners();
+    const start = (scope: typeof a, title: string) =>
+      scope.startChild({ parentId, startedByCall: call(title), title });
+
+    // `a` holds one already (`childOfA`).
+    for (let held = 1; held < MAX_SCOPE_CHILDREN; held++) start(a, `child-${String(held)}`);
+
+    expect(() => start(a, 'one too many')).toThrow(ScopeLimitError);
+    // Another scope has its own share of the nodes the conversation holds.
+    expect(run.harness.sessions.get(start(b, 'b-child').id)?.title).toBe('b-child');
+
+    // A child released elsewhere (the loop does it for a delivered sub-agent) stops counting.
+    run.harness.sessions.end({ id: childOfA.id, state: 'completed' });
+    run.harness.sessions.release(childOfA.id);
+
+    expect(run.harness.sessions.get(start(a, 'room again').id)?.title).toBe('room again');
+    expect(() => start(a, 'and now full again')).toThrow(ScopeLimitError);
   });
 });
 

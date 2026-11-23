@@ -8,7 +8,9 @@ import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { useFixedClock } from '@sheavly/testing/clock/fixed-clock.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { indexOf } from '@sheavly/testing/store/store-contract.fake';
+import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
+import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { historyMessageSchema } from '@sheavly/protocol/history/history.validator';
 import { say, scriptedConversations as setup } from '../../testing/conversations.fake.js';
@@ -187,6 +189,55 @@ describe('reopening a conversation whose sub-agent report was never delivered', 
     expect(notices(await readHistoryEntries(store.history({ id: ID })))).toHaveLength(1);
     expect(reopened).toHaveLength(1);
   });
+
+  it.each([
+    ['completed', [{ outcome: 'completed', report: 'findings of a' }]],
+    ['failed', [{ outcome: 'failed', report: '' }]],
+    ['max_turns', [{ outcome: 'max_turns', report: '' }]],
+    // A task cancelled on request is released with no notice by design: nothing is owed.
+    ['interrupted', []],
+  ] as const)(
+    'for a sub-agent whose release was stored but whose notice never reached history, owes what a %s one owes',
+    async (state, owed) => {
+      const store = await storedWithAgents([
+        { agent: 'a', outcome: state === 'completed' ? 'completed' : 'failed' },
+      ]);
+
+      // The loop releases a sub-agent as its notice enters the history; a crash can keep the release.
+      await store.entries(ID).append({
+        seq: 3,
+        at: 4,
+        sessionId: sessionIdSchema.parse('a'),
+        kind: 'update',
+        update: {
+          type: 'session_released',
+          session: {
+            id: sessionIdSchema.parse('a'),
+            parentId: sessionIdSchema.parse('main'),
+            startedByCall: callIdSchema.parse('call-a'),
+            rootId: sessionIdSchema.parse('main'),
+            depth: 2,
+            title: 'Agent a',
+            state,
+            startedAt: 2,
+            endedAt: 3,
+            lastOutcome: state,
+          },
+        },
+      });
+
+      const { conversations } = setup({ store, replies: [] });
+
+      await conversations.reopen(ID);
+
+      expect(notices(conversations.messages(ID))).toMatchObject(owed);
+      expect(notices(conversations.messages(ID))).toHaveLength(owed.length);
+      // It is released, as it was: not a live session of the reopened conversation.
+      expect(conversations.get(ID).harness.sessions.isReleased(sessionIdSchema.parse('a'))).toBe(
+        true,
+      );
+    },
+  );
 
   it('leaves a sub-agent already reported in history alone', async () => {
     const store = await storedWithAgents([{ agent: 'a', outcome: 'completed' }]);

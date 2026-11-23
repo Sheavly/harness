@@ -1,6 +1,7 @@
 import { DEFAULT_TASK_OUTPUT_CHARS } from './tasks.constants.js';
 import { outputReferenceLines } from '@sheavly/core/output/output.utils';
 import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunningTask } from '@sheavly/protocol/notice/notice.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId, TaskInfo, TaskKind, TaskStatus } from '@sheavly/protocol/task/task.types';
@@ -50,7 +51,10 @@ export function newEntry(params: {
   info: TaskInfo;
   controller: AbortController;
   sessionId: SessionId | undefined;
+  agentSessionId: SessionId | undefined;
   backgroundKind: TaskKind;
+  nodeId: NodeId;
+  sharesNode: boolean;
 }): Entry {
   return { ...params, settled: Promise.resolve(), silent: false };
 }

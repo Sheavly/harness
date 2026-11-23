@@ -3,6 +3,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 /** Why a session operation was refused. */
 type SessionFailure =
   | 'unknown_session'
+  | 'duplicate_session'
   | 'session_released'
   | 'parent_ended'
   | 'too_deep'
@@ -13,7 +14,8 @@ type SessionFailure =
   | 'invalid_notice';
 
 /**
- * A session operation was refused: an unknown or released session, a parent or target that has
+ * A session operation was refused: an unknown or released session, a session started or stored
+ * under an id a live session already has (`duplicate_session`), a parent or target that has
  * ended, a sub-agent nested too deep, a message from a session that didn't start its target, an
  * extension notice that is malformed, or one queued while the session's outbox is full.
  */

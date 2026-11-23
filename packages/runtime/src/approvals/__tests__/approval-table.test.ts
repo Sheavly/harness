@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApprovalListenerError } from '../../errors/approvals.errors.js';
-import { ApprovalRegistry } from '../approvals.service.js';
+import { numberedApprovals } from '../../testing/approvals.fake.js';
+import type { ApprovalRegistry } from '../approvals.service.js';
 import { ApprovalStates } from '../approval-states.service.js';
 import { APPROVAL_TABLE, SETTLED_KEPT } from '../approvals.constants.js';
 import type { ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
@@ -74,7 +75,7 @@ describe('the approval table', () => {
 
 describe('ApprovalRegistry states', () => {
   it('is requested while it waits, then answered', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     const answer = ask({ approvals });
@@ -86,7 +87,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('refuses an answer after a cancel, and says it was cancelled', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const controller = new AbortController();
     const answer = ask({ approvals, signal: controller.signal });
@@ -105,7 +106,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('refuses a second answer and keeps the first', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const answer = ask({ approvals });
 
@@ -118,7 +119,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('expires a request nobody can hear: no listener, or a listener that throws', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     await expect(ask({ approvals })).rejects.toThrow('No one is listening');
     expect(approvals.state(a1)).toBe('expired');
@@ -131,7 +132,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('cancels the waiting requests of a session that ended, and only those', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const ended = ask({ approvals, sessionId: s1 });
     const other = ask({ approvals, sessionId: s2 });
@@ -148,7 +149,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('does not announce a request whose session ended while its screeners were still working', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const screening = Promise.withResolvers<undefined>();
 
@@ -170,7 +171,7 @@ describe('ApprovalRegistry states', () => {
   });
 
   it('answers once for a screener that settles the request', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     approvals.screen(() => Promise.resolve({ decision: 'skip' }));

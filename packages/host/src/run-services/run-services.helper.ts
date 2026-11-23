@@ -13,6 +13,7 @@ import {
   SESSION_INFO,
   TASK_CONTROL,
 } from '@sheavly/extension/run-services/run-services.utils';
+import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { Harness } from '../host/host.types.js';
 import { ApprovalsScope } from './approvals.service.js';
 import { BackgroundTasksScope } from './background-tasks.service.js';
@@ -43,6 +44,17 @@ export function runServices(params: {
 }): HostService[] {
   const { harness, outputs, runSession } = params;
   const { sessions, tasks, mainSession, approvals } = harness;
+  // The sub-agents each extension's child-sessions scope started, which its own background-tasks
+  // scope may pair a task with (`StartTask.agentSessionId`): the harness's sub-agent tool starts a
+  // child and its task through the one extension, and no extension can name another's child.
+  const startedChildren = new Map<string, Set<SessionId>>();
+  const startedBy = (extension: string): Set<SessionId> => {
+    const known = startedChildren.get(extension) ?? new Set<SessionId>();
+
+    startedChildren.set(extension, known);
+
+    return known;
+  };
 
   return [
     scopedService({
@@ -60,12 +72,19 @@ export function runServices(params: {
           tasks,
           main: mainSession,
           runLoop: runSession,
+          started: startedBy(guard.extension),
         }),
     }),
     scopedService({
       key: BACKGROUND_TASKS,
       service: 'background-tasks',
-      build: (guard) => new BackgroundTasksScope({ guard, registry: tasks, sessions }),
+      build: (guard) =>
+        new BackgroundTasksScope({
+          guard,
+          registry: tasks,
+          sessions,
+          children: startedBy(guard.extension),
+        }),
     }),
     scopedService({
       key: TASK_CONTROL,

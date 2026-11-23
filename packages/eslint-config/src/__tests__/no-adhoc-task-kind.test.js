@@ -14,6 +14,9 @@ const project = typedProject({
   options: { module: 'esnext', moduleResolution: 'bundler' },
   files: {
     'src/kind.ts': "export type TaskKind = 'task' | 'agent' | 'service';\n",
+    // The node registry's kinds: the built-in three (`command`, not `task`) and an extension's.
+    'src/node-kind.ts':
+      "export type NodeKind = 'agent' | 'command' | 'service' | `${string}.${string}`;\nexport type BuiltInNodeKind = 'agent' | 'command' | 'service';\n",
     'src/tasks/tasks.service.ts': 'export class TaskRegistry {}\n',
   },
 });
@@ -48,6 +51,15 @@ describe('no-adhoc-task-kind: what it allows', () => {
       await findingsIn({
         file: 'src/presence.ts',
         code: body('return [maybe === undefined, maybe !== undefined, maybe == null];'),
+      }),
+    ).toEqual([]);
+  });
+
+  it('lets a node kind be compared: it is the node registry’s, not the task kind the rule guards', async () => {
+    expect(
+      await findingsIn({
+        file: 'src/node-kinds.ts',
+        code: "import type { BuiltInNodeKind, NodeKind } from './node-kind';\nexport function use(kind: NodeKind, built: BuiltInNodeKind): unknown {\n  return [kind === 'agent', kind !== 'service', built === 'command', built === 'agent'];\n}\n",
       }),
     ).toEqual([]);
   });

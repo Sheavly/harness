@@ -166,7 +166,8 @@ export const treeChannelEntrySchema = z.discriminatedUnion('type', [
  * channel it covers up to, so the client continues after it. It is a view and is not kept in the
  * channel's log. It holds together (`isConsistentSnapshot`): each node once, each parent among
  * them and none in a circle, each approval once and asked by a node in it. It holds at most
- * `MAX_TREE_NODES` nodes and as many approvals, which the node registry enforces as it spawns.
+ * `MAX_TREE_NODES` nodes and as many approvals: the node registry refuses a node past the first
+ * bound, and the approval registry a request past the second.
  */
 export const treeSnapshotSchema = z
   .object({

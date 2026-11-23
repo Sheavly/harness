@@ -16,17 +16,23 @@ const RULE = 'harness/extension-no-runtime-registries';
 const SESSIONS = '@sheavly/runtime/sessions/sessions.service';
 const TASKS = '@sheavly/runtime/tasks/tasks.service';
 const APPROVALS = '@sheavly/runtime/approvals/approvals.service';
+const NODES = '@sheavly/runtime/nodes/node-registry.service';
 const HOST_HELPER = '@sheavly/host/host/host.helper';
 
 const HOST_TYPES = `
 import type { Provider } from '@sheavly/core/provider/provider.types';
 import type { ApprovalRegistry } from '${APPROVALS}';
+import type { NodeRegistry } from '${NODES}';
 import type { SessionRegistry } from '${SESSIONS}';
 import type { TaskRegistry } from '${TASKS}';
-export type Harness = { provider: Provider; sessions: SessionRegistry; tasks: TaskRegistry; approvals: ApprovalRegistry };
+export type Harness = { provider: Provider; sessions: SessionRegistry; tasks: TaskRegistry; nodes: NodeRegistry; approvals: ApprovalRegistry };
 `;
 const root = tempWorkspace({ ...workspaces, [HARNESS_TYPES_FILE]: HOST_TYPES });
 const bare = tempWorkspace(workspaces);
+const withoutNodes = tempWorkspace({
+  ...workspaces,
+  [HARNESS_TYPES_FILE]: HOST_TYPES.replace('nodes: NodeRegistry; ', ''),
+});
 const options = [{ root }];
 const at = (file) => path.join(root, file);
 const web = at('extensions/web/src/web/web.helper.ts');
@@ -36,6 +42,13 @@ const VALUE_USES = [
   [`import { SessionRegistry } from '${SESSIONS}';`, SESSIONS],
   [`import { TaskRegistry } from '${TASKS}';`, TASKS],
   [`import { ApprovalRegistry } from '${APPROVALS}';`, APPROVALS],
+  [`import { NodeRegistry } from '${NODES}';`, NODES],
+  [`export * from '${NODES}.js';`, NODES],
+  [`const load = () => import('${NODES}');`, NODES],
+  [
+    "import { NodeRegistry } from '../../../../packages/runtime/src/nodes/node-registry.service.js';",
+    NODES,
+  ],
   [`import { createHarness } from '${HOST_HELPER}';`, HOST_HELPER],
   [`import { createHarness } from '${HOST_HELPER}.js';`, HOST_HELPER],
   [`import * as sessions from '${SESSIONS}';`, SESSIONS],
@@ -62,6 +75,7 @@ const VALUE_USES = [
 const ALLOWED = [
   `import type { SessionRegistry } from '${SESSIONS}';`,
   `import type { TaskRegistry } from '${TASKS}';`,
+  `import type { NodeRegistry } from '${NODES}';`,
   `import type * as All from '${TASKS}';`,
   `import { type SessionRegistry } from '${SESSIONS}';`,
   `import { type A, type B } from '${TASKS}';`,
@@ -88,6 +102,13 @@ typescriptRuleTester({ sourceType: 'module', ecmaVersion: 'latest' }).run(
   {
     valid: [
       ...ALLOWED.map((code) => ({ code, filename: web, options })),
+      // The denied modules are the ones the host's `Harness` type imports its registries from, so a
+      // type that does not carry the node registry does not deny it: the rule follows the type.
+      {
+        code: `import { NodeRegistry } from '${NODES}';`,
+        filename: path.join(withoutNodes, 'extensions/web/src/web/web.helper.ts'),
+        options: [{ root: withoutNodes }],
+      },
       // Test and fake files are exempt.
       ...[
         'extensions/web/src/web/__tests__/web.helper.test.ts',
@@ -145,6 +166,17 @@ describe('the rule has no exceptions, over this repo', () => {
 
     expect(messages.map((message) => message.ruleId)).toEqual([RULE]);
     expect(messages[0]?.message).toContain(HOST_HELPER);
+  });
+
+  it("denies the node registry too, read from this repo's own host types, not named in the rule", async () => {
+    const messages = await messagesOfText({
+      eslint,
+      code: `import { NodeRegistry } from '${NODES}';\nexport const nodes = new NodeRegistry();`,
+      file: 'extensions/web/src/web/not-listed.helper.ts',
+    });
+
+    expect(messages.map((message) => message.ruleId)).toEqual([RULE]);
+    expect(messages[0]?.message).toContain(NODES);
   });
 
   it("reports a registry import in any extension file, with this repo's own host types", async () => {

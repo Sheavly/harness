@@ -348,17 +348,17 @@ The harness fails loudly, and ESLint enforces it in every workspace and on `.cur
 
 Each area keeps its own classes, since the layers can't all import one another:
 
-| Where                            | Classes                                                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------- |
-| `packages/core/src/errors/`      | `DefinitionError`: a tool or hook defined wrong; `ToolCallError`: a tool refused a call |
-| `packages/loop/src/errors/`      | `HookError`, `StreamEndedError`                                                         |
-| `packages/providers/src/errors/` | `AdapterError`, `ModelApiError`, `ProviderSwitchError`                                  |
-| `packages/runtime/src/errors/`   | `SessionError`, `ApprovalRequestError`, `ApprovalListenerError`; `errors.utils.ts`      |
-| `packages/process/src/errors/`   | `ProcessKillError`, `ProcessInterruptedError`                                           |
-| `packages/workspace/src/errors/` | The project on disk: `WorkspaceError`, `PathCheckError` (below)                         |
-| `extensions/coding/src/errors/`  | `CommandRefusedError`, and trust, project hooks, AGENTS.md and skills (below)           |
-| `apps/terminal/src/errors/`      | The workbook's (below)                                                                  |
-| `.cursor/hooks/hooks.errors.mjs` | `HookStateError`, `ProjectReadError`, `GuardCrashError`                                 |
+| Where                            | Classes                                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `packages/core/src/errors/`      | `DefinitionError`: a tool or hook defined wrong; `ToolCallError`: a tool refused a call         |
+| `packages/loop/src/errors/`      | `HookError`, `StreamEndedError`                                                                 |
+| `packages/providers/src/errors/` | `AdapterError`, `ModelApiError`, `ProviderSwitchError`                                          |
+| `packages/runtime/src/errors/`   | `SessionError`, `NodeError`, `ApprovalRequestError`, `ApprovalListenerError`; `errors.utils.ts` |
+| `packages/process/src/errors/`   | `ProcessKillError`, `ProcessInterruptedError`                                                   |
+| `packages/workspace/src/errors/` | The project on disk: `WorkspaceError`, `PathCheckError` (below)                                 |
+| `extensions/coding/src/errors/`  | `CommandRefusedError`, and trust, project hooks, AGENTS.md and skills (below)                   |
+| `apps/terminal/src/errors/`      | The workbook's (below)                                                                          |
+| `.cursor/hooks/hooks.errors.mjs` | `HookStateError`, `ProjectReadError`, `GuardCrashError`                                         |
 
 | Class                                  | Package              | Thrown when                                                                 |
 | -------------------------------------- | -------------------- | --------------------------------------------------------------------------- |
@@ -369,7 +369,8 @@ Each area keeps its own classes, since the layers can't all import one another:
 | `ProcessInterruptedError`              | `@sheavly/process`   | The run was interrupted before a command started                            |
 | `AgentsMdError` (`root`, `cwd`)        | `@sheavly/coding`    | The working directory is outside the project root                           |
 | `TrustStoreError` (`file`)             | `@sheavly/coding`    | The workspace trust store exists but can't be read, parsed or written       |
-| `ApprovalRequestError` (`reason`)      | `@sheavly/runtime`   | No one listens for approvals, or an answer names no waiting request         |
+| `ApprovalRequestError` (`reason`)      | `@sheavly/runtime`   | No one listens, too many wait, or an answer names no waiting request        |
+| `NodeError` (`reason`, `nodeId`)       | `@sheavly/runtime`   | A node operation was refused (unknown, released, a move the table refuses)  |
 | `ApprovalListenerError` (`update`)     | `@sheavly/runtime`   | An approval subscriber threw                                                |
 | `SessionError` (`reason`, `sessionId`) | `@sheavly/runtime`   | A session operation was refused (unknown, ended, too deep, not an ancestor) |
 | `CommandRefusedError` (`reason`)       | `@sheavly/coding`    | A command needed approval nobody could give, or the user skipped it         |

@@ -4,6 +4,17 @@ The stateful services a run uses, with nothing about files or code: the session 
 inboxes, background tasks, and approvals. `createHarness` (`@sheavly/host`) makes one of each per
 run; tools and the loop share them.
 
+Sessions and tasks are views of one **node registry** (`NodeRegistry`, `nodes/`): a session is an
+agent node, a command or service is a node of its own, and a sub-agent's task is the agent node its
+session already is. The registry owns each node's lifecycle through the protocol's one status
+machine (a move the table does not list is refused, and a terminal state is reached once), the
+ownership scoping and the release rules of finished nodes, and an in-memory log per node channel
+and for the tree. `SessionRegistry` and `TaskRegistry` keep their APIs. `createHarness` builds the
+tasks on the sessions' nodes (`new TaskRegistry(sessions.nodeOwners)`) and returns the registry as
+`Harness.nodes`; an extension never holds it. A node's title and status (not a session's: it reads
+back what it was given) are made one line, capped
+and non-blank as the node is made, since the wire refuses anything else.
+
 Background work starts through `startWork({ tasks, work })` with a `WorkDefinition` built by a
 kind's factory (`finiteWork`, `agentWork`, `serviceWork`, or a tool's own such as `subAgentWork`),
 which fixes the policy so a caller names a kind and never passes it. `agentWork` is finite work named
@@ -77,6 +88,7 @@ import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 | Module       | What it holds                                                                                                                                                                 |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sessions/`  | `SessionRegistry`: the session tree, inboxes, the SSE `stream`, and one ordered stream of every session (`publish`, `subscribeEntries`), kept in memory or written to a store |
+| `nodes/`     | `NodeRegistry`: every node of a conversation, of any kind, and its lifecycle through the protocol's one status machine; a log per channel                                     |
 | `tasks/`     | `TaskRegistry`: background tasks a run waits for, checks on and cancels                                                                                                       |
 | `approvals/` | `ApprovalRegistry`: requests a UI answers with `respond`                                                                                                                      |
 | `locks/`     | `KeyedLocks`: serializes changes per string key, so two changes to one key never overlap; it knows nothing about what a key names                                             |

@@ -1,6 +1,8 @@
 import type { OutputWriter } from '@sheavly/core/output/output.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
+import type { NodeRegistry } from '../nodes/node-registry.service.js';
 import type { TaskId, TaskInfo, TaskKind, TaskUpdate } from '@sheavly/protocol/task/task.types';
 
 /** What to run in the background. */
@@ -10,6 +12,13 @@ export type StartTask = {
   callId?: CallId;
   /** The session whose tool started it: its start and end go in that session's stream. */
   sessionId?: SessionId | undefined;
+  /**
+   * For a sub-agent's work: the session it runs. Its node is the task's node, so one sub-agent is
+   * one node, and the loop finds the agent of a task by it instead of by the tool call id, which a
+   * provider may repeat. Taken only when that session is an open sub-agent of `sessionId` that no
+   * other task has taken; otherwise the task has a node of its own.
+   */
+  agentSessionId?: SessionId | undefined;
   /**
    * Where the complete output goes. The registry appends every chunk, shows the log's reference
    * and completeness on the task (`TaskInfo.outputLog`) while it runs, and closes it when the
@@ -35,13 +44,29 @@ export type StartTask = {
 /** One notice the registry holds until it is delivered: a single task or a group's members. */
 export type Delivery = { ids: TaskId[]; reason?: string; delivered: boolean };
 
+/**
+ * What a task registry needs to put its tasks in the nodes of a conversation: the node registry
+ * the sessions are in (`SessionRegistry.nodes`) and the node a session is. With none, a task
+ * registry has a node registry of its own and its tasks have no parent node.
+ */
+export type NodeOwners = {
+  nodes: NodeRegistry;
+  nodeIdOf: (id: SessionId) => NodeId | undefined;
+};
+
 /** What the registry keeps for one task. */
 export type Entry = {
   info: TaskInfo;
+  /** The node this task is: its own, or the agent node of the session that runs the sub-agent. */
+  nodeId: NodeId;
+  /** Whether the node is the session's, so its release belongs to the session, not the task. */
+  sharesNode: boolean;
   controller: AbortController;
   settled: Promise<void>;
   silent: boolean;
   sessionId?: SessionId | undefined;
+  /** The sub-agent session this task runs, when `start` was told which (`StartTask`). */
+  agentSessionId?: SessionId | undefined;
   backgroundKind: TaskKind;
   /** Membership survives delivery until this entry is released. */
   group?: Delivery;

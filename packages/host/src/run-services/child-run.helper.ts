@@ -45,12 +45,25 @@ export async function runChildLoop(params: {
 
     keepHistory?.(result.messages);
   } catch (caughtError) {
+    endChildAfterFailure({ registry, child });
+
     return await endRunAfterFailure({ tasks, child, onRunEnd, failure: caughtError });
   }
 
   await endRun({ tasks, child, onRunEnd });
 
   return result;
+}
+
+/**
+ * Ends the child as failed when the loop threw before it ended the session itself (it does so in
+ * its own `finally`, so a loop that got that far left it ended). A child left running would hold
+ * its node, and a slot of the conversation's bound, for good.
+ */
+function endChildAfterFailure(params: { registry: SessionRegistry; child: SessionRef }): void {
+  const { registry, child } = params;
+
+  if (registry.get(child.id)?.state === 'running') registry.end({ id: child.id, state: 'failed' });
 }
 
 /**

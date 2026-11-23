@@ -1,57 +1,71 @@
-import { now } from '@sheavly/core/clock/clock.helper';
 import type {
   SessionId,
   SessionInfo,
   SessionUpdate,
 } from '@sheavly/protocol/session/session.types';
 import { isMainSession } from '@sheavly/protocol/session/session.utils';
+import type { ReleasedSessions } from './released-sessions.service.js';
+import type { SessionNodes } from './session-nodes.service.js';
 import { isOpen } from './sessions.utils.js';
 
 /**
- * Puts back the sessions a stored conversation had, into `sessions`, as their last update left
- * them. One that was open when the process ended did not finish: a sub-agent becomes
- * `interrupted` for good, and the main session goes idle, so the conversation can take its next
- * prompt. Each change is passed to `emit`, so it is in the stream and in the store.
+ * Puts back the sessions a stored conversation had, as their last update left them. One that was
+ * open when the process ended did not finish: a sub-agent is closed as `lost` for good (it reads as
+ * `interrupted`, the nearest state a session has), and the main session goes idle, so the
+ * conversation can take its next prompt. Each change is passed to `emit`, so it is in the stream
+ * and in the store.
  */
 export function restoreSessions(params: {
   stored: readonly SessionInfo[];
-  sessions: Map<SessionId, SessionInfo>;
+  /** The sessions released before the process ended: recorded as released, not made live. */
+  released: { into: ReleasedSessions; sessions: readonly SessionInfo[] };
+  sessions: SessionNodes;
   emit: (update: SessionUpdate) => void;
 }): void {
   const { stored, sessions, emit } = params;
+  const changed: { id: SessionId; update: 'session_idle' | 'session_ended' }[] = [];
 
-  for (const session of stored) sessions.set(session.id, { ...session });
+  for (const session of params.released.sessions) params.released.into.record(session);
 
-  for (const session of sessions.values()) {
-    if (isMainSession(session)) idleRestoredMain({ session, emit });
-    else if (isOpen(session.state)) interruptRestoredChild({ session, emit });
+  // The stored order is the order sessions started, so a parent comes back before its children.
+  // A child whose parent is missing is a corrupt log and fails loudly (`unknown_session`).
+  for (const session of stored) {
+    if (isMainSession(session)) {
+      const idle = idleRestoredMain(session);
+
+      sessions.restore(idle.session);
+      if (idle.changed) changed.push({ id: session.id, update: 'session_idle' });
+    } else if (isOpen(session.state)) {
+      sessions.restore({ ...session, state: 'running' });
+      sessions.lose(session.id);
+      changed.push({ id: session.id, update: 'session_ended' });
+    } else {
+      sessions.restore(session);
+    }
+  }
+
+  for (const { id, update } of changed) {
+    const session = sessions.get(id);
+
+    if (session) emit({ type: update, session });
   }
 }
 
-/** A restored main session takes the next prompt: idle, whether it was closed or cut off. */
-function idleRestoredMain(params: {
-  session: SessionInfo;
-  emit: (update: SessionUpdate) => void;
-}): void {
-  const { session, emit } = params;
+/**
+ * A restored main session takes the next prompt: idle, whether it was closed or cut off. A run
+ * that was still going did not finish; one that ended keeps how it did.
+ */
+function idleRestoredMain(session: SessionInfo): { session: SessionInfo; changed: boolean } {
+  if (session.state === 'idle') return { session, changed: false };
 
-  if (session.state === 'idle') return;
+  const { endedAt: _ended, ...open } = session;
 
-  // A run that was still going did not finish; one that ended keeps how it did.
-  if (session.state === 'running') session.lastOutcome = 'interrupted';
-  session.state = 'idle';
-  delete session.endedAt;
-  emit({ type: 'session_idle', session });
-}
-
-function interruptRestoredChild(params: {
-  session: SessionInfo;
-  emit: (update: SessionUpdate) => void;
-}): void {
-  const { session, emit } = params;
-
-  session.state = 'interrupted';
-  session.lastOutcome = 'interrupted';
-  session.endedAt = now();
-  emit({ type: 'session_ended', session });
+  return {
+    session: {
+      ...open,
+      state: 'idle',
+      ...(session.state === 'running' && { lastOutcome: 'interrupted' as const }),
+    },
+    changed: true,
+  };
 }
