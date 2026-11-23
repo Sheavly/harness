@@ -459,6 +459,28 @@ is split by responsibility only when it does several jobs, not to fit a number. 
   `packages/protocol/eslint.config.js` (`src/discovery/**`); `workspace-coverage.test.js` fails an
   override that turns the rule off anywhere else, and `no-discovery-path.test.js` pins where it is
   on and off. It cannot see a name split across pieces or held in a variable.
+- **Through the finder** (`harness/server-through-finder`, source files; tests and fakes plant
+  and read the file on purpose and are exempt): every workspace but the server
+  (`SERVER_WORKSPACES` in `src/server-modules.js`, today the backend, which writes the file and
+  holds the lock) and storage itself reaches the running server only through `findRunningServer`
+  (`server-finder/`) with `verifyServer`, which reads the file through the safe reader, asks the
+  lock and hands on the token only after the server proved it holds it. So its source may not
+  import `@sheavly/storage/discovery-file/*`, `server-lock/*` or `server-runtime/*`
+  (`SERVER_INTERNAL_MODULES`, the list `connectBackendConfinement` reads too): statically, as a
+  re-export, or dynamically with a specifier that starts with one of those paths (a string, a
+  template whose first piece does, or a `+` chain that starts with one); a type-only import is
+  allowed. And it calls `findRunningServer`, imported statically (by name, renamed, by a string
+  name or through `* as`), only directly, plain or optional, with exactly one
+  `verify: verifyServer` (imported from `@sheavly/client/client/verify.helper`) written in the
+  call's object. Another function, a wrapper, a local `verifyServer`, a spread, a computed key, a
+  second `verify` or options built elsewhere are refused, and so is the finder anywhere but
+  called: stored, passed on, re-exported (`export { findRunningServer } from`, `export *`),
+  called through `.call`, `.apply` or `.bind`, reached through a computed key of its namespace,
+  or imported with `import()`. A type of it (`typeof findRunningServer`) is allowed.
+  `server-through-finder.test.js` covers each form, a front end with storage only, the server,
+  storage, and tests; `workspace-coverage.test.js` fails a `files:` override that turns it off. It cannot see `createRequire(…)(…)` or a specifier whose start is
+  computed ([#456](https://github.com/Sheavly/harness/issues/456)), and the terminal's
+  `connectBackend` folder is held to more, the finder included, by the block below.
 - **The terminal's own backend** (`connectBackendConfinement`, a config block the terminal app
   spreads into its config, not a `harness/*` rule: it is `no-restricted-imports` and a
   `no-restricted-syntax` selector for `import('…')`, each with a message, as `replayConfinement`

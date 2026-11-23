@@ -7,6 +7,7 @@ import { PROTOCOL_VERSION } from '@sheavly/protocol/version/protocol-version.con
 import { findRunningServer } from '@sheavly/storage/server-finder/server-finder.helper';
 import { newInstanceId } from '../../instance/instance-id.helper.js';
 import { useHeldServer } from '../../testing/held-server.fake.js';
+import { expectOnlyHandshake } from '../../testing/handshake-only.fake.js';
 import { useRecordingServers } from '../../testing/recording-server.fake.js';
 import type { RecordingServer } from '../../testing/recording-server.types.js';
 import { useServeProcesses } from '../../testing/serve-process.fake.js';
@@ -29,15 +30,7 @@ function find(verify: typeof verifyServer) {
 
 /** Nothing the finder sent to a listener may carry the token, in any header or body. */
 function expectNothingSecretSent(listener: RecordingServer) {
-  const { token } = places.folders();
-
-  expect(listener.requests().length).toBeGreaterThan(0);
-  expect(listener.everything()).not.toContain(token);
-
-  for (const request of listener.requests()) {
-    expect(request.headers).not.toHaveProperty('authorization');
-    expect(`${request.method} ${request.path}`).toBe('QUERY /handshake');
-  }
+  expectOnlyHandshake({ listener, token: places.folders().token });
 }
 
 describe.skipIf(process.platform === 'win32')('an impostor on the recorded address', () => {

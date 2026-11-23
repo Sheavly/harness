@@ -55,8 +55,12 @@ adds nothing to it; the stores keep it as written.
 The `sheavly` command (`apps/sheavly`, the launcher) starts the server in its own process, so the
 backend exports `@sheavly/backend/run-server/run-server.helper` (`runServer({ env, args, exit })`,
 the process's own by default; [serving](docs/serve.md#runserver)) and, for that command's tests,
-its server-process fake and its types (`testing/serve-process.fake`, `testing/serve-process.types`,
-from source only). Nothing else is public:
+from source only, its server-process fake and its types (`testing/serve-process.fake`,
+`testing/serve-process.types`) and the fakes the finder's tests meet: a held lock with a
+discovery file for any address (`testing/held-server.fake`), listeners that record what they
+are sent (`testing/recording-server.fake`, `testing/recording-server.types`), and the check
+that one was asked only the handshake and never sent the token
+(`testing/handshake-only.fake`). Nothing else is public:
 the layout check refuses an export `LAUNCHER_ENTRIES` doesn't list
 (`packages/eslint-config/docs/layout.md`).
 

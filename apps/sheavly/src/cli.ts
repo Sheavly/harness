@@ -14,6 +14,7 @@ import { runServer } from '@sheavly/backend/run-server/run-server.helper';
 import { reportChatFailure } from '@sheavly/terminal/chat/chat-failure.helper';
 import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
 import { createChatCommand } from './chat/chat.helper.js';
+import { findChatServer } from './chat/find-server.helper.js';
 import { dispatch } from './dispatch/dispatch.helper.js';
 import { createServeCommand } from './serve/serve.helper.js';
 import { readCliVersion } from './version/version.helper.js';
@@ -26,7 +27,11 @@ const code = await dispatch({
   argv: process.argv.slice(2),
   env: process.env,
   commands: [
-    createChatCommand({ runChat: runTerminalChat, reportFailure: reportChatFailure }),
+    createChatCommand({
+      runChat: runTerminalChat,
+      findServer: findChatServer,
+      reportFailure: reportChatFailure,
+    }),
     createServeCommand({ runServer }),
   ],
   streams: {

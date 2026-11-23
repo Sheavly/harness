@@ -17,6 +17,11 @@ import type { ServeFolders } from './serve-process.types.js';
  * released when the test ends.
  */
 export function useHeldServer(folders: () => ServeFolders): {
+  /**
+   * The runtime folder, made private, with its lock left free: a file published there is left
+   * over, and nothing may contact the address it names.
+   */
+  folder: () => Promise<string>;
   /** Takes the lock in the runtime folder (made private here) and returns the folder. */
   hold: () => Promise<string>;
   /** Publishes a valid file for `url` with the test's token and `instanceId` (a new one when unset). */
@@ -31,21 +36,36 @@ export function useHeldServer(folders: () => ServeFolders): {
     }
   });
 
+  const folder = async () => {
+    const { home, xdg } = folders();
+    const runtime = await serverRuntimeDirectory({
+      env: { XDG_RUNTIME_DIR: xdg },
+      home,
+      platform: 'linux',
+      uid,
+    });
+
+    if (runtime.status !== 'ready') throw new Error(`the runtime folder is ${runtime.status}`);
+
+    return runtime.directory;
+  };
+
   return {
+    folder,
     hold: async () => {
-      const { home, xdg } = folders();
-      const runtime = await serverRuntimeDirectory({
-        env: { XDG_RUNTIME_DIR: xdg },
-        home,
-        platform: 'linux',
-        uid,
-      });
+      const directory = await folder();
+      const lock = await acquireServerLock({ home: folders().home, runtimeDir: directory });
 
-      if (runtime.status !== 'ready') throw new Error(`the runtime folder is ${runtime.status}`);
+      taken.push(lock);
 
-      taken.push(await acquireServerLock({ home, runtimeDir: runtime.directory }));
+      // Unheld, the test would meet a free lock instead and fail for another reason.
+      if (lock.status !== 'acquired') {
+        throw new Error(
+          `the lock was not taken (${lock.status === 'unusable' ? lock.reason : lock.status})`,
+        );
+      }
 
-      return runtime.directory;
+      return directory;
     },
     publish: async ({ directory, url, instanceId = newInstanceId() }) => {
       const published = await publishDiscoveryFile({

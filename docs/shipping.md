@@ -41,10 +41,9 @@ wait with it.
   contract marks the two with `public: true`.
 - **The client can verify a server** before it trusts it: `verifyServer` in `@sheavly/client` asks
   the handshake with a fresh nonce, through a client that has no token and so cannot send one,
-  and checks the proof. The token is in no request it makes. No front end calls it yet: the
-  finder below takes it as an injected function, and the first front ends to pass it are the
-  `sheavly` commands. The server makes its instance id at each start and writes it in the
-  discovery file.
+  and checks the proof. The token is in no request it makes. The finder below takes it as an
+  injected function, and `sheavly chat` passes it. The server makes its instance id at each start
+  and writes it in the discovery file.
 - **The discovery file and the one-server lock are built, and the backend uses them.** The library
   is in `@sheavly/storage` (and the file's schema in `@sheavly/protocol`): a writer, a safe reader
   of one folder, a lock held as a listening socket, and `ServerPresence`, which orders them and
@@ -52,15 +51,18 @@ wait with it.
   always on (not `SERVER_EXIT_WITH_PARENT`, and not `SERVER_DISCOVERY=false`) takes the lock once
   its settings are checked and before it listens, prints or writes anything, refuses to start
   when another server holds it, and writes the file once it listens.
-- **A finder for the running server is built, and no front end calls it yet.** `findRunningServer`
+- **A finder for the running server is built, and `sheavly chat` uses it.** `findRunningServer`
   (`@sheavly/storage`, `server-finder/`) looks in the runtime folder and then the home folder,
   reads the file through the safe reader, asks the lock (`probeServerLock`) whether a server
   holds it, and only then calls the handshake, which is passed in as a function because a library
   package may not depend on `@sheavly/client`; an app passes `verifyServer`. It returns the token
   only for a server that proved it holds it, and it reads and probes only. It is covered by tests
-  with real servers and real listeners; its first callers are `sheavly chat` and `sheavly doctor`
+  with real servers and real listeners. `sheavly chat` calls it; `sheavly doctor`
   ([#392](https://github.com/Sheavly/harness/issues/392)) and `sheavly connection`
-  ([#414](https://github.com/Sheavly/harness/issues/414)). `connectBackend` and
+  ([#414](https://github.com/Sheavly/harness/issues/414)) will. Every workspace but the server
+  reaches the server only through it, with `verifyServer`: `harness/server-through-finder` fails
+  source that imports the discovery file, the lock or the runtime folder directly, or calls the
+  finder without `verify: verifyServer`. `connectBackend` and
   `npm run dev:terminal` **never read the discovery file**, and a lint restriction keeps
   `connectBackend` from importing the finder; `BACKEND_URL` and `BACKEND_TOKEN` skip the file as
   before.
@@ -72,15 +74,14 @@ wait with it.
   backend that does not answer in 10 s fails the start.
 - **The `sheavly` command exists and runs from the checkout** (`apps/sheavly`, the one workspace
   named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve` and `chat`, or
-  `node apps/sheavly/dist/cli.js` after `npm run build` (where `chat` needs `BACKEND_URL` and
-  `BACKEND_TOKEN`, since the backend it starts runs through npm from the checkout, until
-  [#446](https://github.com/Sheavly/harness/issues/446) and [#450](https://github.com/Sheavly/harness/issues/450)).
-  It imports the backend's `runServer` and the terminal's `runTerminalChat` in its own process,
-  through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
+  `node apps/sheavly/dist/cli.js` after `npm run build`. It imports the backend's `runServer`
+  and the terminal's `runTerminalChat` in its own process, through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
   apps and entry files `LAUNCHER_ENTRIES` lists; see the layout doc in `@sheavly/eslint-config`). `serve`
   starts the server exactly as `npm run serve` does (the same settings, lock, discovery file,
-  output and stop), and `chat` runs the terminal as `npm run dev:terminal` does, connecting the
-  way it does today: it does not use the finder yet ([#446](https://github.com/Sheavly/harness/issues/446)).
+  output and stop), and `chat` runs the terminal on the user's running server, found through the
+  discovery file and proven by its handshake before the token is used; with none it says so, says
+  to run `sheavly serve` in another terminal and starts nothing, and `BACKEND_URL` and
+  `BACKEND_TOKEN` still name a server instead.
   The package is not packed or installed yet ([#450](https://github.com/Sheavly/harness/issues/450)),
   and `update`, `doctor` and `setup` are not built.
 - **Every package is private at version `0.0.0`** and is consumed from source inside this repository.
@@ -164,11 +165,11 @@ every front end uses, not in each terminal.
 
 ### Starting it
 
-`sheavly chat` will look for the server through the discovery file, with the finder that is built
-(see "The discovery file"); the command exists but does not use it yet, and connects as
-`npm run dev:terminal` does. When none is running and the
-service is installed, it starts the service. When the service is not installed it says so and tells
-the user to run `sheavly service install`; it does not start a private server of its own, so there
+`sheavly chat` looks for the server through the discovery file, with the finder (see "The
+discovery file"). Until the service exists, when none is running it says why for each folder it
+looked in and tells the user to run `sheavly serve` in another terminal, and starts nothing. Once
+the service exists, when none is running and the service is installed, it starts the service.
+When the service is not installed it says so and tells the user to run `sheavly service install`; it does not start a private server of its own, so there
 is one server and nothing is lost when a terminal closes. That the first command a new user runs
 ends in an instruction is deliberate. A discovery file whose process is gone, whose lock is free
 or whose handshake fails counts as no server, and the client does not send the token to it (a
@@ -269,7 +270,7 @@ closing every conversation when it stops, stay as they are today.
 
 The file and the lock are built as library code and the backend uses them, and the protocol
 version, the two token-free routes, the client's verification and the finder that reads the file,
-described below, are built. No front end calls the finder yet: the `sheavly` command will
+described below, are built. `sheavly chat` calls the finder, the other `sheavly` commands will
 ([#392](https://github.com/Sheavly/harness/issues/392),
 [#414](https://github.com/Sheavly/harness/issues/414)), and the terminal's `connectBackend` and
 `npm run dev:terminal` never do.
@@ -303,7 +304,7 @@ takes no lock and writes no file, so it can never replace the real server's.
   owned by the current user, has any group or world permission or is over 4 KB, and a folder with
   any group or world access. If the home folder is the fallback and is not private, there is no
   lock and no file, only a warning, so the one-server guarantee does not apply there.
-- **How a client finds it (built, with no front end calling it yet).** `findRunningServer` lists
+- **How a client finds it (built; `sheavly chat` calls it).** `findRunningServer` lists
   the folders a server of the home may have published in, without creating any
   (`serverRuntimeCandidates`): the runtime folder when the variable is set to an absolute path,
   then the home folder, and uses the first that holds a valid file of a server that is really
@@ -340,6 +341,15 @@ takes no lock and writes no file, so it can never replace the real server's.
   - A graceful stop leaves empty `sheavly/<hash>` folders in the runtime directory, with no files.
   - The worst case of a call with two candidates is about 2 × (1 s probe + 5 s handshake) = 12 s,
     shortened by `timeoutMs`.
+  - The server is proven once, when it is found. A caller that keeps the token, as `sheavly chat`
+    does, sends it to the same address afterwards, so if that server dies whatever takes its
+    port next gets the later requests, a stream's reconnects included; the same holds for
+    `BACKEND_URL` ([#461](https://github.com/Sheavly/harness/issues/461)).
+  - On Windows nothing checks the file's owner or access (the reader skips them there) and any
+    local user can create the lock's pipe. In a Sheavly home others can write to, someone else's
+    file and pipe would pass, and their server's handshake would verify for their own token: a
+    front end would send them its prompts and `--trust`, though not the user's token. The default
+    home, under the user's profile, is private ([#462](https://github.com/Sheavly/harness/issues/462)).
 - **One server (built).** A backend that is always on takes its home's lock once its settings are
   checked and before it listens, prints or writes anything, so a second server for the same home
   refuses to start: it prints the first one's process id, version and address (never its token)
@@ -408,7 +418,8 @@ written one yet)`, still with status 1 and nothing on stdout. A server writes th
   of a public answer, never follows a redirect on a public route and gives up on a silent server
   after 5 s, so whatever sits on a stale port cannot make it buffer without limit, judge another
   host or wait forever. The client gets the instance id from the discovery file, which the
-  server writes, and the finder passes it to the check; no front end calls the finder yet.
+  server writes, and the finder passes it to the check; `sheavly chat` is the first front end that
+  calls the finder.
 - **Two routes need no token (built).** A health route, which returns only whether the server is up,
   its server version and its protocol version, and the handshake route above. Both are marked
   `public` in the contract, and the backend's token check skips the routes the contract marks that

@@ -13,6 +13,13 @@ export type BackendOptions = {
 };
 
 /**
+ * A running backend the caller found and verified itself (the `sheavly` command, through the
+ * discovery file): the terminal connects to it as it does to `BACKEND_URL`, so `--trust` is sent
+ * to it, and never starts or stops it.
+ */
+export type FoundBackend = { url: string; token: string };
+
+/**
  * A backend the terminal talks to; `stop` ends it if the terminal started it: SIGTERM to its
  * process group, then SIGKILL after `timeoutMs`. Calling it again returns the same stop. `fetch`
  * reaches it (the global one when unset): another transport, or a server app in the same process.

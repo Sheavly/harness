@@ -9,20 +9,20 @@ the layout lets depend on apps (`sheavly.launcher`), and nothing depends on it.
 npm run sheavly -- --version        # from the checkout, from source
 npm run sheavly -- --help           # lists the commands that exist
 npm run sheavly -- serve            # the server in the foreground, as `npm run serve`
-npm run sheavly -- chat             # the terminal chat, as `npm run dev:terminal`
-node apps/sheavly/dist/cli.js serve # after `npm run build`
+npm run sheavly -- chat             # the terminal chat, on the server `serve` runs
+node apps/sheavly/dist/cli.js chat  # after `npm run build`
 ```
 
-`node apps/sheavly/dist/cli.js chat` needs `BACKEND_URL` and `BACKEND_TOKEN`: a chat starts its
-own backend through npm, from the checkout, so without them run it as `npm run sheavly -- chat`
-([design](docs/design.md#the-commands)).
+`chat` finds your running server through the discovery file, proves it with its handshake before
+it sends the token, and never starts one: run `sheavly serve` in another terminal first, or name a
+server with `BACKEND_URL` and `BACKEND_TOKEN` ([design](docs/design.md#the-commands)).
 
-| Command           | What it does                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `--version`       | Prints the version of this package                                                 |
-| `--help`          | Lists the commands; `sheavly <command> --help` says what one takes                 |
-| `serve [options]` | Runs the backend in the foreground with the environment's settings and `--trust`   |
-| `chat [options]`  | Opens the terminal chat; it starts its own backend, or uses `BACKEND_URL`/`_TOKEN` |
+| Command           | What it does                                                                     |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `--version`       | Prints the version of this package                                               |
+| `--help`          | Lists the commands; `sheavly <command> --help` says what one takes               |
+| `serve [options]` | Runs the backend in the foreground with the environment's settings and `--trust` |
+| `chat [options]`  | Opens the terminal chat on your running server, or the one `BACKEND_URL` names   |
 
 An unknown command or a missing one exits 2 with a message that points to `--help`; `--help` or
 `-h` anywhere after a command shows its help and runs nothing (quote a first message that holds

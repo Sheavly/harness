@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { createClient } from '@sheavly/client/client/client.helper';
+import type { FoundBackend } from '../client/client.types.js';
 import { profileArgs } from '../client/profile-args.utils.js';
 import { closeSession, openSession } from '../client/session.helper.js';
 import { SetupError } from '../errors/setup.errors.js';
@@ -13,16 +14,24 @@ import { runLineChat } from './line-chat.helper.js';
  * from `env` and `args` (the process's own by default, so a command in the same process passes
  * its own) and works in the current folder: the caller changes it first, as `chat.ts` does for
  * npm. Throws what could not start: a `SetupError`, a `BackendError`; `reportChatFailure` says
- * how those end the process.
+ * how those end the process. With `server` (a backend the caller found and verified) it connects
+ * to that one, as it does to `BACKEND_URL`, and never starts or stops a backend.
  */
 export async function runTerminalChat(
-  params: { env?: NodeJS.ProcessEnv; args?: readonly string[] } = {},
+  params: { env?: NodeJS.ProcessEnv; args?: readonly string[]; server?: FoundBackend } = {},
 ): Promise<void> {
-  const { env = process.env, args = process.argv.slice(2) } = params;
+  const { env = process.env, args = process.argv.slice(2), server } = params;
   const write = (text: string) => void process.stdout.write(text);
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const workspace = path.resolve(env.WORKSPACE_ROOT ?? process.cwd());
-  const session = await openSessionInterruptibly({ write, args, env, workspace, interactive });
+  const session = await openSessionInterruptibly({
+    write,
+    args,
+    env,
+    workspace,
+    interactive,
+    ...(server && { server }),
+  });
 
   if (!session) {
     process.exitCode = 130;
@@ -90,8 +99,9 @@ async function openSessionInterruptibly(params: {
   env: NodeJS.ProcessEnv;
   workspace: string;
   interactive: boolean;
+  server?: FoundBackend;
 }): Promise<Awaited<ReturnType<typeof openSession>> | undefined> {
-  const { write, args, env, workspace, interactive } = params;
+  const { write, args, env, workspace, interactive, server } = params;
 
   // Setup binds a profile and sets the default; a run on a named profile changes neither.
   if (args.includes('--setup') && profileArgs(args).profile) {
@@ -115,6 +125,7 @@ async function openSessionInterruptibly(params: {
       write,
       workspace,
       signal: startup.signal,
+      ...(server && { server }),
       prepare: (backend) =>
         prepareSetup({ backend, workspace, interactive, force: args.includes('--setup') }),
     });

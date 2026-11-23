@@ -21,22 +21,11 @@ import {
   workspaceOfFile,
 } from '../layout.utils.js';
 import { isTestOrFake } from '../test-paths.utils.js';
-import { literalText } from './literal.utils.js';
+import { isTypeOnly, specifierVisitors } from './import-node.utils.js';
 import { findRoot } from './workspace-types.js';
 
 function toPosix(file) {
   return file.split(path.sep).join('/');
-}
-
-function isTypeOnly(node) {
-  if (node.importKind === 'type' || node.exportKind === 'type') return true;
-
-  return (
-    node.specifiers?.length > 0 &&
-    node.specifiers.every(
-      (specifier) => specifier.importKind === 'type' || specifier.exportKind === 'type',
-    )
-  );
 }
 
 export const importsRule = {
@@ -196,11 +185,6 @@ export const importsRule = {
       else checkPackage(node, specifier);
     };
 
-    return {
-      ImportDeclaration: (node) => check(node, node.source.value),
-      ExportNamedDeclaration: (node) => node.source && check(node, node.source.value),
-      ExportAllDeclaration: (node) => check(node, node.source.value),
-      ImportExpression: (node) => check(node, literalText(node.source)),
-    };
+    return specifierVisitors(check);
   },
 };

@@ -2,16 +2,13 @@ import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createClient } from '@sheavly/client/client/client.helper';
-import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
-import { profileIdSchema } from '@sheavly/protocol/profile/profile.validator';
+import { setUpTestProfile } from '@sheavly/client/testing/test-profile.fake';
 import { useTempFolders } from '../../testing/temp-folders.fake.js';
 import { connectBackend } from '../backend.helper.js';
 import type { Backend } from '../client.types.js';
 import { closeSession, openSession } from '../session.helper.js';
 
 const folders = useTempFolders();
-const PROFILE = profileIdSchema.parse('00000000-0000-4000-8000-000000000001');
-const MODEL = modelIdSchema.parse('00000000-0000-4000-8000-000000000002');
 let backend: Backend;
 let project: string;
 
@@ -35,20 +32,7 @@ beforeEach(async () => {
     onOutput: () => undefined,
   });
 
-  const client = createClient(backend);
-
-  await client.send('putProfile', { profile: PROFILE, body: { name: 'Test' } });
-  await client.send('putModel', {
-    profile: PROFILE,
-    model: MODEL,
-    body: { name: 'Fake', adapter: 'openai', definition: { model: 'test' } },
-  });
-  await client.send('putCredential', {
-    profile: PROFILE,
-    model: MODEL,
-    body: { secrets: { apiKey: 'fake-test-key' } },
-  });
-  await client.send('setDefaultProfile', { body: { profile: PROFILE } });
+  await setUpTestProfile({ backend, definition: { model: 'test' } });
 }, 60_000);
 
 afterEach(async () => {
@@ -84,6 +68,28 @@ async function trustedRoots(): Promise<string[]> {
 
   return workspaces.map(({ root }) => root);
 }
+
+describe.skipIf(process.platform === 'win32')('a backend the caller found', () => {
+  it('is connected to with no BACKEND_URL, gets --trust for the folder, and keeps running after', async () => {
+    const written: string[] = [];
+    // No BACKEND_URL and no PATH: starting a backend instead could only fail.
+    const session = await openSession({
+      env: { WORKSPACE_ROOT: project },
+      args: ['--trust'],
+      write: (text) => written.push(text),
+      server: { url: backend.url, token: backend.token },
+    });
+
+    expect(session.backend.url).toBe(backend.url);
+    expect(session.details.workspace).toBe(await realpath(project));
+
+    await closeSession(session);
+
+    expect(await trustedRoots()).toEqual([await realpath(project)]);
+    expect((await fetch(new URL('/health', backend.url))).ok).toBe(true);
+    expect(written.join('')).not.toContain(backend.token);
+  }, 60_000);
+});
 
 describe.skipIf(process.platform === 'win32')(
   '--trust against a backend that is already running',
