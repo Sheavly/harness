@@ -125,6 +125,41 @@ describe("a conversation's run", () => {
     });
   });
 
+  it('starts no run for finished work while wakes are deferred, and wakes once they are not', async () => {
+    const { conversation, startWork, finishWork, release } = heldConversation(2);
+
+    startWork();
+    await collect(conversation.send('build'));
+    conversation.deferWakes(true);
+    finishWork();
+    // Give the settlement time to reach the conversation: it must not wake.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(conversation.state).toBe('idle');
+    conversation.deferWakes(false);
+    await until(() => conversation.state === 'wake');
+    release();
+    await until(() => conversation.state === 'idle');
+  });
+
+  it('resolves whenIdle at once when idle, and once the run going has ended', async () => {
+    const { conversation, release } = heldConversation(1);
+
+    await conversation.whenIdle();
+
+    const running = collect(conversation.send('hi'));
+
+    await until(() => conversation.state === 'prompt');
+
+    const idle = conversation.whenIdle();
+
+    release();
+    await idle;
+
+    expect(conversation.state).toBe('idle');
+    await running;
+  });
+
   it('is idle again after a stopped prompt, and after a close', async () => {
     const { conversation } = heldConversation(1);
     const running = collect(conversation.send('hi'));

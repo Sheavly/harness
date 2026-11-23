@@ -44,12 +44,22 @@ for await (const event of conversation.send(prompt, { signal })) render(event);
 await conversation.close();
 ```
 
-A prompt cannot be given more text while it runs. A UI that queues what the user types calls
-`conversation.yieldPrompt()` so the running prompt ends as `completed` at its completion point
-instead of waiting on ungrouped work (finished results reach the next prompt), then
-sends the queued text with `send`. A prompt held on `await_tasks` ignores the yield: the queued
-text stays queued while its grouped tasks run, and the prompt then ends at its next completion point. It returns `false` for an idle or stopping prompt
+A prompt cannot be given more text while it runs. `conversation.yieldPrompt()` asks the running
+run to end as `completed` at its completion point instead of waiting on ungrouped work (finished
+results reach the next prompt). A run held on `await_tasks` ignores the yield until its grouped
+tasks have settled and the model has finished. It returns `false` for an idle or stopping run
 (`true` even when a hold ignores it), and closed conversations throw `session_ended`.
+`conversation.state` says what runs (`idle`, `prompt` or `wake`, moved only along
+`CONVERSATION_RUN_TRANSITIONS`), and `whenIdle()` waits for it to end.
+
+A UI sends what the user types with `Conversations.submit`, which answers at once: the prompt
+starts when nothing runs, or waits in the conversation's queue (`PromptQueue`), which yields what
+runs and starts the next line once it has ended. While a line waits, or a prompt prepares its
+skills, finished work starts no run of its own (`deferWakes`): that prompt delivers it. A line
+leaves the queue only once it has started. The conversation reads the runs it starts, so their
+entries reach every UI on the combined stream, with a `queue` entry for each change to the lines.
+Lines kept with a stored conversation are parked when it is reopened, until the user sends the
+next one; so is a queued line a stop reached while it prepared its skills.
 
 A host serving several conversations (the HTTP server, or a UI in-process) keeps them in a
 `Conversations`, built on a function the app gives that composes each one (provider, tools,
@@ -62,9 +72,10 @@ import { Conversations } from '@sheavly/host/conversations/conversations.service
 
 const conversations = new Conversations({ create: (options) => buildConversation(options) });
 const id = await conversations.start();
-const { events } = await conversations.send({ id, prompt: { text: 'hi' } });
-// A UI with more input waiting asks the run to end at its completion point, then sends it.
-conversations.yieldPrompt(id);
+// Starts at once, or waits behind what runs; the runs' entries come on the combined stream.
+await conversations.submit({ id, prompt: { text: 'hi' } });
+// An in-process UI that reads one prompt's events itself, when nothing else runs:
+const { events } = await conversations.send({ id, prompt: { text: 'and then?' } });
 ```
 
 A coding UI adds `createCodingExtension` (`@sheavly/coding`) to the run built on this.

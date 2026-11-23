@@ -181,8 +181,11 @@ prompt on the history so far, in the harness's main session, and yields its even
   `conversations.yieldPrompt(id)`) instead asks it to end as `completed` at its next completion
   point, without waiting for finite tasks or sub-agents, which keep running; their results are
   delivered to the next prompt. It returns `false` for an idle or stopping prompt, and closed
-  conversations throw `session_ended`. A UI keeps what the user types queued, outside history, and
-  sends it with `send` once the prompt ends.
+  conversations throw `session_ended`. What the user types while a run goes waits in the
+  conversation's queue, outside history: `Conversations.submit` queues it and the conversation
+  starts it once that run has ended (see the README). `conversation.state` is the one answer to
+  what runs now: `idle`, `prompt` or `wake`, moved only along `CONVERSATION_RUN_TRANSITIONS`
+  (a move outside the table throws `ConversationRunError`).
 - The history is written when a prompt starts (previous finished history plus this prompt) and
   when it ends or fails, as for any prompt. In-flight model/tool work remains in the separately
   persisted stream; it joins the history snapshot when the run ends or fails.

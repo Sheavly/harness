@@ -4,6 +4,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { SendPromptRequest } from '@sheavly/protocol/server/server.types';
 import type { ConversationSkills, PreparedPrompt } from './conversations.types.js';
 import { ConversationsError } from '../errors/conversations.errors.js';
+import { partsText } from '@sheavly/protocol/message/message.utils';
 
 /** Expands skills identically for a new prompt and in-flight user steering. */
 async function preparePrompt(params: {
@@ -14,14 +15,7 @@ async function preparePrompt(params: {
   const { prompt, skills, signal } = params;
   const prepared = skills
     ? await skills.prepare({ prompt, signal })
-    : {
-        text:
-          'text' in prompt
-            ? prompt.text
-            : prompt.parts
-                .map((part) => (part.type === 'text' ? part.text : `/${part.name}`))
-                .join(''),
-      };
+    : { text: 'text' in prompt ? prompt.text : partsText(prompt.parts) };
 
   if ('unknown' in prepared) {
     throw new ConversationsError({

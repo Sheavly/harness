@@ -52,6 +52,11 @@ export function createConversation(options: ConversationOptions): Conversation {
   const maxWakes = options.maxConsecutiveWakes ?? Infinity;
   /** Set by a stop, cleared by the next prompt: no run starts itself meanwhile. */
   let wakesSuppressed = false;
+  /**
+   * Set while a queued line waits to start or a prompt prepares its skills (`deferWakes`): that
+   * prompt delivers what finished instead.
+   */
+  let wakesDeferred = false;
   /** The pending wake after a yielded run, until it fires or a prompt, stop or close drops it. */
   let yieldWake: ReturnType<typeof setTimeout> | undefined;
 
@@ -184,8 +189,8 @@ export function createConversation(options: ConversationOptions): Conversation {
    */
   function wake(): void {
     if (closed || ongoing.state !== 'idle' || !started || closing.signal.aborted) return;
-    // A stop holds it back until the next prompt.
-    if (wakesSuppressed) return;
+    // A stop, or a prompt about to start (queued or preparing) that delivers the notice, holds it.
+    if (wakesSuppressed || wakesDeferred) return;
 
     try {
       if (!tasks.hasWakingDeliveries(mainSession.id)) return;
@@ -343,6 +348,14 @@ export function createConversation(options: ConversationOptions): Conversation {
       return true;
     },
     settleWake,
+    async whenIdle() {
+      if (ongoing.state !== 'idle') await ongoing.ended.promise;
+    },
+    deferWakes(defer) {
+      wakesDeferred = defer;
+      // Work that finished while a line waited would otherwise wait for the next settlement.
+      if (!defer) wake();
+    },
     stop() {
       // The user stopped this, running or not: finished work waits for their next prompt instead
       // of restarting it.

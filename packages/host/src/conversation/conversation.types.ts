@@ -124,6 +124,17 @@ export type Conversation = {
    * point and resolves once it has, so the next prompt can be sent. Resolves at once otherwise.
    */
   settleWake: () => Promise<void>;
+  /**
+   * Resolves once the run going now has ended, at once when none is: after its history is kept
+   * and the conversation has decided whether to wake. A run may have started again by then.
+   */
+  whenIdle: () => Promise<void>;
+  /**
+   * While `defer` is set, finished work starts no run of its own: a prompt is about to start (a
+   * queued line, or one preparing its skills) and delivers it. Clearing it wakes the conversation
+   * for what finished meanwhile, unless a stop holds wakes back.
+   */
+  deferWakes: (defer: boolean) => void;
   /** The history so far: every finished prompt's, valid to continue from. */
   readonly messages: readonly HistoryMessage[];
   /** Whether a run is going now: a prompt, or one the conversation started itself. */

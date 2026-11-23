@@ -7,7 +7,13 @@ import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
+import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { scopeRun } from '../../testing/scope-run.fake.js';
+
+/** The session registry's methods that add to the combined stream: no scope may hand one out. */
+const PUBLISHERS = Object.getOwnPropertyNames(SessionRegistry.prototype).filter((name) =>
+  name.startsWith('publish'),
+);
 
 const call = (id: string) => callIdSchema.parse(id);
 // Typed as a session id, the value is the one a user's message carries.
@@ -223,10 +229,11 @@ describe('the child-sessions service: what it leaves out', () => {
   it('has no member that publishes, ends, releases, reads inboxes or reaches the registries', async () => {
     const { a } = await twoOwners();
 
+    expect(PUBLISHERS).toContain('publishQueue');
+
     for (const name of [
-      'publish',
-      'publishApproval',
-      'publishTask',
+      // Every way the registry adds to the stream, read from it so a new one is covered too.
+      ...PUBLISHERS,
       'end',
       'idle',
       'resume',
