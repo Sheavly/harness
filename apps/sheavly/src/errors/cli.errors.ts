@@ -12,6 +12,15 @@ export class NoServerError extends Error {
 }
 
 /**
+ * `sheavly connection` was given an environment it cannot use: `BACKEND_URL` that is not a web
+ * URL, or without `BACKEND_TOKEN`. One line naming the variable; it never holds a value, since
+ * one of them is the token.
+ */
+export class ConnectionError extends Error {
+  override name = 'ConnectionError';
+}
+
+/**
  * `sheavly doctor` found something wrong. The report is already printed; this is the one line
  * after it and the reason the command exits 1.
  */
