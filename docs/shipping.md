@@ -106,14 +106,16 @@ wait with it.
 | The server listens on loopback and every route needs a token, except health and the handshake | built today, kept | [the API](../apps/backend/docs/api.md)                                                                       |
 | The service is a systemd user unit on Linux first                                             | decided           | [#393](https://github.com/Sheavly/harness/issues/393)                                                        |
 | Node 24 and up; Linux is the first and only tested system                                     | decided here      | [#393](https://github.com/Sheavly/harness/issues/393)                                                        |
+| `sheavly update` finds a release in the npm registry, and is off until the user enables it    | decided here      | [#474](https://github.com/Sheavly/harness/issues/474)                                                        |
 | Stored data is versioned and migrated on upgrade                                              | decided           | [#391](https://github.com/Sheavly/harness/issues/391)                                                        |
 | The backend's own settings come from the settings files                                       | decided           | [#389](https://github.com/Sheavly/harness/issues/389)                                                        |
 
 ### Names
 
 Packages are published to npm under the `@sheavly` scope, and the command a user runs is
-`sheavly`. The scope is an npm organization and the `sheavly` name is a package; both belong to the
-project's maintainer. Reason: one scope keeps the packages together and stops others publishing
+`sheavly`. The scope is an npm organization and the `sheavly` name is a package; both are meant for
+the project's maintainer, and the name is not reserved until the first release (see Updating).
+Reason: one scope keeps the packages together and stops others publishing
 packages that look like ours under it.
 
 ### Versions and releases
@@ -525,22 +527,77 @@ only one tested for the first release. This is a decision of this page.
 
 ### Updating
 
-`sheavly update` restarts the server, which stops the conversations that are running, so it
-refuses, or asks first, when work is running or a conversation waits on the user, unless the user
-tells it to go on, and the restart is
-shown in the chat history of each conversation it stopped. A version of the terminal and a version
-of the server that cannot speak to each other say which is older and what to do: the check that
-finds it is built (the protocol version is semver, and the client's verification reports it), and
-the terminal will show it. How an update
-finds a new release is open, and it is a network call, so it is off unless the user turns it on.
+`sheavly update` finds a new release in the npm registry, by reading the dist-tags of the
+`sheavly` package: `latest`, and `next` for the prereleases the release workflow plans to publish
+([#396](https://github.com/Sheavly/harness/issues/396)). Nothing of this is built:
+[#474](https://github.com/Sheavly/harness/issues/474) builds the command, and has to meet what
+follows.
+
+Reason: the registry is where `sheavly` is published, so the update asks the one source that holds
+the release, and installs from it. A GitHub release feed was not chosen: it is a second source
+that can differ from what npm serves. A feed file hosted by the project was not chosen either:
+it is one more thing to publish and keep in step.
+
+**The request.** One HTTPS request to the fixed host `registry.npmjs.org` for the package's
+dist-tags, made by the project's own client and not by the npm command, so it does not read the
+user's `.npmrc` or registry setting and sends none of the npm command's headers. The package name
+is a constant in the code: neither a setting nor the registry's answer can change it. Certificate
+checks are never switched off (`NODE_TLS_REJECT_UNAUTHORIZED=0` is refused), a redirect is not
+followed, and the answer is capped in size and in time. The URL and headers carry no installed
+version and nothing about the machine or the user, and the user agent is generic; what any HTTPS
+request shows, the address it comes from, cannot be avoided. Whether the environment's proxy and
+extra certificate authorities are honoured is decided in the build and written there.
+The update is not enabled until the name `sheavly` is reserved and owned (the first release, made
+by hand: see Publishing): it is unscoped, and a stranger's package under it would be found.
+
+**Which version counts.** The tag's version is parsed as strict semver and only its canonical form
+is ever shown or used: the string from the registry never reaches a shell, a URL, a log or the
+terminal as it came. Only a version strictly greater than the installed one counts, build
+metadata ignored. A version that is not valid semver, too long or not newer changes nothing, and
+nothing the registry returns is run. `latest` is the default, and a prerelease under it is ignored.
+With prereleases asked for, `next` counts too, and the highest version that qualifies wins; a user
+on a prerelease is also offered a newer `latest`, since `1.0.0-next.3` is older than `1.0.0`.
+Asking for prereleases is a user-level setting like the one that enables the update.
+
+**Trust.** The update trusts the registry no more than a hand-typed `npm install -g` does: someone
+who holds a maintainer's publish rights could move `latest`. What stands against that is planned:
+two-factor authentication and trusted publishing with provenance (see Publishing), the user
+confirming the exact version before anything installs, and nothing updating by itself. `npm`
+does not verify provenance when it installs, so whether the update does (`npm audit signatures`)
+is decided in the build.
+
+**Off until enabled.** It is a network call, so it is off unless the user turns it on, with a
+setting read only from a user-level file, never from a workspace's files or the environment of a
+project. Until then `sheavly update` makes no request: it says that updating is not enabled and
+how to enable it, and ends. No other command asks the registry: `chat`, `doctor` and the server
+never do. Which file it is, is decided in the build.
+
+**Installing and restarting.** `sheavly update` restarts the server, which stops the conversations
+that are running, so it refuses, or asks first, when work is running or a conversation waits on
+the user, unless the user tells it to go on, and the restart is shown in the chat history of each
+conversation it stopped. It installs the exact version it showed and the user confirmed, never a
+tag, with an argument list and no shell, with install scripts of the dependencies turned off. It
+installs from the same fixed registry as the lookup, from a neutral folder, so neither the user's
+nor a workspace's `.npmrc` sends the install elsewhere, and it compares what was fetched with
+the integrity the lookup gave for that version. It never escalates: when the global folder is not
+writable it prints the command for the user to run. An unattended run needs the version named in
+the command; a flag that says to go on never installs a version the user has not seen. The
+packages have no install script of their own, and a check on the packed packages is planned to
+keep it so (see Publishing); it has to exist before the install step ships. How it restarts is
+decided with the service ([#393](https://github.com/Sheavly/harness/issues/393)).
+
+A version of the terminal and a version of the server that cannot speak to each other say which
+is older and what to do: the check that finds it is built (the protocol version is semver, and
+the client's verification reports it), and the terminal will show it.
 
 ### Privacy and support
 
 Sheavly collects and sends no telemetry. What leaves the machine is what the user asked for:
 requests to the model providers they configured, and the agent's own web tools, which contact the
 search backends and the sites the agent is told to read and can be turned off (`WEB_SEARCH` and
-`WEB_FETCH`). An update check is opt-in. Until 1.0 only the latest release of each package is
-supported, and fixes go there.
+`WEB_FETCH`). The update check is opt-in: `sheavly update` makes no request until the user enables
+it, and nothing else asks the registry whether there is a release. Until 1.0 only the latest
+release of each package is supported, and fixes go there.
 A `SECURITY.md` that says where to report a vulnerability privately and which versions get fixes
 comes first of the repository's policy files, with a contribution guide and a code of conduct; no
 sign-off or contributor agreement is required, and the license is the grant. None of these files
@@ -579,7 +636,11 @@ implement.
 ## Left open
 
 - The boundary becoming a unix socket, and a named pipe on Windows. No issue yet.
-- How `sheavly update` finds a new release: [#392](https://github.com/Sheavly/harness/issues/392).
+- How `sheavly update` restarts the server, which user-level file holds its enabling and
+  prerelease settings, whether it honours the environment's proxy and extra certificate
+  authorities, and whether it verifies provenance:
+  [#393](https://github.com/Sheavly/harness/issues/393) and
+  [#474](https://github.com/Sheavly/harness/issues/474).
 - Whether a Windows service is needed instead of a logon task:
   [#395](https://github.com/Sheavly/harness/issues/395).
 - Rotating and revoking the token. No issue yet.
