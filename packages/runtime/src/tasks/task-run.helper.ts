@@ -6,6 +6,20 @@ import { MAX_TASK_OUTPUT_CHARS } from './tasks.constants.js';
 import type { StartTask, TaskResult } from './tasks.types.js';
 
 /**
+ * Calls `run`, so that one that throws before it returns a promise (a work factory's bug) is a
+ * failed run like any other, not an exception out of `start` that would leave the task's node
+ * running with no task to end it.
+ */
+function started(params: {
+  run: StartTask['run'];
+  signal: AbortSignal;
+  onOutput: (chunk: string) => void;
+}): ReturnType<StartTask['run']> {
+  // An async function's body runs at once, so `run` starts as before; only a throw changes.
+  return (async () => params.run({ signal: params.signal, onOutput: params.onOutput }))();
+}
+
+/**
  * Runs a task's work and reports how it ended to `settle`. Output goes to the task's bounded
  * preview (`info.output`) and, with a `capture`, to the stored log, whose reference the task shows
  * while it runs. The returned promise resolves once `settle` has been called, and never rejects:
@@ -35,7 +49,7 @@ export function runTask(params: {
     if (capture) info.outputLog = await closeTaskCapture(capture);
   };
 
-  return run({ signal, onOutput }).then(
+  return started({ run, signal, onOutput }).then(
     async ({ exitCode, report }) => {
       await closeCapture();
       settle({

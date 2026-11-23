@@ -217,4 +217,17 @@ describe('an agent node', () => {
     expect(registry.endAgent({ id: node.id, outcome: 'completed' })).toBe(false);
     expect(registry.get(node.id)).toEqual(lost);
   });
+
+  it('loses an idle agent too, as a reopen does, and refuses a later resume', () => {
+    const { registry, node } = started('agent');
+
+    registry.idle({ id: node.id, outcome: 'completed' });
+
+    expect(registry.lose(node.id)).toBe(true);
+    expect(registry.get(node.id)).toMatchObject({ state: 'lost' });
+    expect(registry.get(node.id)?.endedAt).toBeDefined();
+    expect(() => registry.resume(node.id)).toThrow(
+      expect.objectContaining({ reason: 'invalid_transition' }),
+    );
+  });
 });

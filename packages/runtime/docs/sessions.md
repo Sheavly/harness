@@ -25,9 +25,14 @@ Each node has a **channel**: an in-memory log of `opened`, `updated` and `closed
 every node's entries in one order. A channel keeps its newest `MAX_CHANNEL_ENTRIES`; a position
 before them, or past the end, is `cursor_out_of_range` and is never clamped. `snapshot()` is every
 node and the position to read on from. A registry holds at most `MAX_TREE_NODES` nodes, ended ones
-included, since the snapshot holds them all: a node past it is refused (`too_many_nodes`), and
-finished work released at the turn boundary makes room. Nothing serves these channels yet: the stream below is still
-the one a UI reads.
+included, since the snapshot holds them all: a node past it is refused (`too_many_nodes`). Room
+comes from releasing: the loop releases the finished tasks and sub-agents it has delivered at each
+turn boundary, but a sub-agent started through an extension's `child-sessions` scope, and work that
+never ends, stay until something releases or ends them, so a conversation that keeps starting them
+can fill the registry. A reopened conversation does not bring back the sessions released before it
+closed (`StoredLog.released`), so they do not count. A channel's entries are shared between its
+readers and read only by contract. Nothing serves these channels yet: the stream below is still the
+one a UI reads.
 
 Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
 command's node sits under the node of the session that started it. A node's title and status are
@@ -74,13 +79,15 @@ While idle it accepts messages, kept for its next prompt, but no status reports 
   about, so a caller tells the cases apart without reading the message.
 - `release(id)` forgets an ended session and every sub-agent under it, with their queued messages,
   last tokens and message ids, announces each as `session_released`, and returns how many sessions
-  went. It throws `session_running` if the session or a sub-agent under it is still open, and
-  releases nothing then. Entries already in the combined stream stay, and a filter on an ancestor's
+  went. It throws `session_running` if the session or a sub-agent under it is still open, or a
+  command or service started under one of them is, and releases nothing then. Entries already in the combined stream stay, and a filter on an ancestor's
   subtree still matches them; a later `publish` for a released session is refused with
   `session_released`. `isReleased(id)` tells it from an unknown id, and `releasedStarts()` lists them with when each started.
 - `releaseAgent(id)` is what the loop calls once a sub-agent's report is delivered: the same
-  release, but it returns false instead of throwing when a session under it is still open, and
-  leaves a main session alone. A reopened conversation restores every stored session.
+  release, but it returns false instead of throwing when a session, or work started under one, is
+  still open, and leaves a main session alone. A reopened conversation restores every stored
+  session that was not released, in the order they started, and keeps the released ones as
+  released.
 - `lineage(id)` walks a session up to the main session; `children(id)` lists the ones it started.
 - A run takes `session: { registry, ref }`. Without one it starts its own main session. Either
   way the loop ends the session with the run's outcome, and the `done` event carries its ref.

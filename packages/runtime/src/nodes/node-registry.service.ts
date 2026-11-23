@@ -217,7 +217,7 @@ export class NodeRegistry {
    * never taken again.
    */
   release(id: NodeId): NodeRecord[] {
-    const subtree = subtreeOf({ id: this.#require(id).id, nodes: this.#nodes });
+    const subtree = this.subtree(id);
     const open = subtree.find((node) => isOpenState(node.state));
 
     if (open) {
@@ -234,7 +234,12 @@ export class NodeRegistry {
       this.#released.add(node.id);
     }
 
-    return subtree.map((node) => ({ ...node }));
+    return subtree;
+  }
+
+  /** `id` and every node under it, as copies, `id` first. Throws for an unknown or released node. */
+  subtree(id: NodeId): NodeRecord[] {
+    return subtreeOf({ id: this.#require(id).id, nodes: this.#nodes }).map((node) => ({ ...node }));
   }
 
   /** Whether `id` was a node of this registry that has since been released. */
@@ -269,7 +274,7 @@ export class NodeRegistry {
       ...(parent && { parent }),
       ...(status !== undefined && { status }),
       ...(params.endedAt !== undefined && { endedAt: params.endedAt }),
-      ...(params.spawnedBy && { spawnedBy: params.spawnedBy }),
+      ...(params.spawnedBy !== undefined && { spawnedBy: params.spawnedBy }),
       ...(params.modelId && { modelId: params.modelId }),
       ...(params.effort && { effort: params.effort }),
       ...(params.lastOutcome && { lastOutcome: params.lastOutcome }),

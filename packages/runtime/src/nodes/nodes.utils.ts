@@ -1,6 +1,6 @@
 import { BLANK_PATTERN } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
-import { NOT_ONE_LINE } from './nodes.constants.js';
+import { HEAD_FACTOR, NOT_ONE_LINE } from './nodes.constants.js';
 import type { NodeRecord, NodeState } from './nodes.types.js';
 
 /**
@@ -10,7 +10,10 @@ import type { NodeRecord, NodeState } from './nodes.types.js';
  * agent's status report can be anything; the schema refuses what is not one line.
  */
 export function oneLineOf(params: { text: string; max: number }): string | undefined {
-  const line = params.text.replace(NOT_ONE_LINE, ' ').replaceAll(/\s+/gu, ' ').trim();
+  // Cut first, generously, so a huge input costs no more than a long one: whitespace squeezed out
+  // of the head can only shorten it, and a character is at most two UTF-16 units.
+  const head = params.text.slice(0, params.max * HEAD_FACTOR);
+  const line = head.replace(NOT_ONE_LINE, ' ').replaceAll(/\s+/gu, ' ').trim();
   const cut = Array.from(line).slice(0, params.max).join('').trim();
 
   return BLANK_PATTERN.test(cut) ? undefined : cut;

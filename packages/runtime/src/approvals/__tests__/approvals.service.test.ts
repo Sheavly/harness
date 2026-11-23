@@ -303,4 +303,34 @@ describe('how many approvals may wait', () => {
 
     expect(approvals.pending()).toHaveLength(MAX_PENDING_APPROVALS);
   });
+
+  it('counts the requests a screener still holds, and takes another once they are given up', async () => {
+    const approvals = new ApprovalRegistry();
+    const held = Promise.withResolvers<undefined>();
+    const sessionOne = sessionIdSchema.parse('s1');
+
+    listen(approvals);
+    approvals.screen(() => held.promise);
+
+    const waiting = Array.from({ length: MAX_PENDING_APPROVALS }, () =>
+      ask(approvals).catch((caughtError: unknown) => caughtError),
+    );
+
+    // None has been announced yet (they are screening), so only the bound can refuse the next.
+    expect(approvals.pending()).toHaveLength(0);
+    await expect(ask(approvals)).rejects.toMatchObject({ reason: 'too_many_pending' });
+
+    approvals.cancelSession(sessionOne);
+    held.resolve(undefined);
+
+    const settled = await Promise.all(waiting);
+
+    expect(settled.every((each) => each instanceof Error)).toBe(true);
+    // Given up, they no longer count: a new request is screened and asked again.
+    void ask(approvals);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(approvals.pending().length).toBeLessThanOrEqual(1);
+  });
 });

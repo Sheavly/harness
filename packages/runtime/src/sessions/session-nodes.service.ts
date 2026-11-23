@@ -118,8 +118,21 @@ export class SessionNodes {
     return this.#viewOf(node);
   }
 
-  report(params: { id: SessionId; status: string }): void {
-    this.registry.setStatus({ id: this.#require(params.id), status: params.status });
+  /** Returns whether the status changed: one with nothing in it does not. */
+  report(params: { id: SessionId; status: string }): boolean {
+    return this.registry.setStatus({ id: this.#require(params.id), status: params.status });
+  }
+
+  /**
+   * The first session still open in `id`'s subtree, or `id` itself when what is open is a command, a
+   * service or another node that is not a session: either way the subtree cannot be released yet.
+   */
+  openBelow(id: SessionId): SessionInfo | undefined {
+    const open = this.registry
+      .subtree(this.#require(id))
+      .find((node) => node.state === 'running' || node.state === 'idle');
+
+    return open && this.get(this.#sessionOf.get(open.id) ?? id);
   }
 
   /** Returns whether the model changed: the same model and effort are not a change. */
@@ -212,8 +225,15 @@ export class SessionNodes {
       ...(node.effort && { effort: node.effort }),
     };
 
-    if (node.parent === undefined || node.spawnedBy === undefined) {
-      return { ...details, depth: 1 };
+    // A sub-agent is a node with a parent; the call that started it is any string, an empty one too.
+    if (node.parent === undefined) return { ...details, depth: 1 };
+
+    if (node.spawnedBy === undefined) {
+      throw new SessionError({
+        reason: 'unknown_session',
+        sessionId: details.id,
+        message: `Session ${details.id} has a parent but no tool call that started it`,
+      });
     }
 
     return {

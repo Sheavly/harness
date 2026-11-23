@@ -61,7 +61,15 @@ export class TaskRegistry {
     const id = taskIdSchema.parse(`t${this.#nextId++}`);
     const controller = new AbortController();
     const info = runningInfo({ id, callId, command, description, kind, startedAt: now() });
-    const node = openTaskNode({ owners: this.#owners, sessionId, callId, description, kind });
+    const entries = this.#tasks.values();
+    const node = openTaskNode({
+      owners: this.#owners,
+      entries,
+      sessionId,
+      callId,
+      description,
+      kind,
+    });
     const entry = newEntry({ info, controller, sessionId, backgroundKind: kind, ...node });
 
     entry.settled = runTask({

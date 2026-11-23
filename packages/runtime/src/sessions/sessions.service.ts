@@ -66,7 +66,7 @@ export class SessionRegistry {
   #inboxes = new Inboxes();
   #lastTokens: LastTokens;
   readonly #messageContexts: MessageContexts;
-  /** In-process only: a reopened conversation has its sessions back, released or not. */
+  /** What was released, in process or before a reopen: a released session is not a live one. */
   readonly #released = new ReleasedSessions();
 
   /**
@@ -92,6 +92,7 @@ export class SessionRegistry {
     if (resume) {
       restoreSessions({
         stored: resume.sessions,
+        released: { into: this.#released, sessions: resume.released ?? [] },
         sessions: this.#sessions,
         emit: (update) => this.#emit(update),
       });
@@ -200,9 +201,8 @@ export class SessionRegistry {
   report(params: { id: SessionId; status: string }): void {
     const session = this.#require(params.id);
 
-    if (session.state !== 'running') return;
+    if (session.state !== 'running' || !this.#sessions.report(params)) return;
 
-    this.#sessions.report(params);
     this.#emit({ type: 'session_status', session: this.#require(params.id) });
   }
 
@@ -318,7 +318,7 @@ export class SessionRegistry {
 
     if (!session || !('parentId' in session)) return false;
 
-    if (this.#sessions.subtree(id).some((each) => isOpen(each.state))) return false;
+    if (this.#sessions.openBelow(id)) return false;
 
     this.release(id);
 

@@ -10,7 +10,11 @@ export type NodeState = StateOf<'node'>;
 /** The kinds the harness has. An extension's kind, `<extension>.<name>`, is one too. */
 export type NodeKind = 'agent' | 'command' | 'service' | `${string}.${string}`;
 
-/** What the registry keeps of one node. Every method hands out copies, never the live record. */
+/**
+ * What the registry keeps of one node. Every method that returns a node hands out a copy, never
+ * the live record. The entries of a channel are not copied per reader: they are shared, and read
+ * only by contract (`ReadableChannel` has no way to append).
+ */
 export type NodeRecord = {
   id: NodeId;
   kind: NodeKind;

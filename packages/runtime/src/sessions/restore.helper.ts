@@ -4,6 +4,7 @@ import type {
   SessionUpdate,
 } from '@sheavly/protocol/session/session.types';
 import { isMainSession } from '@sheavly/protocol/session/session.utils';
+import type { ReleasedSessions } from './released-sessions.service.js';
 import type { SessionNodes } from './session-nodes.service.js';
 import { isOpen } from './sessions.utils.js';
 
@@ -16,14 +17,19 @@ import { isOpen } from './sessions.utils.js';
  */
 export function restoreSessions(params: {
   stored: readonly SessionInfo[];
+  /** The sessions released before the process ended: recorded as released, not made live. */
+  released: { into: ReleasedSessions; sessions: readonly SessionInfo[] };
   sessions: SessionNodes;
   emit: (update: SessionUpdate) => void;
 }): void {
   const { stored, sessions, emit } = params;
   const changed: { id: SessionId; update: 'session_idle' | 'session_ended' }[] = [];
 
-  // A parent comes back before the sessions it started, whatever order they were stored in.
-  for (const session of [...stored].sort((first, second) => first.depth - second.depth)) {
+  for (const session of params.released.sessions) params.released.into.record(session);
+
+  // The stored order is the order sessions started, so a parent comes back before its children.
+  // A child whose parent is missing is a corrupt log and fails loudly (`unknown_session`).
+  for (const session of stored) {
     if (isMainSession(session)) {
       const idle = idleRestoredMain(session);
 

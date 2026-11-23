@@ -92,7 +92,12 @@ describe.each(KINDS)('background work of kind %s', (kind) => {
       parent: world.sessions.nodeIdOf(world.main.id),
     });
   });
+});
 
+/** The kinds whose node the task ends: a sub-agent's is its session's, and the session ends it. */
+const ENDED_BY_THE_TASK = ['task', 'service'] as const;
+
+describe.each(ENDED_BY_THE_TASK)('background work of kind %s', (kind) => {
   it.each([
     ['exit 0', 0, 'completed'],
     ['a non-zero exit', 1, 'failed'],
@@ -177,17 +182,88 @@ describe('a sub-agent', () => {
     expect(world.tasks.nodes.list().length).toBe(before);
   });
 
-  it('ends once: the first of the session and the task to end it decides how', async () => {
+  it('is ended by its session, with how its last run ended, whatever its task says', async () => {
     const world = conversation();
     const task = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 1 }) });
+    const updates: string[] = [];
 
-    // The session ends the node first, as the run of the sub-agent does before its task settles.
+    world.sessions.subscribe((update) => updates.push(update.type));
+
+    // The run ends the session first, as the loop does before its task settles.
     world.sessions.end({ id: world.child.id, state: 'max_turns' });
     await world.tasks.nextSettled();
 
     expect(world.tasks.get(task.id)?.status).toBe('failed');
     expect(world.sessions.get(world.child.id)?.state).toBe('max_turns');
+    expect(updates).toEqual(['session_ended']);
     expect(world.tasks.nodes.list().filter((node) => node.state === 'failed')).toHaveLength(1);
+  });
+
+  it('leaves its node to its session when the task settles first: the session still ends it', async () => {
+    const world = conversation();
+    const task = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 0 }) });
+    const updates: string[] = [];
+
+    world.sessions.subscribe((update) => updates.push(update.type));
+    await world.tasks.nextSettled();
+
+    // Nothing ended the session, so it is still running, and so is its node: as before nodes, a
+    // run that never reached the loop leaves its session to whoever owns it.
+    expect(world.tasks.get(task.id)?.status).toBe('completed');
+    expect(world.sessions.get(world.child.id)?.state).toBe('running');
+
+    world.sessions.end({ id: world.child.id, state: 'completed' });
+
+    expect(world.sessions.get(world.child.id)?.state).toBe('completed');
+    expect(updates).toEqual(['session_ended']);
+  });
+
+  it('is never paired with a command that has the same tool call id: the provider’s ids repeat', async () => {
+    const world = conversation();
+    const command = world.tasks.start({
+      command: 'cmd',
+      description: 'work',
+      callId: CALL,
+      sessionId: world.main.id,
+      run: () => new Promise(() => undefined),
+    });
+    const agent = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 0 }) });
+
+    // The agent task takes its session's node, and settles: no throw, no hang.
+    await world.tasks.nextSettled();
+
+    expect(world.tasks.get(agent.id)?.status).toBe('completed');
+    expect(world.tasks.get(command.id)?.status).toBe('running');
+    expect(world.tasks.nodes.list().filter((node) => node.kind === 'command')).toHaveLength(1);
+    expect(world.tasks.nodes.list().find((node) => node.kind === 'command')?.state).toBe('running');
+  });
+
+  it('gives two sub-agents with one tool call id a node each: a node is taken by one task', () => {
+    const world = conversation();
+    const second = world.sessions.startChild({
+      parentId: world.main.id,
+      startedByCall: CALL,
+      title: 'second',
+    });
+    const before = world.tasks.nodes.list().length;
+
+    startSubAgent({ world, run: () => new Promise(() => undefined) });
+    startSubAgent({ world, run: () => new Promise(() => undefined) });
+    // A third has no session left to take, so it is a node of its own, never the first's again.
+    startSubAgent({ world, run: () => new Promise(() => undefined) });
+
+    expect(second.depth).toBe(2);
+    expect(world.tasks.nodes.list().length).toBe(before + 1);
+  });
+
+  it('does not take the node of a session that has ended', () => {
+    const world = conversation();
+    const before = world.tasks.nodes.list().length;
+
+    world.sessions.end({ id: world.child.id, state: 'completed' });
+    startSubAgent({ world, run: () => new Promise(() => undefined) });
+
+    expect(world.tasks.nodes.list().length).toBe(before + 1);
   });
 
   it('is not released by its task: its session owns the node', async () => {
@@ -207,6 +283,28 @@ describe('a sub-agent', () => {
     world.sessions.releaseAgent(world.child.id);
 
     expect(world.tasks.release(task.id)).toBe(true);
+  });
+});
+
+describe('a run that throws before it returns a promise', () => {
+  it('is a failed task, and its node ends failed rather than running for good', async () => {
+    const world = conversation();
+    const task = world.tasks.start({
+      command: 'cmd',
+      description: 'work',
+      sessionId: world.main.id,
+      run: () => {
+        throw new Error('a work factory’s bug');
+      },
+    });
+
+    await world.tasks.nextSettled();
+
+    expect(world.tasks.get(task.id)).toMatchObject({
+      status: 'failed',
+      error: 'a work factory’s bug',
+    });
+    expect(workNode({ world, kind: 'task' })?.state).toBe('failed');
   });
 });
 
