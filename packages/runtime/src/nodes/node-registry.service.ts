@@ -125,12 +125,16 @@ export class NodeRegistry {
     return channel;
   }
 
-  /** What an agent says it is doing now. Ignored once the node ended; returns whether it changed. */
+  /**
+   * What an agent says it is doing now. Ignored once the node ended, when it has nothing in it, or
+   * when it is the status the node already has (a log entry for no change would only grow the
+   * channel); returns whether it changed.
+   */
   setStatus(params: { id: NodeId; status: string }): boolean {
     const node = this.#require(params.id);
     const status = oneLineOf({ text: params.status, max: MAX_NODE_STATUS_CHARS });
 
-    if (!isOpenState(node.state) || status === undefined) return false;
+    if (!isOpenState(node.state) || status === undefined || status === node.status) return false;
 
     node.status = status;
     this.#append({ type: 'updated', node });

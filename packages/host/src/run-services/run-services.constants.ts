@@ -12,6 +12,14 @@ export const KEEPING_OPTIONS: readonly ApprovalOption[] = ['always_allow', 'allo
 /** The longest `argument` or `reason` a concern keeps, in characters; a longer one ends with `…`. */
 export const MAX_CONCERN_TEXT_CHARS = 1000;
 
+/**
+ * The most sub-agents one `child-sessions` scope may hold at once (not yet released): a quarter of
+ * the nodes a conversation holds (`MAX_TREE_NODES`), so one extension, or the sub-agent tool, can
+ * never take them all and leave the conversation unable to start a command or another scope's
+ * sub-agent. A session released elsewhere (the loop releases a delivered sub-agent) stops counting.
+ */
+export const MAX_SCOPE_CHILDREN = 250;
+
 /** The UTF-16 code units that open a surrogate pair: a cut text must not end in one. */
 export const HIGH_SURROGATE_FIRST = 0xd800;
 

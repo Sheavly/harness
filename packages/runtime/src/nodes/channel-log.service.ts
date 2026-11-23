@@ -33,7 +33,18 @@ export class ChannelLog implements ReadableChannel {
       this.#first += 1;
     }
 
-    for (const listener of [...this.#listeners]) listener(entry);
+    // A listener that throws must not break the change that made the entry (a session ending, a
+    // task settling): the node has already moved, so the throw would leave the rest of the change
+    // undone. Its error is rethrown on its own, after this call, so it still fails loudly.
+    for (const listener of [...this.#listeners]) {
+      try {
+        listener(entry);
+      } catch (caughtError) {
+        queueMicrotask(() => {
+          throw caughtError;
+        });
+      }
+    }
 
     return entry;
   }

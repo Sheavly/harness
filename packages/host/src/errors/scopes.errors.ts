@@ -29,6 +29,22 @@ export class ApprovalToolNotContributedError extends Error {
   }
 }
 
+/**
+ * A scope already holds the most it may (`MAX_SCOPE_CHILDREN` sub-agents not yet released): the
+ * limit keeps one extension from filling the nodes the whole conversation shares.
+ */
+export class ScopeLimitError extends Error {
+  override name = 'ScopeLimitError';
+  readonly limit: number;
+
+  constructor(params: { limit: number; what: string }) {
+    super(
+      `This scope already holds ${String(params.limit)} ${params.what}: wait for some to be released`,
+    );
+    this.limit = params.limit;
+  }
+}
+
 /** `runChild` was called for a child whose run has not returned yet: one loop per session. */
 export class ChildRunningError extends Error {
   override name = 'ChildRunningError';

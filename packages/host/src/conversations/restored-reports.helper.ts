@@ -34,7 +34,13 @@ export async function owedAgentReports(params: {
 
   if (!main) return [];
 
-  const agents = undeliveredAgents({ main: main.id, sessions: resume.sessions, history });
+  // The released ones too: a sub-agent is released as its report enters the history, and a crash
+  // can lose that write while keeping the release, which is exactly the report that is owed.
+  const agents = undeliveredAgents({
+    main: main.id,
+    sessions: [...resume.sessions, ...(resume.released ?? [])],
+    history,
+  });
   const reports = new Map<SessionId, string>();
 
   for (const agent of agents) {

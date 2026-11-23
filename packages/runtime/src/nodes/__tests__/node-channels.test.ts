@@ -38,6 +38,51 @@ const NODE: NodeRecord = {
   startedAt: 0,
 };
 
+describe('a listener on a channel', () => {
+  it('that throws does not break the change that made the entry, nor the other listeners', async () => {
+    const registry = new NodeRegistry();
+    const node = registry.open({ kind: 'agent', title: 'main' });
+    const heard: string[] = [];
+    const uncaught: unknown[] = [];
+    const onUncaught = (error: unknown) => uncaught.push(error);
+
+    process.on('uncaughtException', onUncaught);
+    registry.tree.follow(() => {
+      throw new Error('listener bug');
+    }, 'now');
+    registry.tree.follow((entry) => heard.push(entry.type), 'now');
+
+    // The node ends and the entry is in both channels, whatever a follower does with it.
+    expect(registry.endAgent({ id: node.id, outcome: 'completed' })).toBe(true);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    process.off('uncaughtException', onUncaught);
+
+    expect(registry.get(node.id)?.state).toBe('completed');
+    expect(channelOf({ registry, id: node.id }).map((entry) => entry.type)).toEqual([
+      'opened',
+      'closed',
+    ]);
+    expect(heard).toEqual(['closed']);
+    // It still fails loudly, on its own, after the call.
+    expect(uncaught).toHaveLength(1);
+  });
+});
+
+describe('a status that is the one a node already has', () => {
+  it('is not a change: it appends nothing and says so', () => {
+    const registry = new NodeRegistry();
+    const node = registry.open({ kind: 'agent', title: 'main' });
+
+    expect(registry.setStatus({ id: node.id, status: 'reading' })).toBe(true);
+    expect(registry.setStatus({ id: node.id, status: 'reading' })).toBe(false);
+    expect(registry.setStatus({ id: node.id, status: 'reading\n' })).toBe(false);
+    expect(channelOf({ registry, id: node.id }).map((entry) => entry.type)).toEqual([
+      'opened',
+      'updated',
+    ]);
+  });
+});
+
 describe('a node’s channel', () => {
   it('starts with opened, carries each change in order, and ends with closed', () => {
     const registry = new NodeRegistry();

@@ -3,9 +3,10 @@ import type { SessionId, SessionRef } from '@sheavly/protocol/session/session.ty
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
-import { ChildRunningError } from '../errors/scopes.errors.js';
+import { ChildRunningError, ScopeLimitError } from '../errors/scopes.errors.js';
 import { runChildLoop } from './child-run.helper.js';
 import { requireOpenSession } from './open-session.helper.js';
+import { MAX_SCOPE_CHILDREN } from './run-services.constants.js';
 import type { RunLoop } from './run-services.types.js';
 import type { ScopeGuard } from './scope-guard.service.js';
 
@@ -47,6 +48,8 @@ export class ChildSessionsScope implements ChildSessionScope {
     this.#guard.enter('startChild');
 
     if (parentId !== this.#main.id) this.#requireOwned(parentId);
+
+    this.#requireRoom();
 
     const child = this.#registry.startChild({ parentId, startedByCall, title });
 
@@ -114,6 +117,20 @@ export class ChildSessionsScope implements ChildSessionScope {
       this.#running.delete(child.id);
     }
   };
+
+  /**
+   * Refuses a new child when the scope holds `MAX_SCOPE_CHILDREN` already. A child released
+   * elsewhere (the loop releases a delivered sub-agent) is forgotten first, so it stops counting.
+   */
+  #requireRoom(): void {
+    for (const id of [...this.#owned.keys()]) {
+      if (!this.#registry.get(id)) this.#owned.delete(id);
+    }
+
+    if (this.#owned.size >= MAX_SCOPE_CHILDREN) {
+      throw new ScopeLimitError({ limit: MAX_SCOPE_CHILDREN, what: 'sub-agents' });
+    }
+  }
 
   /** The session `id` if this scope started it; anything else is refused as unknown. */
   #requireOwned(id: SessionId): SessionRef {
