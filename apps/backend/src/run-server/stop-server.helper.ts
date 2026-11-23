@@ -2,21 +2,29 @@ import type { ServerPresence } from '@sheavly/storage/discovery-file/server-pres
 import { STOP_SIGNALS } from '../discovery/discovery.constants.js';
 import type { BuiltServer } from './run-server.types.js';
 
+/** What `closeServer` asks of the conversations: that all of them can be closed. */
+type Closable = Pick<BuiltServer['conversations'], 'closeAll'>;
+
 /**
  * Takes a running server down: stops taking requests, then closes every conversation (its
  * prompts, tasks and processes). Out of the file first, so clients stop finding it; the lock last,
  * so a successor cannot start while conversations are still closing.
  */
-async function closeServer(params: {
-  built: BuiltServer;
-  presence: ServerPresence | undefined;
+export async function closeServer(params: {
+  built: { listening: { close: () => unknown }; conversations: Closable };
+  presence: Pick<ServerPresence, 'remove' | 'release'> | undefined;
 }): Promise<void> {
   const { built, presence } = params;
 
   await presence?.remove();
   built.listening.close();
-  await built.conversations.closeAll();
-  await presence?.release();
+
+  try {
+    await built.conversations.closeAll();
+  } finally {
+    // A conversation that fails to close must not leave the lock held until the process ends.
+    await presence?.release();
+  }
 }
 
 /**
@@ -25,7 +33,7 @@ async function closeServer(params: {
  * off, so no moment is left with none: Node's default action would end the process with the
  * file and the lock left behind.
  */
-function handleStopSignals(stop: (code: number) => void): () => void {
+export function handleStopSignals(stop: (code: number) => void): () => void {
   const listeners = STOP_SIGNALS.map(({ signal, code }) => ({
     signal,
     listener: () => {

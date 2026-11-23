@@ -36,6 +36,16 @@ export type StartOutcome =
     }
   | { status: 'refused'; message: string };
 
+/**
+ * What `startEmbeddedServer` ends with. `started`: a server of this process listens at `url` (on
+ * loopback) and is findable through its discovery file, so a caller that finds a server can check
+ * it is this one; `close` takes it down and is safe to call again. `refused`: another server holds
+ * the lock, with the message to show (never a token).
+ */
+export type EmbeddedStart =
+  | { status: 'started'; url: string; close: () => Promise<void> }
+  | { status: 'refused'; message: string };
+
 /** Everything built before the lock is taken: nothing here works, prints or listens yet. */
 export type BuiltServer = {
   listening: ServerType;
