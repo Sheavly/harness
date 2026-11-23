@@ -48,7 +48,12 @@
    tool move this session there. If installation or verification fails, keep the session in the
    original checkout, report the failure, and fix setup there. Never disable hooks to get in.
    Creating a worktree alone is not readiness; prompt submission must work and edit/stop checks
-   must have their tools installed.
+   must have their tools installed. Without a `session_move` tool the session stays in the
+   original checkout, and so do its hooks: tell the user which checkout the session is in, work in
+   the worktree with the commands' `cwd` or `git -C <worktree>` (the git guard reads the scopes and
+   the branch of the checkout the commit is made in; [troubleshooting.md](troubleshooting.md)), and
+   check that the hooks the session runs have that rule before the first commit, not after the
+   work is done.
 7. **Offer** to assign the issue (`gh issue edit 123 --add-assignee @me`) or move it on the project
    board ([issues.md](issues.md)); do it only if the user says yes.
 8. **Report** the planned commits and the branch. The next step is to write the first scope's code,

@@ -42,6 +42,8 @@ import {
 } from './shell-parse.utils.mjs';
 
 const QUOTED_PROSE = '__quoted__';
+const UNREADABLE_CHECKOUT =
+  "Can't tell which checkout this `git commit` is made in: a `cd` or `git -C` folder that is a variable, has `~` or a space, or does not exist, or `--git-dir`/`--work-tree`. Name it with an absolute path, `git -C <absolute worktree path> commit …`, so the guard can read that checkout's scopes and branch (see the /git skill, troubleshooting.md).";
 const COMMIT_FORMAT_FIX =
   'Fix the message (format and examples in .agents/skills/git/conventions.md); a reviewer reads the PR commit by commit, so each one needs it.';
 
@@ -91,18 +93,17 @@ function checkSegment(params) {
 
 /**
  * The checkout a commit's message is checked against: the one the command names (`git -C <dir>`,
- * a leading `cd`) when it is a worktree of the session's own repository, which has its own branch
- * and its own new packages and is where the commit lands; otherwise the session's checkout. A
- * repository the command made or points at is not believed, since it could carry any branch and
- * any packages. The command is read as text, like the message: a `cd` that is not first, `GIT_DIR`,
- * `--git-dir`, a second commit or text that only mentions `git -C` can still point it elsewhere,
- * so this is a net for the honest mistake, not a boundary; the PR's commit list is what a
- * reviewer reads.
+ * every `cd` before it) when it is a worktree of the session's own repository, which has its own
+ * branch and its own new packages and is where the commit lands; otherwise the session's checkout.
+ * A repository the command made or points at is not believed, since it could carry any branch and
+ * any packages. The command is read as text, like the message, so this is a net for the honest
+ * mistake, not a boundary: `GIT_DIR`, a second commit or an alias can still point it elsewhere,
+ * and the PR's commit list is what a reviewer reads.
  */
 function commitCheckout(params) {
-  const { command, cwd } = params;
+  const { dir, cwd } = params;
   const session = repoRoot(cwd) ?? PROJECT_ROOT;
-  const named = repoRoot(commitDirectory({ command, cwd }));
+  const named = repoRoot(dir);
 
   return named && sameRepo(named, session) ? named : session;
 }
@@ -110,7 +111,8 @@ function commitCheckout(params) {
 /**
  * Why a `git commit` command's message would fail the format, or null. The scopes and the branch
  * are those of the checkout the commit is made in (`commitCheckout`), not always of the folder
- * the session started in: a worktree has its own.
+ * the session started in: a worktree has its own. A folder the command names that this cannot
+ * read (a variable, `~`, a space, one that does not exist) is refused, not guessed.
  */
 function checkCommitCommand(params) {
   const { command, cwd } = params;
@@ -126,7 +128,11 @@ function checkCommitCommand(params) {
   // PR's commit list shows it to the reviewer.
   if (/\$[({A-Za-z_]/.test(read.message)) return null;
 
-  const root = commitCheckout({ command, cwd });
+  const target = commitDirectory({ command, cwd });
+
+  if (target.unreadable) return UNREADABLE_CHECKOUT;
+
+  const root = commitCheckout({ dir: target.dir, cwd });
   const branch = currentBranch(root);
   const where = root === (repoRoot(cwd) ?? PROJECT_ROOT) ? '' : ` of ${root}`;
   const problems = checkCommitMessage({

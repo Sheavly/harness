@@ -1,5 +1,6 @@
 // Shell command reading shared by the beforeShellExecution guards. Best-effort by design:
 // no regex reading of shell is complete (variables, eval, scripts written then run).
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 export function programName(token) {
@@ -75,13 +76,63 @@ const ANY_HEREDOC = /<<-?\s*(['"]?)(\w+)\1\n([\s\S]*?)\n\s*\2(?=\s|\)|$)/;
 const MESSAGE_VALUE = /(?:^|\s)(?:-m|--message)(?:\s+|=)("((?:[^"\\]|\\.)*)"|'([^']*)')/g;
 const FILE_VALUE = /(?:^|\s)(?:-F|--file)(?:\s+|=)(\S+)/;
 
-/** The text of `command` after its first `git … commit`, or null when it runs no commit. */
-function readCommitArgs(command) {
-  const match = /(?:^|[;&|\n(]\s*|\s)(?:\S*\/)?git(?:\s+-[Cc]\s+\S+)*\s+commit\b([\s\S]*)$/.exec(
-    command,
-  );
+// git's global options between `git` and `commit`: `-C <dir>`, `-c <k=v>`, the ones that name a
+// repository or folder (`--git-dir`, `--work-tree`, with `=` or a space), and any other long flag
+// (`--no-pager`), so none hides the commit from the guard.
+const OPTION_VALUE = String.raw`(?:[^\s"']|"[^"]*"|'[^']*')+`;
+const GIT_GLOBALS = String.raw`(?:\s+-[Cc]\s+${OPTION_VALUE}|\s+--(?:git-dir|work-tree|namespace|exec-path|super-prefix)(?:=|\s+)${OPTION_VALUE}|\s+--[a-z][a-z-]*(?:=\S+)?|\s+-[pP])*`;
+const GIT_COMMIT = new RegExp(
+  String.raw`(^|[;&|\n(]\s*|\s)(?:\S*\/)?git(${GIT_GLOBALS})\s+commit\b([\s\S]*)$`,
+);
 
-  return match ? match[1] : null;
+/**
+ * The first `git … commit` of `command`: `before` (the command up to the `git` word), `globals`
+ * (git's own options before `commit`) and `args` (the text after it), or null when it runs none.
+ * One parse, so the message and the folder it is made in are read from the same commit.
+ */
+function findCommit(command) {
+  const match = GIT_COMMIT.exec(command);
+
+  if (!match) return null;
+
+  return {
+    before: command.slice(0, match.index + match[1].length),
+    globals: match[2],
+    args: untilNextCommand(match[3]),
+  };
+}
+
+/**
+ * `text` up to the first `;`, `&&`, `||` or `|` outside quotes: what follows is another command,
+ * and its flags (`rg -C 2`, `git diff -C`) or heredoc (`gh pr create … <<EOF`) are not the commit's.
+ * A newline ends it too, unless a heredoc was opened before it (`-F - <<EOF`: its body follows).
+ */
+function untilNextCommand(text) {
+  let quote = null;
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+
+    if (quote) {
+      if (char === '\\' && quote === '"') index++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ';' || char === '|' || (char === '&' && text[index + 1] === '&')) {
+      return text.slice(0, index);
+    } else if (char === '\n' && !text.slice(0, index).includes('<<')) {
+      return text.slice(0, index);
+    }
+  }
+
+  return text;
+}
+
+/** `args` without its quoted values and heredoc bodies: only its own flags are left. */
+function flagsOf(args) {
+  return args
+    .replace(/<<-?\s*(['"]?)(\w+)\1\n[\s\S]*?\n\s*\2(?=\s|\)|$)/g, '')
+    .replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
 }
 
 /**
@@ -94,10 +145,14 @@ function readCommitArgs(command) {
  * - null when the command runs no commit.
  */
 export function readCommitMessage(command) {
-  const args = readCommitArgs(command);
+  const commit = findCommit(command);
 
-  if (args === null) return null;
-  if (REUSED_MESSAGE.test(args)) return { reused: true };
+  if (commit === null) return null;
+
+  const { args } = commit;
+
+  // Its own flags only: a message that mentions `-C` or `--no-edit` is still a message to check.
+  if (REUSED_MESSAGE.test(flagsOf(args))) return { reused: true };
 
   const heredoc = ANY_HEREDOC.exec(args);
 
@@ -114,31 +169,38 @@ export function readCommitMessage(command) {
   return file ? { file } : { editor: true };
 }
 
-const LEADING_CD = /^\s*cd\s+(\S+)\s*(?:&&|;)/;
-const GIT_OPTIONS_BEFORE_COMMIT =
-  /(?:^|[;&|\n(]\s*|\s)(?:\S*\/)?git((?:\s+-[Cc]\s+\S+)*)\s+commit\b/;
+const CD_BEFORE = /(?:^|[;&|\n('"]\s*)(?:cd|pushd)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)/g;
 const unquoted = (value) => value.replace(/^["']|["']$/g, '');
-/** A word the shell expands (a variable, a command, `~`, a glob): its folder is not known here. */
-const EXPANDED = /[$`~*?]/;
+// A folder written so the shell, not this reader, decides it: a variable, `~`, a command, a glob,
+// `cd -`, a quote left open by a space inside it, or a shell operator taken for the folder.
+const UNREADABLE_FOLDER = /[$`~*?\s]|^-|^["'][^"']*$|^(?:&&|\|\||;|\|)$/;
 
 /**
- * The folder the first `git commit` of `command` runs in: where the shell starts (`cwd`), moved by
- * a leading `cd <dir> &&` and by each `git -C <dir>` before `commit`, as git applies them. A
- * folder with spaces or variables in it is not read (the command's own `cwd` stands).
+ * The folder the first `git commit` of `command` runs in, and whether that could be read: where
+ * the shell starts (`cwd`), moved by every `cd` / `pushd <dir>` before the commit and by every
+ * `git -C <dir>` before `commit`, in order, as the shell and git apply them. `unreadable` is true
+ * when a folder is a variable, `~`, has a space, does not exist, or the commit names its
+ * repository with `--git-dir` or `--work-tree`: the guard then asks for `git -C <absolute dir>`
+ * instead of checking against a repository the commit may not land in.
  */
 export function commitDirectory(params) {
   const { command, cwd } = params;
-  const cd = LEADING_CD.exec(command)?.[1];
-  const options = GIT_OPTIONS_BEFORE_COMMIT.exec(command)?.[1] ?? '';
-  const words = [
-    ...(cd ? [unquoted(cd)] : []),
-    ...[...options.matchAll(/\s+-C\s+(\S+)/g)].map(([, value]) => unquoted(value)),
+  const commit = findCommit(command);
+  const targets = [
+    ...[...(commit?.before ?? '').matchAll(CD_BEFORE)].map((match) => match[1]),
+    ...[...(commit?.globals ?? '').matchAll(/\s+-C\s+("[^"]*"|'[^']*'|\S+)/g)].map(
+      (match) => match[1],
+    ),
   ];
+  let dir = cwd;
+  let unreadable = /--(?:git-dir|work-tree)\b/.test(commit?.globals ?? '');
 
-  // One folder the shell would expand makes the whole chain unknown, not just that step.
-  if (words.some((word) => EXPANDED.test(word))) return cwd;
+  for (const target of targets) {
+    if (UNREADABLE_FOLDER.test(target)) unreadable = true;
+    else dir = path.resolve(dir, unquoted(target));
+  }
 
-  return words.reduce((dir, word) => path.resolve(dir, word), cwd);
+  return { dir, unreadable: unreadable || (targets.length > 0 && !existsSync(dir)) };
 }
 
 /** The value of the first of `flags` (`-b x` or `--base=x`), or undefined. */

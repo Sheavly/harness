@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { commitDirectory } from '../shell-parse.utils.mjs';
 
 const CWD = '/work/repo';
-const dirOf = (command) => commitDirectory({ command, cwd: CWD });
+const dirOf = (command) => commitDirectory({ command, cwd: CWD }).dir;
+const unreadable = (command) => commitDirectory({ command, cwd: CWD }).unreadable;
 
 // The folder a `git commit` runs in decides which branch and which packages its message is
 // checked against, so it is read the way git and the shell apply `cd` and `-C`.
@@ -40,15 +41,26 @@ describe('commitDirectory', () => {
     expect(dirOf('git -C /a commit -m "x" && git -C /b commit -m "y"')).toBe('/a');
   });
 
-  it('does not read a folder with a space or a variable in it, and keeps the command’s own', () => {
-    expect(dirOf('git -C "/my dir" commit -m "x"')).toBe(CWD);
-    expect(dirOf('git -C $WT commit -m "x"')).toBe(CWD);
-    expect(dirOf('git -C "$HOME/wt" commit -m "x"')).toBe(CWD);
-    expect(dirOf('git -C ~/wt commit -m "x"')).toBe(CWD);
-    expect(dirOf('cd $WT && git commit -m "x"')).toBe(CWD);
-  });
+  it.each([
+    'git -C "/my dir" commit -m "x"',
+    'git -C $WT commit -m "x"',
+    'git -C "$HOME/wt" commit -m "x"',
+    'git -C ~/wt commit -m "x"',
+    'git -C /w/* commit -m "x"',
+    'cd $WT && git commit -m "x"',
+    'cd /a && git -C $B commit -m "x"',
+    'git --git-dir=/x/.git commit -m "x"',
+  ])(
+    'marks a folder it cannot read as unreadable, so the guard asks for it by name: %s',
+    (command) => {
+      expect(unreadable(command)).toBe(true);
+    },
+  );
 
-  it('keeps the command’s own folder when any step of the chain is unknown', () => {
-    expect(dirOf('cd /a && git -C $B commit -m "x"')).toBe(CWD);
+  it('is readable when the command names nothing, or a folder that exists', () => {
+    expect(unreadable('git commit -m "x"')).toBe(false);
+    expect(commitDirectory({ command: 'git -C /tmp commit -m "x"', cwd: CWD }).unreadable).toBe(
+      false,
+    );
   });
 });
