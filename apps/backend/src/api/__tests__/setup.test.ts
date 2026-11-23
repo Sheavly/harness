@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { filesHolding as holding } from '@sheavly/testing/files/files-holding.fake';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { modelCatalogResponseSchema } from '@sheavly/protocol/setup/setup.validator';
@@ -567,7 +567,12 @@ describe('a first run, set up only through the API', () => {
       body: { text: 'hi' },
     });
 
-    await prompt.text();
+    expect(await prompt.json()).toEqual({ status: 'started', queued: [] });
+    // Answered at once: the run goes on in the conversation, which is idle again once it ended.
+    await vi.waitFor(() => {
+      expect(conversations.list()).toMatchObject([{ running: false }]);
+      expect(reply.requests).toHaveLength(1);
+    });
     expect(JSON.stringify(reply.requests[0]?.headers)).toContain(KEY);
     expect(logged.join('')).not.toContain(KEY);
     await conversations.closeAll();

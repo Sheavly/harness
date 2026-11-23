@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_ROUTES } from '@sheavly/protocol/api/api.constants';
 import { createClient } from '@sheavly/client/client/client.helper';
 import { readEntries } from '@sheavly/client/client/entries.helper';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { reply, testApi } from '../../testing/api.fake.js';
 import { TEST_TOKEN } from '../../testing/testing.constants.js';
@@ -129,7 +130,7 @@ describe('the API’s guards', () => {
 
   it('ends a prompt whose run fails with a done as failed, and keeps serving', async () => {
     const written = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const { request, start, conversations } = testApi({
+    const { request, start, conversations, runOf } = testApi({
       boom: [
         () => {
           throw new Error('model down');
@@ -137,18 +138,21 @@ describe('the API’s guards', () => {
       ],
     });
     const id = await start();
-    // The response ends by itself: a failed run ends with its own `done`, like every other run.
-    const response = await request(`/conversations/${id}/prompts`, {
-      method: 'POST',
-      body: { text: 'boom' },
-    });
-    const frames = await response.text();
+    const entries = [];
+
+    // The run ends by itself: a failed run ends with its own `done`, like every other run.
+    for await (const { entry } of runOf({ id, text: 'boom' })) entries.push(entry);
+
+    const frames = JSON.stringify(entries);
 
     expect(frames).toContain('"type":"run_failed"');
     expect(frames).toContain('"type":"done"');
     expect(frames).toContain('"reason":"failed"');
     expect(frames).toContain('"lastOutcome":"failed"');
-    expect(written).toHaveBeenCalledWith('prompt failed: model down\n');
+    // Logged as the run that nobody awaits throws, just after its `done` reached the stream.
+    await vi.waitFor(() => {
+      expect(written).toHaveBeenCalledWith('prompt failed: model down\n');
+    });
     expect((await request(`/conversations/${id}/messages`)).status).toBe(200);
 
     written.mockRestore();
@@ -223,7 +227,7 @@ describe('over real HTTP, with the client UIs use', () => {
     const answered: string[] = [];
     const streamed: string[] = [];
 
-    for await (const entry of client.stream('sendPrompt', { id, body: { text: 'hi' } })) {
+    for await (const entry of promptEntries({ client, id, prompt: { text: 'hi' } })) {
       if (entry.kind === 'event' && entry.event.type === 'text_delta') {
         answered.push(entry.event.text);
       }
@@ -249,13 +253,21 @@ describe('over real HTTP, with the client UIs use', () => {
     const viewer = createClient({ url, token: TEST_TOKEN });
     const { id } = await editor.call('startConversation', { body: {} });
 
-    for await (const _entry of editor.stream('sendPrompt', { id, body: { text: 'telemetry' } }));
+    for await (const _entry of promptEntries({
+      client: editor,
+      id,
+      prompt: { text: 'telemetry' },
+    }));
 
     const stream = await viewer.open('streamConversation', { id, body: { replay: false } });
     const sent: HarnessNotice[] = [];
     const observed: HarnessNotice[] = [];
 
-    for await (const entry of editor.stream('sendPrompt', { id, body: { text: 'telemetry' } })) {
+    for await (const entry of promptEntries({
+      client: editor,
+      id,
+      prompt: { text: 'telemetry' },
+    })) {
       if (entry.kind === 'event' && entry.event.type === 'harness_notice') {
         sent.push(entry.event.notice);
       }
@@ -292,7 +304,7 @@ describe('over real HTTP, with the client UIs use', () => {
       body: { session: found.session },
     });
 
-    for await (const _entry of editor.stream('sendPrompt', { id, body: { text: 'hi' } }));
+    for await (const _entry of promptEntries({ client: editor, id, prompt: { text: 'hi' } }));
 
     const seen: string[] = [];
 

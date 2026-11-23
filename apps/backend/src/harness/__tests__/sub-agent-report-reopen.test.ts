@@ -2,9 +2,11 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { testBackend } from '../../testing/backend.fake.js';
+import { modelRequest } from '../../testing/model-request.fake.js';
 import { seedFakeModel } from '../../testing/seed-model.fake.js';
 
 // Flow rule 5: a finished sub-agent's report is a persistent notice, so a conversation closed and
@@ -12,22 +14,11 @@ import { seedFakeModel } from '../../testing/seed-model.fake.js';
 
 const TASK = 'REPORT_TASK';
 
-/** What a model call was asked: its first user message, and everything it was sent as one string. */
-async function readRequest(params: Parameters<typeof globalThis.fetch>) {
-  const body = JSON.parse(await new Request(...params).text()) as {
-    input: { role?: string; content?: string | { text: string }[] }[];
-  };
-  const first = body.input.find((item) => item.role === 'user')?.content;
-
-  return {
-    asked: typeof first === 'string' ? first : first?.map(({ text }) => text).join(''),
-    used: JSON.stringify(body.input),
-  };
-}
-
 /** The model: the parent starts one sub-agent, the sub-agent answers, the parent then ends. */
 const model: typeof globalThis.fetch = async (input, init) => {
-  const { asked, used } = await readRequest([input, init]);
+  const request = await modelRequest(input, init);
+  const asked = request.task;
+  const used = JSON.stringify(request.input);
   const answer = (delta: string) => fakeFetch([{ type: 'response.output_text.delta', delta }]);
 
   if (asked === TASK) return answer('Whole report text').fetch(input, init);
@@ -52,9 +43,9 @@ const model: typeof globalThis.fetch = async (input, init) => {
 
 /** Like `model`, but the sub-agent's call never answers: it ends only when it is aborted. */
 const hangingChild: typeof globalThis.fetch = async (input, init) => {
-  const { asked } = await readRequest([input, init]);
+  const { task } = await modelRequest(input, init);
 
-  if (asked !== TASK) return model(input, init);
+  if (task !== TASK) return model(input, init);
 
   return new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
@@ -106,7 +97,7 @@ async function afterOnePrompt(params: {
     const { client } = backend;
     const { id } = await client.call('startConversation', { body: {} });
 
-    for await (const _entry of client.stream('sendPrompt', { id, body: { text: 'go' } })) {
+    for await (const _entry of promptEntries({ client, id, prompt: { text: 'go' } })) {
       // Drained to the end of the parent's turn.
     }
 

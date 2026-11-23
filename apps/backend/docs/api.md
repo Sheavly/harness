@@ -23,10 +23,10 @@ without one (the contract marks them `public`; every other route needs the token
 | `POST /conversations`, `{ messages?, workspace?, profile?, model?, effort? }` | `201 { id }`: a new conversation, continuing `messages`, in `workspace` on `profile`, starting on `model` (an id or a name) and reasoning effort `effort` (`low`, `medium`, `high` or `extreme`); both for this conversation only, not remembered |
 | `GET /conversations/:id`                                                      | its run: workspace, models, trust, the permission mode, the working root                                                                                                                                                                          |
 | `PUT /conversations/:id/model`, `{ id }`                                      | `204`: one of its models, by id, from the next model call                                                                                                                                                                                         |
-| `POST /conversations/:id/prompts`                                             | the prompt's entries as SSE, ending with its `done`                                                                                                                                                                                               |
+| `POST /conversations/:id/prompts`                                             | `200 { status, queued }` at once: the prompt `started`, or waits in the queue (`queued`) while the conversation is busy; its entries arrive on `QUERY /stream`                                                                                    |
 | `POST /conversations/:id/yield`                                               | `200 { accepted }`: the running prompt ends at its completion point, background work left running; false when idle or stopping                                                                                                                    |
-| `GET /conversations/:id/queue`                                                | `{ queued }`: the lines queued behind the running prompt; kept across a restart, outside history, and never sent by reopening                                                                                                                     |
-| `PUT /conversations/:id/queue`, `{ queued }`                                  | `204`: replaces the queued lines whole                                                                                                                                                                                                            |
+| `GET /conversations/:id/queue`                                                | `{ queued }`: the lines waiting to start; kept across a restart, outside history, and never started by reopening                                                                                                                                  |
+| `PUT /conversations/:id/queue`, `{ queued }`                                  | `204`: replaces the waiting lines whole; they start in their new order                                                                                                                                                                            |
 | `QUERY /conversations/:id/stream`                                             | every entry, as SSE, while the client stays                                                                                                                                                                                                       |
 | `POST /conversations/:id/stop`                                                | `204`: the running prompt stops; history stays valid                                                                                                                                                                                              |
 | `POST /conversations/:id/approvals/:approval`                                 | `204`: the waiting approval is answered                                                                                                                                                                                                           |
@@ -197,8 +197,15 @@ Both SSE answers send the same frames: `event: entry`, `id: <seq>`, `data: <Stre
 `seq` counts the conversation's whole combined stream with no gaps, so a client knows when it
 missed one.
 
-- A prompt's response is that prompt: its first entry is the session resuming (or starting), its
-  last the main session's `done`. A script sends a prompt and reads its answer in one request.
+- **A prompt is answered at once.** `POST /prompts` never holds the request open for a run: the
+  prompt `started`, or it waits in the conversation's queue while a prompt, or a run the
+  conversation started itself for finished work, goes. The conversation starts each waiting line
+  when what runs has ended, after the model has finished when the run waits on `await_tasks`
+  (flow rules 3 and 4), and reads the run itself, so it runs whoever is connected. A client follows
+  `QUERY /stream`, opened before it sends, for what the prompt does: a `queue` entry
+  (`prompt_started`) comes before the run's events, and the main session's `done` ends it.
+  `@sheavly/client`'s `promptEntries` does this for a script. A `parts` prompt, a line over 20,000
+  characters or a 101st line to a busy conversation is refused with `409 cannot_queue`.
 - `QUERY /stream` follows the whole conversation: every prompt, sub-agents, approvals and
   background tasks starting and ending (`kind: 'task'`, under the session whose tool started
   one). Its body filters it (`session`, with `subtree` the session's sub-agents too) and `replay`
@@ -216,12 +223,10 @@ missed one.
   dropped, and the client resumes after the last entry it got (`Last-Event-ID`), so nothing is
   lost and the server's memory per stream is bounded. `@sheavly/client`'s `reconnectingEntries`
   does this for a stream with no end of its own, such as `QUERY /stream` (`endless`), where an end
-  can only be a cut. A prompt's response cut this way ends without its `done`: the prompt keeps
-  running, and the client reads the rest from `QUERY /stream` with `Last-Event-ID`. The bound
-  counts live entries only; a replay of history is sent whole. Without a store, a resume reaches
-  back only as far as the entries kept in memory (`ENTRY_TAIL_SIZE`); this backend always has one.
-- A prompt's response starts at the prompt's own `session_resumed`, so entries made while its
-  skills were being prepared (a task ending, an approval) are not mixed into it.
+  can only be a cut: the prompt keeps running, and the client reads the rest with
+  `Last-Event-ID`. The bound counts live entries only; a replay of history is sent whole. Without
+  a store, a resume reaches back only as far as the entries kept in memory (`ENTRY_TAIL_SIZE`);
+  this backend always has one.
 - A `done` in the stream carries no history; `GET /messages` has it.
 - A quiet stream gets a `: heartbeat` comment every 15 seconds, and `X-Accel-Buffering: no`, so a
   proxy in between neither closes nor buffers it.
@@ -236,15 +241,16 @@ An editor and an agent window can be views of one conversation. One starts it; t
 with `GET /conversations` (each entry has its `id`, `title`, main `session`, whether it is
 `running`, and `startedAt`) and opens its own `QUERY /stream`, with `replay` to catch up. Each
 then sees every prompt either sends, live and in the same order. Either can send the next prompt:
-a second one while the first runs gets `409 session_running`. Either can answer an approval: the
+one sent while another runs waits in the queue, which both see. Either can answer an approval: the
 first answer counts, and a later one gets `unknown_approval`.
 
-There is no way to send text to a running prompt: a client keeps its own queue and sends the next
-prompt after the run ends. To not wait for background tasks or sub-agents, it first calls
-`POST /conversations/:id/yield` (no body). The running prompt then ends as `completed` at its
-completion point, background work keeps running and its results reach the next prompt. A run held
-on `await_tasks` ignores the yield while its grouped tasks run, and is still accepted; once they settle the run ends at its next completion point. It returns
-JSON `{ accepted: true }`, or `{ accepted: false }` when the conversation is idle or its run is
+There is no way to send text to a running prompt: it waits in the queue, and the conversation asks
+what runs to yield so the line starts once the model finishes its turn rather than after background
+work. `POST /conversations/:id/yield` (no body) asks the same by itself: the running prompt ends as
+`completed` at its completion point, background work keeps running and its results reach the next
+prompt. A run held on `await_tasks` ignores the yield while its grouped tasks run, and is still
+accepted; once they settle the run ends at its next completion point. It returns JSON
+`{ accepted: true }`, or `{ accepted: false }` when the conversation is idle or its run is
 stopping. Unknown ids return `404 not_found`.
 
 ## Approvals
@@ -266,7 +272,8 @@ Every failure is `{ error: { code, message } }` (`ServerError`):
 | 401    | `unauthorized`     | no token, or a wrong one, on any route but `GET /health` and `QUERY /handshake`; also an unknown path, an `OPTIONS` request and another method on those two paths                                                                                                |
 | 404    | `not_found`        | no such conversation (or route), or one already closed                                                                                                                                                                                                           |
 | 404    | `unknown_approval` | no approval waiting with that id                                                                                                                                                                                                                                 |
-| 409    | `session_running`  | a prompt is still running in that conversation                                                                                                                                                                                                                   |
+| 409    | `session_running`  | a prompt is still being prepared or running in that conversation, for a client that sends with `send` in-process                                                                                                                                                 |
+| 409    | `cannot_queue`     | the conversation is busy and this prompt cannot wait: it picks skills as `parts`, it is over 20,000 characters, or 100 lines already wait                                                                                                                        |
 | 422    | `unknown_skill`    | `parts` picked a skill no one has                                                                                                                                                                                                                                |
 | 422    | `unknown_model`    | `PUT /model` named an id the conversation hasn't                                                                                                                                                                                                                 |
 | 500    | `internal`         | the server failed; the message never holds its details                                                                                                                                                                                                           |

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HistoryLog } from '@sheavly/core/store/store.types';
 import type { ConversationStorage } from '@sheavly/host/conversations/conversations.types';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { profileIdSchema } from '@sheavly/protocol/profile/profile.validator';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
@@ -165,7 +166,7 @@ describe('conversation usage over the API', () => {
       });
 
       for (const text of ['first', 'second']) {
-        for await (const _entry of client.stream('sendPrompt', { id, body: { text } })) {
+        for await (const _entry of promptEntries({ client, id, prompt: { text } })) {
           // Drain the stream so its final usage and history have been recorded.
         }
       }
@@ -204,7 +205,7 @@ describe('conversation usage over the API', () => {
         0.00054,
       );
 
-      for await (const _entry of client.stream('sendPrompt', { id, body: { text: 'third' } })) {
+      for await (const _entry of promptEntries({ client, id, prompt: { text: 'third' } })) {
         // The new call is priced with the provider built on reopen, not the earlier call's rates.
       }
 

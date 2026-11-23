@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { ScopeArgumentError } from '@sheavly/host/errors/scopes.errors';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { TaskError } from '@sheavly/runtime/errors/tasks.errors';
+import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { MemoryOutputStore } from '@sheavly/testing/store/memory-output.fake';
 import { scopeProbe } from '../../testing/scope-probe.fake.js';
 import { PROBE_KINDS } from '../../testing/testing.constants.js';
@@ -19,7 +20,14 @@ const open = useBackendRuns();
 const DENIED_SURFACE = [
   {
     action: 'publish to the stream',
-    names: ['publish', 'publishApproval', 'publishTask', 'subscribeEntries', 'stream'],
+    // Every way the registry adds to the stream, read from it so a new one is denied too.
+    names: [
+      ...Object.getOwnPropertyNames(SessionRegistry.prototype).filter((name) =>
+        name.startsWith('publish'),
+      ),
+      'subscribeEntries',
+      'stream',
+    ],
   },
   {
     action: 'end, idle, resume or release a session',

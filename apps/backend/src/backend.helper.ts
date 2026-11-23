@@ -14,6 +14,7 @@ import { createReplayDropLog } from './profiles/replay-drop-log.helper.js';
 import type { ProfileSetup } from './profiles/setup.service.js';
 import type { WorkspaceSetup } from './profiles/workspace-setup.service.js';
 import { KeyedLocks } from '@sheavly/runtime/locks/keyed-locks.service';
+import { logPromptFailure } from './api/prompt-failure.helper.js';
 
 /**
  * The backend's two halves, built on one set of profiles so a change made through `setup` shows in
@@ -75,6 +76,7 @@ export function createBackend(params: {
     }),
     conversations: new Conversations({
       store: places,
+      onPromptFailure: logPromptFailure,
       create: (asked) =>
         servedConversation({
           env,
