@@ -3,7 +3,13 @@ import { doneReasonSchema } from '../../event/event.validator.js';
 import { turnStopReasonSchema } from '../../message/message.validator.js';
 import { runOutcomeSchema, sessionStateSchema } from '../../session/session.validator.js';
 import { taskStatusSchema } from '../../task/task.validator.js';
-import { RUN_OUTCOMES, SESSION_STATES, STATUS_TABLE, TASK_STATUSES } from '../status.constants.js';
+import {
+  NODE_STATES,
+  RUN_OUTCOMES,
+  SESSION_STATES,
+  STATUS_TABLE,
+  TASK_STATUSES,
+} from '../status.constants.js';
 import { canTransition, isConsistentSession, statusTableMarkdown } from '../status.utils.js';
 
 const OPEN = ['running', 'idle'];
@@ -12,6 +18,43 @@ describe('the status table', () => {
   it('has a row for every state and only those', () => {
     expect(Object.keys(STATUS_TABLE.session)).toEqual([...SESSION_STATES]);
     expect(Object.keys(STATUS_TABLE.task)).toEqual([...TASK_STATUSES]);
+    expect(Object.keys(STATUS_TABLE.node)).toEqual([...NODE_STATES]);
+  });
+
+  it('lists as moves of a node only states that exist', () => {
+    for (const next of Object.values(STATUS_TABLE.node)) {
+      for (const state of next) expect(NODE_STATES).toContain(state);
+    }
+  });
+
+  it.each(NODE_STATES.flatMap((from) => NODE_STATES.map((to) => [from, to] as const)))(
+    'node %s -> %s is allowed only as the table says',
+    (from, to) => {
+      const listed = (STATUS_TABLE.node[from] as readonly string[]).includes(to);
+
+      expect(canTransition({ machine: 'node', from, to })).toBe(listed);
+    },
+  );
+
+  it('lets a node end once: running and idle move on, a terminal state is final', () => {
+    const terminal = ['completed', 'failed', 'cancelled', 'lost'];
+
+    for (const state of NODE_STATES) {
+      expect(STATUS_TABLE.node[state].length === 0).toBe(terminal.includes(state));
+    }
+
+    for (const from of terminal) {
+      for (const to of NODE_STATES) {
+        expect(canTransition({ machine: 'node', from: from as 'failed', to })).toBe(false);
+      }
+    }
+  });
+
+  it('lets an agent go idle and run again, and refuses to run again after ending', () => {
+    expect(canTransition({ machine: 'node', from: 'running', to: 'idle' })).toBe(true);
+    expect(canTransition({ machine: 'node', from: 'idle', to: 'running' })).toBe(true);
+    expect(canTransition({ machine: 'node', from: 'failed', to: 'running' })).toBe(false);
+    expect(canTransition({ machine: 'node', from: 'lost', to: 'running' })).toBe(false);
   });
 
   it('lists as moves only states that exist', () => {
@@ -99,7 +142,7 @@ describe('the guide table', () => {
   it('has a row for every state of every machine', () => {
     const rows = statusTableMarkdown().split('\n').slice(2);
 
-    expect(rows).toHaveLength(SESSION_STATES.length + TASK_STATUSES.length);
+    expect(rows).toHaveLength(SESSION_STATES.length + TASK_STATUSES.length + NODE_STATES.length);
     expect(rows[0]).toBe(
       '| session | `running` | idle, completed, interrupted, max_turns, max_tokens, context_window_exceeded, failed |',
     );
