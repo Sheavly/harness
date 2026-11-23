@@ -17,6 +17,13 @@ const PROCESS_MODULES = ['child_process', 'node:child_process'].flatMap((name) =
   name,
   `${name}/*`,
 ]);
+
+/**
+ * The import restriction on starting a process, for a folder that sets `no-restricted-imports` of
+ * its own on top of the service folder's: it must repeat this one (see below).
+ */
+export const PROCESS_RESTRICTION = { group: PROCESS_MODULES, message: PROCESS_MESSAGE };
+
 /** The one file that wraps the real programs, however it is written in an import. */
 const REAL_TOOLS = ['**/system.helper', '**/system.helper.js'];
 
@@ -33,7 +40,7 @@ const PROCESS_SPECIFIER = '/^(node:)?child_process(\\/.*)?$/';
 const REAL_TOOLS_SPECIFIER = '/(^|\\/)system\\.helper(\\.js)?$/';
 
 /** The `no-restricted-syntax` selectors for a dynamic import of `specifier`, literal or template. */
-function dynamicImports(params) {
+export function dynamicImports(params) {
   const { specifier, message } = params;
 
   return [
@@ -44,6 +51,20 @@ function dynamicImports(params) {
     },
   ];
 }
+
+/**
+ * The dynamic-import selectors for a process and for the real tools, for a block that sets
+ * `no-restricted-syntax` of its own over the same files: a rule set twice keeps only the later
+ * options, so it must repeat these.
+ */
+export const PROCESS_DYNAMIC_IMPORTS = dynamicImports({
+  specifier: PROCESS_SPECIFIER,
+  message: PROCESS_MESSAGE,
+});
+export const REAL_TOOLS_DYNAMIC_IMPORTS = dynamicImports({
+  specifier: REAL_TOOLS_SPECIFIER,
+  message: REAL_TOOLS_MESSAGE,
+});
 
 const EXTENSIONS = '{ts,tsx,js,mjs}';
 
@@ -68,11 +89,7 @@ export const systemdConfinement = [
           ],
         },
       ],
-      'no-restricted-syntax': [
-        'error',
-        ...dynamicImports({ specifier: PROCESS_SPECIFIER, message: PROCESS_MESSAGE }),
-        ...dynamicImports({ specifier: REAL_TOOLS_SPECIFIER, message: REAL_TOOLS_MESSAGE }),
-      ],
+      'no-restricted-syntax': ['error', ...PROCESS_DYNAMIC_IMPORTS, ...REAL_TOOLS_DYNAMIC_IMPORTS],
     },
   },
   {
@@ -83,10 +100,7 @@ export const systemdConfinement = [
         'error',
         { patterns: [{ group: REAL_TOOLS, message: REAL_TOOLS_MESSAGE }] },
       ],
-      'no-restricted-syntax': [
-        'error',
-        ...dynamicImports({ specifier: REAL_TOOLS_SPECIFIER, message: REAL_TOOLS_MESSAGE }),
-      ],
+      'no-restricted-syntax': ['error', ...REAL_TOOLS_DYNAMIC_IMPORTS],
     },
   },
 ];

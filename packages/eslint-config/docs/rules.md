@@ -600,6 +600,25 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   message, is held by `connection.processes.test.ts` and review, and the lint covers only the
   slice of it that is `console`, `process` and the streams. Nor does it pin that `cli.ts` passes
   the right lookup (`findVerifiedServer`); the process tests, which run the real command, do.
+- **The launcher's server start** (`serverStartConfinement`, three config blocks the `sheavly` app
+  spreads after `systemdConfinement` and before `connectionConfinement`, not a `harness/*` rule:
+  `no-restricted-imports` and `no-restricted-syntax` with a message): `sheavly setup` may run on a
+  short-lived server of its own when none is running, started by `startEmbeddedServer` of
+  `@sheavly/backend/run-server/embedded-server.helper` (an entry `LAUNCHER_ENTRIES` lists). Only
+  `apps/sheavly/src/cli.ts` imports that module and hands it to `setup`: `chat`, `connection`,
+  `doctor`, `service` and every other file of the app (tests and fakes excepted, which may start a
+  real one on purpose) are refused an import, a re-export or a dynamic `import('…')` of it, written
+  as a string literal or a template literal without expressions. `runServer`, which `serve` uses,
+  stays importable as before: this confines the embedded server, not every way to start one. The
+  blocks mirror the systemd ones (the service folder, the rest of the app, and the wrapper
+  `apps/sheavly/src/service/system.helper.ts`, which the systemd blocks leave alone because it
+  starts the real programs), and repeat what those refuse (a process in the service folder, the real systemd tools
+  everywhere, and the dynamic imports of both), for both rules, because a rule set twice for one
+  file keeps only the later options. `connectionConfinement` comes after them, so its own, stricter
+  list wins in its folder. `server-start-confinement.test.js` lints the real launcher config and
+  pins the refusal in each command, in the service folder and in the wrapper, the exceptions, and
+  what the systemd blocks refused before. It does not see `createRequire` or a specifier held in a
+  variable, which stay with review.
 - **File writes** (`harness/no-direct-file-writes`, source files; tests and fakes write fixtures
   into temp folders and are exempt): no import of a function that creates, changes, moves or
   deletes a file or folder from `node:fs` or `node:fs/promises` (`writeFile`, `appendFile`,
