@@ -3,6 +3,8 @@ import { Conversations } from '@sheavly/host/conversations/conversations.service
 import type { AdapterRegistry } from '@sheavly/providers/registry/registry.service';
 import { sheavlyHome } from '@sheavly/storage/home/home.helper';
 import { servedConversation } from './harness/served.helper.js';
+import { createBackendLogs } from './logging/backend-logs.helper.js';
+import type { BackendLogs } from './logging/logging.types.js';
 import type { ServedSettings } from './harness/harness.types.js';
 import { SearchChains } from './harness/search-chains.service.js';
 import { parseRequestEnv } from './harness/settings.validator.js';
@@ -14,7 +16,7 @@ import { createReplayDropLog } from './profiles/replay-drop-log.helper.js';
 import type { ProfileSetup } from './profiles/setup.service.js';
 import type { WorkspaceSetup } from './profiles/workspace-setup.service.js';
 import { KeyedLocks } from '@sheavly/runtime/locks/keyed-locks.service';
-import { logPromptFailure } from './api/prompt-failure.helper.js';
+import { LOG_EVENT } from './logging/logging.constants.js';
 
 /**
  * The backend's two halves, built on one set of profiles so a change made through `setup` shows in
@@ -26,7 +28,7 @@ import { logPromptFailure } from './api/prompt-failure.helper.js';
  *
  * `adapters` is for a test's fake `fetch`. `log` hears what a person should see: models and skills
  * that were left out, each model call with `SHOW_MODEL_CALLS`, and stored conversations that
- * can't be used. `remoteSetupAllowed` is whether this backend may hand out access over a network
+ * can't be used; `logs` takes the failures that end without a caller to tell. `remoteSetupAllowed` is whether this backend may hand out access over a network
  * (a key, a trust; see `ProfileSetup`).
  */
 export function createBackend(params: {
@@ -40,6 +42,7 @@ export function createBackend(params: {
   setup: ProfileSetup;
   workspaces: WorkspaceSetup;
   permissions: PermissionSetup;
+  logs: BackendLogs;
 } {
   const { env, settings, log, remoteSetupAllowed, adapters } = params;
   const profiles = new Profiles({
@@ -57,6 +60,8 @@ export function createBackend(params: {
     fallbackWorkspace: settings.workspaceRoot ?? process.cwd(),
     onProblem: ({ file, message }) => log(`Stored conversation ${file} is left out: ${message}\n`),
   });
+  // Where an error ends is logged here: stderr, and a file under the home (see `BackendLogs`).
+  const logs = createBackendLogs({ home: sheavlyHome(env), places, log });
   // One set for every conversation of this backend: they key by real path, so two conversations
   // editing one file take turns, whichever profile each runs on.
   const fileLocks = new KeyedLocks();
@@ -64,6 +69,7 @@ export function createBackend(params: {
   const searchChains = new SearchChains();
 
   return {
+    logs,
     setup: profiles.setup({ request: parseRequestEnv(env), remoteSetupAllowed }),
     // The same trust store the conversations read, so a grant shows in the next one.
     workspaces: profiles.workspaces({ trust: trustStore, remoteSetupAllowed }),
@@ -76,7 +82,8 @@ export function createBackend(params: {
     }),
     conversations: new Conversations({
       store: places,
-      onPromptFailure: logPromptFailure,
+      onPromptFailure: ({ id, error }) =>
+        logs.conversation(id).error(LOG_EVENT.PROMPT_FAILED, { error }),
       create: (asked) =>
         servedConversation({
           env,
@@ -89,6 +96,7 @@ export function createBackend(params: {
           fileLocks,
           searchChains,
           log,
+          logs,
         }),
     }),
   };

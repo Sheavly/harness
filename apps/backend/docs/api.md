@@ -307,8 +307,12 @@ A prompt that can't start is answered with an error before its stream opens.
   There is still no rate limit and no limit on the number of
   connections: a client that opens many connections, or many fast requests, is not stopped.
 - `internal` errors never carry their message: it can hold paths or a provider's reply. The
-  server's own log gets one line, `api: request failed: <name>: <message>`, cleaned of control
-  characters and cut, never a stack.
+  backend logs each one once as `api.request_failed` (the route's pattern and status, and the
+  error with its stack and cause chain, redacted by `@sheavly/logger`): to the conversation's
+  `log.jsonl` when the route has a conversation id, else to `~/.sheavly/logs/backend.jsonl`, and
+  as a JSON line to stderr. A prompt the conversation runs itself, one a send started
+  or one from its queue, that fails with nobody awaiting it (`prompt.failed`), and a run it starts
+  itself for finished work (`conversation.wake_run_failed`), are logged the same way. See [debugging](../../../.agents/skills/sheavly/debugging.md) for reading them with `jq`.
 
 ## Hosting it elsewhere
 

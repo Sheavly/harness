@@ -3,10 +3,13 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
+import { routePath } from 'hono/route';
 import { API_ROUTES } from '@sheavly/protocol/api/api.constants';
 import type { ApiRoute, RouteName } from '@sheavly/protocol/api/api.types';
-import { printable } from '../log/printable.utils.js';
-import { MAX_BODY_BYTES, MAX_LOGGED_ERROR_CHARS, PUBLIC_MAX_BODY_BYTES } from './api.constants.js';
+import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
+import { LOG_EVENT } from '../logging/logging.constants.js';
+import type { BackendLogs } from '../logging/logging.types.js';
+import { MAX_BODY_BYTES, PUBLIC_MAX_BODY_BYTES } from './api.constants.js';
 import type { ApiHandlers, ApiOptions } from './api.types.js';
 import { honoPath, routeNamesByAccess, toApiFailure } from './api.utils.js';
 import { validJson } from './api.validator.js';
@@ -73,10 +76,11 @@ function addRoute(params: { app: Hono; name: RouteName; handlers: ApiHandlers })
  * routes the contract marks `public`, with request bodies capped and every failure answered as a
  * `ServerError`. It turns requests into calls on `conversations` and `setup` and adds no
  * behaviour of its own. `serve.ts` decides how to listen and closes the conversations when it
- * stops. It logs no request: a future request log must leave out the handshake's body.
+ * stops. It logs no request, only a failure it answers as `internal` (`logs`): a future request
+ * log must leave out the handshake's body.
  */
 export function createApiApp(options: ApiOptions): Hono {
-  const { conversations, setup, workspaces, permissions, token, instanceId, serverVersion, log } =
+  const { conversations, setup, workspaces, permissions, token, instanceId, serverVersion, logs } =
     options;
   const handlers: ApiHandlers = {
     ...identityHandlers({ token, instanceId, serverVersion }),
@@ -115,15 +119,30 @@ export function createApiApp(options: ApiOptions): Hono {
 
       // The client is told nothing of an internal failure, so the log must be: without it a bad
       // file or a broken store is a bare 500 nobody can trace.
-      if (code === 'internal') log?.(`${internalFailureLine(error)}\n`);
+      if (code === 'internal') logInternalFailure({ c, error, status, logs });
 
       return c.json({ error: { code, message } }, status);
     });
 }
 
-/** `api: request failed: <name>: <message>`, cut and cleaned: a message can hold what a request sent. */
-function internalFailureLine(error: Error): string {
-  const text = (value: string) => printable({ text: value, max: MAX_LOGGED_ERROR_CHARS });
+/**
+ * Logs a failure the client is told only as `internal`, once: to the conversation's log when the
+ * route has a conversation id, else the server's. The entry has the error's stack and cause
+ * chain, which the logger redacts, and the route's pattern, never the URL or the body.
+ */
+function logInternalFailure(params: {
+  c: Context;
+  error: Error;
+  status: number;
+  logs: BackendLogs;
+}): void {
+  const { c, error, status, logs } = params;
+  const id = conversationIdSchema.safeParse(c.req.param('id'));
+  const logger = id.success ? logs.conversation(id.data) : logs.server;
 
-  return `api: request failed: ${text(error.name)}: ${text(error.message)}`;
+  logger.error(LOG_EVENT.API_REQUEST_FAILED, {
+    error,
+    route: `${c.req.method} ${routePath(c, -1)}`,
+    status,
+  });
 }

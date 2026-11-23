@@ -19,8 +19,10 @@ import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { createDefaultRegistry } from '@sheavly/providers/registry/default-registry.helper';
 import { createApiApp } from '../api/api.helper.js';
-import { logPromptFailure } from '../api/prompt-failure.helper.js';
 import { parseRequestEnv } from '../harness/settings.validator.js';
+import { LOG_EVENT } from '../logging/logging.constants.js';
+import type { BackendLogs } from '../logging/logging.types.js';
+import { silentLogs } from './logs.fake.js';
 import { permissionStoreFor } from '../profiles/home.helper.js';
 import { PermissionSetup } from '../profiles/permission-setup.service.js';
 import { Profiles } from '../profiles/profiles.service.js';
@@ -109,6 +111,7 @@ export function testApi(
   scripts: Record<string, Script[]>,
   store?: ConversationStore,
   setup: ProfileSetup = testSetup({ home: path.join(tmpdir(), `sheavly-unused-${randomUUID()}`) }),
+  logs: BackendLogs = silentLogs(),
 ) {
   const unused = path.join(tmpdir(), `sheavly-unused-${randomUUID()}`);
   const workspaces = testWorkspaces({ home: unused });
@@ -120,7 +123,8 @@ export function testApi(
   });
   const conversations = new Conversations({
     ...(store && { store }),
-    onPromptFailure: logPromptFailure,
+    onPromptFailure: ({ id, error }) =>
+      logs.conversation(id).error(LOG_EVENT.PROMPT_FAILED, { error }),
     create: async ({ messages, storage }) => {
       const harness = createHarness({
         provider: routedProvider(scripts),
@@ -153,6 +157,7 @@ export function testApi(
     token: TEST_TOKEN,
     instanceId: TEST_INSTANCE_ID,
     serverVersion: TEST_SERVER_VERSION,
+    logs,
   });
   const request = async (path: string, init: TestRequest = {}) =>
     app.request(path, {

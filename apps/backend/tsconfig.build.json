@@ -30,6 +30,9 @@
       "path": "../../packages/host/tsconfig.build.json"
     },
     {
+      "path": "../../packages/logger/tsconfig.build.json"
+    },
+    {
       "path": "../../packages/loop/tsconfig.build.json"
     },
     {
