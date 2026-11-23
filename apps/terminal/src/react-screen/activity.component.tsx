@@ -30,6 +30,7 @@ export function Activity(props: ActivityProps) {
     state,
     thinking: props.thinking,
     awaitedTasks: props.awaitedTasks,
+    queued: props.queued,
   });
   const icon = working && !reducedMotion ? frames[frame % frames.length] : '●';
   // Read on every tick: tool elapsed times advance even without the spinner.

@@ -78,6 +78,18 @@ describe('reportChatFailure', () => {
     expect(error).toHaveBeenCalledWith(`${'a.'.repeat(500_000)} http://host/x`);
   });
 
+  it('says what caused it, and drops the credentials of a URL in the cause too', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    reportChatFailure(
+      new TypeError('fetch failed', {
+        cause: new Error('connect ECONNREFUSED http://user:a-secret@127.0.0.1:4310'),
+      }),
+    );
+
+    expect(error).toHaveBeenCalledWith('fetch failed (connect ECONNREFUSED http://127.0.0.1:4310)');
+  });
+
   it('prints a thrown value that is not an error as text', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 

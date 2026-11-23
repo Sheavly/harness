@@ -220,7 +220,8 @@ adding their paths to a prompt's `areas` would select a model run without exerci
 
 A run does not end at the prompt's own `done`. The backend ends a prompt when the model does, even
 while background commands or sub-agents run, then starts a run of its own to deliver what finished.
-That run reaches a UI only through the live feed, so the workbook follows it alongside the prompt,
+The backend answers the prompt at once and every run's entries come on the conversation's stream;
+the prompt's own entries stop at its `done`, so the workbook also follows the whole stream,
 shows each entry once by `seq`, and saves the run once no command or sub-agent runs and the
 conversation is idle (at most ten minutes after the prompt ends). A check on background work
 therefore sees the delivered results even when the model never calls `await_tasks`.

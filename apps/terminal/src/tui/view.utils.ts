@@ -112,18 +112,23 @@ export function runningToolsText(params: {
   return `⏺ ${what} ${String(elapsed)}s`;
 }
 
-/** The state's words; `thinking...` only while working, so waiting for approval keeps its own. */
+/**
+ * The state's words; `thinking...` only while working, so waiting for approval keeps its own. A
+ * run held on grouped tasks says follow-ups are queued only while the backend's queue holds one.
+ */
 export function statusLabel(params: {
   state: StatusInfo['state'];
   thinking: boolean | undefined;
   awaitedTasks?: number | undefined;
+  queued?: number | undefined;
 }): string {
   if (params.state === 'waiting') return 'waiting for you';
 
   if (params.state === 'awaiting_tasks') {
     const count = params.awaitedTasks ?? 0;
+    const waiting = `waiting on ${String(count)} ${count === 1 ? 'task' : 'tasks'}`;
 
-    return `waiting on ${String(count)} ${count === 1 ? 'task' : 'tasks'} · follow-ups are queued`;
+    return (params.queued ?? 0) > 0 ? `${waiting} · follow-ups are queued` : waiting;
   }
 
   if (params.state === 'working' && params.thinking) return 'thinking...';
@@ -164,7 +169,7 @@ export function statusText(params: { info: StatusInfo; palette?: Palette }): str
     working: status.warning(`● ${statusLabel({ state: 'working', thinking: info.thinking })}`),
     waiting: status.warning('● waiting for you'),
     awaiting_tasks: status.warning(
-      `● ${statusLabel({ state: 'awaiting_tasks', thinking: undefined, awaitedTasks: info.awaitedTasks })}`,
+      `● ${statusLabel({ state: 'awaiting_tasks', thinking: undefined, awaitedTasks: info.awaitedTasks, queued: info.queued })}`,
     ),
   }[info.state];
   const tasks = backgroundText({

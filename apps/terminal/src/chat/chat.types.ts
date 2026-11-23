@@ -34,16 +34,21 @@ export type ChatInput =
 /** What the chat needs of a conversation: a `RemoteConversation`, or a stand-in for a test. */
 export type ChatConversation = Pick<
   RemoteConversation,
-  'send' | 'yieldPrompt' | 'skills' | 'details' | 'useModel'
-> &
-  Partial<Pick<RemoteConversation, 'queue' | 'setQueue' | 'stop'>>;
+  'submit' | 'skills' | 'details' | 'useModel' | 'setQueue' | 'stop'
+>;
 
 /**
- * How a message ended: the main run's outcome from its `done`, or `failed` when the prompt threw
- * before one arrived (the backend went away, a request was refused). A stopped prompt is
- * `interrupted`, never `completed`. The same vocabulary as a run's, so a UI maps it once.
+ * How a message ended: the main run's outcome from its `done`, or `failed` when the stream was
+ * lost before one arrived. A stopped prompt is `interrupted`, never `completed`. The same
+ * vocabulary as a run's, so a UI maps it once.
  */
 export type TurnOutcome = RunOutcome;
+
+/**
+ * A run of the main session, as the stream says it started: a line the user sent (its
+ * `prompt_started`), or one the backend started itself (a resume with no line, a wake).
+ */
+export type ChatRun = { owner: 'user'; text: string } | { owner: 'backend' };
 
 /** The main run's `run_state` event, as the chat tells a UI. */
 export type RunState = { state: 'working' | 'waiting'; groupedTasks: number };

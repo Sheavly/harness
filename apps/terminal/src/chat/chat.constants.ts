@@ -13,9 +13,6 @@ Tab after / lists the skills (and these commands); type more to narrow them.
 /<skill> anywhere in a message runs that skill with the message, e.g. "/git submit" or "review this /review".
 /exit or Ctrl+D (on an empty line) ends the conversation and stops what it started.`;
 
-/** Longest a queued line waits for the backend to answer a yield request, not for the model. */
-export const YIELD_REQUEST_MS = 5_000;
-
 /** The width a diff is cut to where the terminal's isn't known (the plain line chat). */
 export const LINE_COLUMNS = 80;
 

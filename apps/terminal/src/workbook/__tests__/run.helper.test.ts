@@ -9,6 +9,8 @@ import {
 } from '@sheavly/protocol/approval/approval.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { connectBackend } from '../../client/backend.helper.js';
+import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
+import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
 import {
   FAKE_CONVERSATION,
   FAKE_MAIN_SESSION,
@@ -48,7 +50,8 @@ async function setup(
   await mkdir(path.dirname(permissionFile), { recursive: true });
   await writeFile(permissionFile, permissionBefore);
 
-  const promptStarted = Promise.withResolvers<undefined>();
+  const promptSent = Promise.withResolvers<undefined>();
+  const feed = liveFeed();
   const answered = Promise.withResolvers<undefined>();
   const streamEnded = Promise.withResolvers<undefined>();
   // The live feed ends with its own request, as on a real backend, not with the approvals stream.
@@ -62,7 +65,7 @@ async function setup(
     getConversation: () => fakeConversationDetails(params.mismatch ? root : generatedWorkspace),
     async *streamConversation({ body }) {
       if ((body as { approvals?: boolean }).approvals) {
-        await promptStarted.promise;
+        await promptSent.promise;
         yield {
           seq: 0,
           at: 0,
@@ -90,7 +93,15 @@ async function setup(
         }
       }
 
-      await ((body as { approvals?: boolean }).approvals ? streamEnded.promise : liveEnded.promise);
+      if ((body as { approvals?: boolean }).approvals) {
+        await streamEnded.promise;
+
+        return;
+      }
+
+      // The saved raw stream gets nothing here; the live followers get every run.
+      if ((body as { replay?: boolean }).replay) await liveEnded.promise;
+      else yield* feed.follow();
     },
     async answerApproval({ body }) {
       const response = approvalResponseSchema.parse((body as { response: unknown }).response);
@@ -100,24 +111,30 @@ async function setup(
       if (response.decision === 'allow_session') sessionGrants.add('node');
       answered.resolve(undefined);
     },
-    async *sendPrompt() {
-      promptStarted.resolve(undefined);
-      await answered.promise;
-      if (params.failStream) await streamEnded.promise;
-      // The fake models the existing conversation-wide grant, shared with children, not a new store.
-      if (sessionGrants.has('node')) nodeExecutions += 3;
-      yield {
-        seq: 1,
-        at: 0,
-        sessionId: main,
-        kind: 'event',
-        event: {
+    sendPrompt: ({ body }) => {
+      feed.publish(promptStarted({ seq: 0, text: (body as { text: string }).text }));
+      promptSent.resolve(undefined);
+
+      void (async () => {
+        await answered.promise;
+        if (params.failStream) await streamEnded.promise;
+        // The fake models the existing conversation-wide grant, shared with children, not a new store.
+        if (sessionGrants.has('node')) nodeExecutions += 3;
+        feed.publish({
           seq: 1,
-          type: 'done',
-          reason: 'completed',
-          session: { id: main, rootId: main, depth: 1 },
-        },
-      } satisfies StreamEntry;
+          at: 0,
+          sessionId: main,
+          kind: 'event',
+          event: {
+            seq: 1,
+            type: 'done',
+            reason: 'completed',
+            session: { id: main, rootId: main, depth: 1 },
+          },
+        });
+      })();
+
+      return { status: 'started', queued: [] };
     },
     getMessages: () =>
       params.failMessages
@@ -139,7 +156,7 @@ async function setup(
 
     init?.signal?.addEventListener('abort', () => ended.resolve(undefined), { once: true });
 
-    return server.fetch(input, init);
+    return endsOnAbort({ response: await server.fetch(input, init), signal: init?.signal });
   };
 
   vi.mocked(connectBackend).mockResolvedValue({
