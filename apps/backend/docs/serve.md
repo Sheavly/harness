@@ -18,6 +18,14 @@ anything listens or prints, the stop handlers before the guard comes off, and th
 line last. A refused start (another server holds the lock) calls `exit(1)`, a failing setting or
 listen throws. It resolves once the server listens and keeps the process alive.
 
+The start itself is `startServer` (`src/run-server/start-server.helper.ts`): from settings already
+parsed it builds the server, takes the lock, listens and publishes the file, and returns what is
+running, or says it was refused. It installs no signal handler, prints nothing and never exits.
+`runServer` is that plus what makes a process of it: the settings, the startup guard, the stop
+handlers (`stopOnSignals`), the `listening` line and the exit. `closeServer` takes a started
+server down in the order clients and a successor need: out of the file, stop listening, close
+every conversation, then the lock.
+
 ## Settings
 
 | Setting                     | Default                                  | What it does                                                                                                                                                                                                                               |

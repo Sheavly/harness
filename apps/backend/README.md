@@ -44,13 +44,13 @@ the conversation's history as a `notice` entry, so a reopened conversation retur
 reason and member notices together, delivered only when the entire group finishes. The backend
 adds nothing to it; the stores keep it as written.
 
-| Folder        | What it holds                                                                                               |
-| ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `harness/`    | What a run includes (`createBackendHarness`), each served conversation (`servedConversation`), the settings |
-| `api/`        | The HTTP API (`createApiApp`): every route of `API_ROUTES` with its handler, the token, SSE, errors         |
-| `discovery/`  | Whether a server takes the one-server lock and writes its discovery file, and what it publishes             |
-| `run-server/` | `runServer`: settings, `Conversations`, the API, the lock, and shutting it all down, as one function        |
-| `serve.ts`    | The entry point: it only calls `runServer`                                                                  |
+| Folder        | What it holds                                                                                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness/`    | What a run includes (`createBackendHarness`), each served conversation (`servedConversation`), the settings                                                                 |
+| `api/`        | The HTTP API (`createApiApp`): every route of `API_ROUTES` with its handler, the token, SSE, errors                                                                         |
+| `discovery/`  | Whether a server takes the one-server lock and writes its discovery file, and what it publishes                                                                             |
+| `run-server/` | `runServer`: settings, `Conversations`, the API, the lock, and shutting it all down, as one function; `startServer` is its start, for a caller that ends the process itself |
+| `serve.ts`    | The entry point: it only calls `runServer`                                                                                                                                  |
 
 The `sheavly` command (`apps/sheavly`, the launcher) starts the server in its own process, so the
 backend exports `@sheavly/backend/run-server/run-server.helper` (`runServer({ env, args, exit })`,
