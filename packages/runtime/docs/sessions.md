@@ -26,16 +26,22 @@ every node's entries in one order. A channel keeps its newest `MAX_CHANNEL_ENTRI
 before them, or past the end, is `cursor_out_of_range` and is never clamped. `snapshot()` is every
 node and the position to read on from. A registry holds at most `MAX_TREE_NODES` nodes, ended ones
 included, since the snapshot holds them all: a node past it is refused (`too_many_nodes`). Room
-comes from releasing: the loop releases the finished tasks and sub-agents it has delivered at each
-turn boundary, but a sub-agent started through an extension's `child-sessions` scope, and work that
-never ends, stay until something releases or ends them, so a conversation that keeps starting them
-can fill the registry. A reopened conversation does not bring back the sessions released before it
+comes from releasing: at each turn boundary the loop releases the tasks it has delivered or that
+were cancelled in silence, and the sub-agent session of each (`TaskRegistry.takeReleasedAgents`,
+which `release` fills, since a released task would otherwise leave its finished session behind). A
+sub-agent started through an extension's `child-sessions` scope that no task of `start_agent` runs,
+and work that never ends, stay until something releases or ends them; one scope holds at most
+`MAX_SCOPE_CHILDREN` (250) sub-agents, a quarter of the bound, so no one extension can fill the
+registry for the others. A reopened conversation does not bring back the sessions released before it
 closed (`StoredLog.released`), so they do not count. A channel's entries are shared between its
 readers and read only by contract. Nothing serves these channels yet: the stream below is still the
 one a UI reads.
 
 Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
-command's node sits under the node of the session that started it. A node's title and status are
+command's node sits under the node of the session that started it. A sub-agent's task is told the
+session it runs (`StartTask.agentSessionId`, which `start_agent` sets) and takes that session's
+node when it is an open agent under the session that owns the task and no other task has taken it;
+nothing is paired by the tool call id, which a provider may repeat and an extension may choose. A node's title and status are
 made one line of plain text, capped and non-blank as it is made, because a tool call's description
 or an agent's report can be anything and the protocol refuses what is not a line. That is the
 node's copy: a session reads back the title, status and tool call id it was given, unchanged, so
@@ -85,7 +91,8 @@ While idle it accepts messages, kept for its next prompt, but no status reports 
   command or service started under one of them is, and releases nothing then. Entries already in the combined stream stay, and a filter on an ancestor's
   subtree still matches them; a later `publish` for a released session is refused with
   `session_released`. `isReleased(id)` tells it from an unknown id, and `releasedStarts()` lists them with when each started.
-- `releaseAgent(id)` is what the loop calls once a sub-agent's report is delivered: the same
+- `releaseAgent(id)` is what the loop calls once a sub-agent's task is released, its report
+  delivered or the task cancelled in silence: the same
   release, but it returns false instead of throwing when a session, or work started under one, is
   still open, and leaves a main session alone. A reopened conversation restores every stored
   session that was not released, in the order they started, and keeps the released ones as

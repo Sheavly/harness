@@ -27,6 +27,9 @@ not what Node code can do: this is least privilege, not a sandbox.
   holds either. Its parameters are those of the loop's `runSession` minus `tasks` and `session`,
   plus the `child` it started and `onRunEnd`, called when the loop has returned and before the
   cancel. It refuses a child that is not owned, has ended, or is already running.
+- A scope holds at most `MAX_SCOPE_CHILDREN` (250) sub-agents that are not yet released
+  (`@sheavly/host`, `ScopeLimitError`): a quarter of the nodes a conversation holds, so one
+  extension, or the sub-agent tool, cannot take them all. A child released elsewhere stops counting.
 - No scoped service hands out `publish`, `queueNotice` or `publishTask`. `send` and `report` do
   produce session updates, and a child's loop publishes its events.
 
