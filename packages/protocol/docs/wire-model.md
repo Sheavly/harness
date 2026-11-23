@@ -268,6 +268,11 @@ Every entry the stream carries today, 39 in all, has a place in the model: see
 [the mapping](wire-model-mapping.md). It also lists the three decisions the mapping leaves for the
 schema and registry work.
 
+## Who changes
+
+Every workspace that reads or writes today's stream, found by what imports it, with what changes
+in each and in which issue: see [the consumers](wire-model-consumers.md).
+
 ## What this changes
 
 All of it is sub-issues of #387, one pull request each, blocked by #438 through #422:

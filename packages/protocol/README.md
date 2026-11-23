@@ -98,3 +98,5 @@ never enter model history.
   combined stream: nodes, channels and subscriptions.
 - [Where each current entry goes](docs/wire-model-mapping.md): every entry of today's stream and
   the channel and entry type it becomes.
+- [Who changes with the wire model](docs/wire-model-consumers.md): every workspace that reads or
+  writes today's stream, and what changes in each.
