@@ -153,7 +153,13 @@ export async function runServer(params: RunServerParams = {}): Promise<void> {
   // After the stop handlers and before the `listening` line: with no listener for a moment, Node
   // restores the default action, and a UI that signals on that line would kill the process.
   guard.uninstall();
-  printStarted({ env, server, token: built.token, address });
+  printStarted({
+    env,
+    server,
+    token: built.token,
+    address,
+    toTerminal: process.stdout.isTTY,
+  });
 
   if (settings.exitWithParent) stopWhenParentGone(stop);
 }
