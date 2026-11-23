@@ -11,6 +11,14 @@ export class NoServerError extends Error {
   override name = 'NoServerError';
 }
 
+/**
+ * `sheavly doctor` found something wrong. The report is already printed; this is the one line
+ * after it and the reason the command exits 1.
+ */
+export class DoctorFailedError extends Error {
+  override name = 'DoctorFailedError';
+}
+
 /** The command line's own `package.json` could not be read or has no version. */
 export class VersionError extends Error {
   override name = 'VersionError';

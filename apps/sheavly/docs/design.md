@@ -73,6 +73,37 @@ several (a settings error lists its issues).
   else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
   user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
 
+- **`doctor`** prints one line per check and exits 1 when any is wrong (the report on stdout,
+  then `sheavly: N check(s) failed` through `DoctorFailedError`, which prints a stack too with
+  `SHEAVLY_DEBUG` set, like any failure). It takes no argument and only reads and probes: it
+  never starts or stops a server, and creates or changes nothing, which
+  `doctor.processes.test.ts` holds with a listing of the home and runtime folders before and
+  after. The checks, each a `Finding` (`doctor/doctor.types.ts`):
+  - **Node**: `process.versions.node` is 24 or later (`engines` in the root `package.json`).
+  - **Home**: the folder `SHEAVLY_HOME` or `~/.sheavly` names is a folder (a link is followed, as
+    the server does), owned by the user, closed to the group and others, and writable. A home that
+    does not exist yet is reported but is not a problem: a server runs without one until a profile
+    is stored. A link to a folder that is gone, or a path through a file, fails. Owner and mode are not judged on Windows.
+  - **Server**: `findRunningServer` with `verifyServer`, as `chat` finds it, so the same states
+    come out with the finder's own reasons: running and verified, left over (the lock is free),
+    refused (a file others can open, a link, another owner), not a discovery file, a server that
+    did not prove it holds the token, another protocol (which side is older) or none. Only a
+    running, verified server is ok; every other state fails, since the question is whether
+    `chat` can connect. The line says the protocol version the handshake proved and nothing the
+    file holds: never the token, the address, the pid or the file's text. It looks at the
+    discovery file only: with `BACKEND_URL` set, `chat` skips the file, and the line says so.
+  - **Profile**: the config names a default profile whose `profile.json` reads, through
+    `ConfigStore` and `ProfileStore` (never the profile registry, which hands out keys). A profile
+    folder that cannot be read is listed, by its path, and fails the check. The stores' own
+    messages are not printed, since a parse or schema error quotes the file. Whether that
+    profile's model and key work is the server's to say, not judged here.
+
+  The report is the one place every line passes (`renderReport`): control and format characters
+  are replaced, so a folder name from a synced home cannot inject an escape sequence or a line
+  that reads as another check. A check that throws (a path that cannot be resolved, a folder it
+  may not read) is a failing finding naming the kind of failure (`settleCheck`), never its
+  message, so the other checks are still reported.
+
 ## Adding a command
 
 Add a module folder with `<name>.constants.ts` (name, summary, help text) and `<name>.helper.ts`

@@ -5,7 +5,7 @@
  *   npm run sheavly -- <command>       from the checkout, from source
  *   node apps/sheavly/dist/cli.js      after `npm run build`
  *
- * `sheavly --version`, `sheavly --help`, `sheavly serve` and `sheavly chat`: see
+ * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly chat` and `sheavly doctor`: see
  * apps/sheavly/docs/design.md. An uncaught error is one line and a non-zero exit code; the stack
  * only with SHEAVLY_DEBUG set. This file wires the commands to the process; the table, the help
  * and the exit codes are `dispatch`.
@@ -16,12 +16,18 @@ import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
 import { createChatCommand } from './chat/chat.helper.js';
 import { findChatServer } from './chat/find-server.helper.js';
 import { dispatch } from './dispatch/dispatch.helper.js';
+import { createDoctorCommand } from './doctor/doctor.helper.js';
 import { createServeCommand } from './serve/serve.helper.js';
 import { readCliVersion } from './version/version.helper.js';
 
 // npm runs a script inside its workspace's folder; work from the folder it was started in (npm's
 // INIT_CWD), so the default workspace is the user's.
 if (process.env.INIT_CWD) process.chdir(process.env.INIT_CWD);
+
+const streams = {
+  out: (text: string) => void process.stdout.write(text),
+  err: (text: string) => void process.stderr.write(text),
+};
 
 const code = await dispatch({
   argv: process.argv.slice(2),
@@ -32,12 +38,15 @@ const code = await dispatch({
       findServer: findChatServer,
       reportFailure: reportChatFailure,
     }),
+    createDoctorCommand({
+      nodeVersion: process.versions.node,
+      uid: process.getuid?.() ?? 0,
+      platform: process.platform,
+      streams,
+    }),
     createServeCommand({ runServer }),
   ],
-  streams: {
-    out: (text) => void process.stdout.write(text),
-    err: (text) => void process.stderr.write(text),
-  },
+  streams,
   readVersion: () => readCliVersion(),
 });
 
