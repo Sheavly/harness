@@ -51,3 +51,8 @@ session of the run.
 `startWork({ tasks, work })` takes a `TaskStarter` (`{ start(work: WorkDefinition) }`), which both
 `TaskRegistry` and `BackgroundTaskScope` satisfy. It stays the only source file that calls
 `start`, so a work kind's policy is still decided by its factory (`harness/no-direct-task-start`).
+
+A task can be told the session it runs (`WorkDefinition.agentSessionId`), which pairs it with that
+sub-agent's node and has the loop release the session with the task. Only the harness's own
+`start_agent` says it: `BackgroundTaskScope.start` drops the field, so an extension cannot name a
+session it did not start, take its node or have it released.

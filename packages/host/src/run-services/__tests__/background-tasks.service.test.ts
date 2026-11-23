@@ -8,7 +8,7 @@ import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import { TaskError } from '@sheavly/runtime/errors/tasks.errors';
-import { finiteWork } from '@sheavly/runtime/tasks/work.utils';
+import { agentWork, finiteWork } from '@sheavly/runtime/tasks/work.utils';
 import { scopeRun } from '../../testing/scope-run.fake.js';
 import { waitingWork as waiting } from '../../testing/waiting-work.fake.js';
 
@@ -42,6 +42,35 @@ describe('the background-tasks service', () => {
     expect(tasks.list().map((task) => task.id)).toEqual([started.id]);
     expect(tasks.report(started.id)).toBeUndefined();
     await expect(tasks.cancel(started.id)).resolves.toMatchObject({ status: 'cancelled' });
+  });
+
+  it('drops a session an extension names as the one its task runs: only the harness pairs a task with a session', async () => {
+    const { run, main, scope } = await activated({ names: ['a'] });
+    // A sub-agent some other code started under the main session, which the extension did not.
+    const theirs = run.harness.sessions.startChild({
+      parentId: main,
+      startedByCall: callIdSchema.parse('theirs'),
+      title: 'theirs',
+    });
+    const before = run.harness.nodes.list().length;
+    const task = scope('a').start({
+      ...agentWork({
+        command: 'wait',
+        description: 'waits',
+        sessionId: main,
+        run: ({ signal }) =>
+          new Promise((resolve) =>
+            signal.addEventListener('abort', () => resolve({ exitCode: 1 })),
+          ),
+      }),
+      agentSessionId: theirs.id,
+    });
+
+    // The task has a node of its own and runs no session, so nothing of the session is taken or,
+    // later, released along with the task.
+    expect(run.harness.nodes.list().length).toBe(before + 1);
+    expect(run.harness.tasks.agentSessionOf(task.id)).toBeUndefined();
+    await run.harness.tasks.cancelAll();
   });
 
   it('refuses each verb without its grant, naming the extension and the grant', async () => {

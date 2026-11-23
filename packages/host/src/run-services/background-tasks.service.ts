@@ -49,13 +49,19 @@ export class BackgroundTasksScope implements BackgroundTaskScope {
     Object.freeze(this);
   }
 
-  start: BackgroundTaskScope['start'] = (work) => {
+  start: BackgroundTaskScope['start'] = (given) => {
     this.#guard.enter('start');
     requireOpenSession({
       sessions: this.#sessions,
-      id: work.sessionId,
+      id: given.sessionId,
       refused: 'work cannot start for it',
     });
+
+    // Which session a task runs is for the harness's own sub-agent tool to say: an extension that
+    // named one could take its node, and have the loop release it with the task, though it did
+    // not start it. Its work is paired with no session.
+    const { agentSessionId: _named, ...work } = given;
+
     this.#starting++;
 
     try {
