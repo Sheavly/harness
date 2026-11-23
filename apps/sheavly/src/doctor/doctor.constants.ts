@@ -16,7 +16,7 @@ export const GROUP_AND_OTHERS_BITS = 0o077;
 export const UNPRINTABLE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
 /** What follows a profile finding that is not ok: the one way to make a profile. */
-export const SET_UP_HINT = '  Run `sheavly chat --setup` to set one up.';
+export const SET_UP_HINT = '  Run `sheavly setup` to set one up.';
 
 export const DOCTOR_HELP = `Usage: sheavly doctor
 

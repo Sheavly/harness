@@ -43,11 +43,11 @@ describe('the sheavly command, from the checkout', () => {
     });
   }, 60_000);
 
-  it('lists chat, doctor and serve, and nothing that does not exist, with --help', async () => {
+  it('lists chat, doctor, serve and setup, and nothing that does not exist, with --help', async () => {
     const { exit, out } = await outcome(await cli.startAndWaitForExit({}, ['--help']));
 
     expect(exit.code).toBe(0);
-    expect(listedCommands(out)).toEqual(['chat', 'doctor', 'serve']);
+    expect(listedCommands(out)).toEqual(['chat', 'doctor', 'serve', 'setup']);
   }, 60_000);
 
   it('answers `serve --help` and `chat --help` without starting anything', async () => {
@@ -108,7 +108,7 @@ describe.skipIf(process.platform === 'win32')('sheavly chat', () => {
     expect(result).toEqual({
       exit: { code: 1, signal: null },
       out: '',
-      err: 'Setup needs an interactive terminal. Run npm run dev:terminal -- --setup in a terminal first.\n',
+      err: 'Setup needs an interactive terminal. Run `sheavly setup` (or `sheavly chat --setup`) in a terminal first.\n',
     });
     await server.stop('SIGTERM');
   }, 90_000);

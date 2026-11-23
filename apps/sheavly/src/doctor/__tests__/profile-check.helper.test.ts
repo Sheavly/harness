@@ -26,10 +26,7 @@ describe('doctor checks the profile', () => {
     const found = await checkProfile({ home });
 
     expect(found.ok).toBe(false);
-    expect(found.lines).toEqual([
-      'no profile is set up',
-      '  Run `sheavly chat --setup` to set one up.',
-    ]);
+    expect(found.lines).toEqual(['no profile is set up', '  Run `sheavly setup` to set one up.']);
     await expect(rm(path.join(home, 'profiles'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
