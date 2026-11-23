@@ -1,6 +1,7 @@
 // Shared helpers for the Cursor hooks in this folder. Hooks talk JSON over stdin/stdout:
 // Cursor writes the event payload to stdin and reads our response from stdout.
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { performance } from 'node:perf_hooks';
@@ -73,6 +74,41 @@ export function currentBranch(cwd = PROJECT_ROOT) {
   const branch = result.status === 0 ? result.stdout.trim() : '';
 
   return branch || null;
+}
+
+/**
+ * The top folder of the git checkout that `dir` is in, or null (not a repo, or no such folder).
+ * Hooks run from the folder the session was started in, which is not always the checkout a command
+ * acts on (a worktree of the same repo): rules that read the repo's files or branch read this one.
+ */
+export function repoRoot(dir) {
+  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8' });
+  const root = result.status === 0 ? result.stdout.trim() : '';
+
+  return root || null;
+}
+
+/** The git directory the checkouts of one repository share, or null (not a repo). */
+function commonGitDir(dir) {
+  const result = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  const common = result.status === 0 ? result.stdout.trim() : '';
+
+  return common ? realpathSync(common) : null;
+}
+
+/**
+ * Whether two folders are checkouts of the same repository: the folder itself and its worktrees
+ * share one git directory. A command that names another checkout is believed only when it is one
+ * of these, so a repository made for the purpose, with a branch and packages of its choosing,
+ * does not decide what a commit is checked against.
+ */
+export function sameRepo(first, second) {
+  const common = commonGitDir(first);
+
+  return common !== null && common === commonGitDir(second);
 }
 
 function runFile(file, args) {

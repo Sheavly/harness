@@ -76,6 +76,22 @@ describe.skipIf(process.platform === 'win32')('runServer, started through its mo
     });
   }, 60_000);
 
+  it('does not print a token it made when its output is a pipe, and the discovery file still holds it', async () => {
+    // `undefined` removes the variable the fake sets, so the server makes its own token.
+    const server = await viaFunction.start({ SERVER_TOKEN: undefined });
+    const folder = await runtimeFolder();
+    const { token } = discoveryFileSchema.parse(
+      JSON.parse(await readFile(path.join(folder, 'server.json'), 'utf8')),
+    );
+
+    expect(token).toHaveLength(43);
+    expect(server.stdout()).not.toContain(token);
+    expect(server.stderr()).not.toContain(token);
+    expect(server.stdout()).toContain(
+      '→ token made for this run, not shown: this output is not a terminal',
+    );
+  }, 60_000);
+
   it('refuses a second server on the same home with exit 1 and nothing on stdout', async () => {
     const first = await viaFunction.start();
     const second = await viaFunction.startAndWaitForExit();

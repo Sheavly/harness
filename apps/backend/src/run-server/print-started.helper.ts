@@ -5,19 +5,31 @@ import { SERVER } from '../harness/harness.constants.js';
 import { portMovedNotice } from '../listen/port-notice.utils.js';
 import type { ServerSettings } from './run-server.types.js';
 
-/** What the user needs once the server listens: where their data is, and the token when made here. */
+/**
+ * What the user needs once the server listens: where their data is, and the token when made here.
+ * A made token is shown only when `toTerminal` says a person is reading: anywhere else (a service's
+ * journal, a pipe, a log file) it would be kept in text others can read, so only the discovery file
+ * holds it there.
+ */
 export function printStarted(params: {
   env: Environment;
   server: ServerSettings;
   token: string;
   address: AddressInfo;
+  toTerminal: boolean;
 }): void {
-  const { env, server, token, address } = params;
+  const { env, server, token, address, toTerminal } = params;
 
   console.log(`→ profiles and models in ${sheavlyHome(env)}`);
 
   // Shown once, for the user to give their UI; never logged with a request.
-  if (!server.token) console.log(`→ token (SERVER_TOKEN unset, so made for this run): ${token}`);
+  if (!server.token && toTerminal) {
+    console.log(`→ token (SERVER_TOKEN unset, so made for this run): ${token}`);
+  }
+
+  if (!server.token && !toTerminal) {
+    console.log('→ token made for this run, not shown: this output is not a terminal');
+  }
 
   console.log('→ Ctrl+C to stop');
 

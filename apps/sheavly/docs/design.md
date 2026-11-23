@@ -74,6 +74,55 @@ several (a settings error lists its issues).
   else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
   user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
 
+- **`service`** runs the server as a systemd user service on Linux: `install`, `uninstall`,
+  `start`, `stop`, `restart`, `status` and `logs` (`service/`, see
+  [the service](../../../docs/shipping.md#the-service)). Every program it runs (`systemctl`,
+  `loginctl`, `journalctl`) is started by name with an argument array through the injected
+  `SystemTools`, never a shell line, so a test plays systemd with `testing/system-tools.fake.ts`
+  and the unit tests touch no systemd: `systemdConfinement` (`@sheavly/eslint-config`, spread
+  into this workspace's config) fails an import of `node:child_process` in `src/service/`
+  outside `system.helper.ts`, and an import of `system.helper` anywhere but `cli.ts`, so a test
+  cannot get the real tools by importing them. That is not a guarantee about every test: one
+  that starts the real command line reaches the real systemd for an action that gets as far as
+  asking it, and `service.processes.test.ts` therefore runs refusals only, which is held by
+  review. It refuses before it asks or writes anything: off Linux, with no systemd
+  user manager (`systemctl --user show-environment` fails), from source (the unit runs the built
+  `dist/cli.js`, so any entry not named `cli.js` is refused with "build first"), with `--trust`
+  (a server-wide `--trust` trusts every folder with hooks or settings that any conversation
+  opens), and with a `PATH` that is empty or has an empty or relative entry, since the `PATH` of
+  the installing shell goes into the unit for an always-on server and every command an agent runs.
+  `install` says what it will do, `PATH` included, and asks (`--yes` skips the question and is the
+  same for a person and for an agent's own shell, so the question is the only guard: it is not a
+  barrier against a prompt-injected agent, which could also write a unit by hand), then writes the
+  token file and the unit through `@sheavly/storage` (`writeTextFile`: atomic, private), turns on
+  linger, enables and starts (it says systemd was asked to start it, not that it runs: a server
+  that cannot start, such as one that finds another holding the home's lock, exits 1, and the
+  unit's start limit stops the retries after five failures in five minutes). The home is made
+  absolute, since systemd reads the unit from another folder. The
+  token is made once (32 random bytes, base64url) and kept in `service.env` in the Sheavly home,
+  mode 0600, which the unit reads with `EnvironmentFile`: `renderUnit` takes no token, so no unit
+  it renders can hold one, and `systemctl show` and the journal never do. An existing token file
+  is kept (installing again changes no token), but refused, not replaced, when others can read it
+  or it is not one this command wrote. The unit sets the installing shell's `PATH` and
+  `SHEAVLY_HOME`, and installing again refreshes them; it does not restart a running service (that
+  would stop conversations), and says `restart` applies a changed unit. The unit names `node` by
+  the path of the installing process, so a node moved or upgraded (nvm, volta) needs `install`
+  again. A path or setting with a line break is refused when the unit is rendered, `%` is escaped
+  everywhere and `$` in `ExecStart=` only (`Environment=` does not expand it). `uninstall`
+  disables and stops, then removes nothing unless `is-active` says `inactive` or `failed` (a stop
+  that outlasts the time limit here leaves `deactivating`, and a call that timed out says
+  nothing), removes the unit, and removes `service.env` only when it is a token file this
+  command wrote; it leaves the user's data and linger, saying how to turn linger off. It works
+  on this shell's `SHEAVLY_HOME`. `start` and `restart` first run `reset-failed`, since a server
+  that kept failing is `failed (start-limit-hit)` and systemd refuses to start it until that is
+  cleared. `status` prints installed, enabled, running and linger, and exits 1 when it is not
+  installed or not running. `system-result.utils.ts` maps how a program ended (not installed, an
+  exit code, a timeout) to a result, and is tested on its own because the systemd check and
+  `uninstall` rest on it. `service.helper.test.ts` runs every action against
+  real files and the fake systemd; `service.processes.test.ts` runs the real command for the
+  refusals that never reach systemd. What no test here can show, that the unit really starts the
+  server and that it survives a logout and a reboot, takes a Linux machine with systemd and is
+  checked by hand.
 - **`setup`** runs the terminal's setup wizard on the running server and ends, with no
   conversation: the first profile, a model and its key, or another of each later. It is the
   wizard `chat --setup` opens (`runTerminalSetup` of the terminal, `setup/run-setup.helper`), not

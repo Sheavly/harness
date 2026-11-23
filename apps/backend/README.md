@@ -11,7 +11,7 @@ tools and enabled web tools. Children get their own task tools, including `await
 the nesting limit. Restart an already running backend after updating its tool composition.
 
 ```bash
-npm run serve -w @sheavly/backend                  # from source; prints the URL and a token
+npm run serve -w @sheavly/backend                  # from source; prints the URL and, to a terminal, a token
 ```
 
 It calls the real model API, so it costs money. The models and keys it uses are the user's, in

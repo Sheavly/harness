@@ -23,6 +23,8 @@ import { TYPESCRIPT_RULES } from './typescript.js';
 export { replayConfinement } from './replay-confinement.js';
 // The terminal app's rule that the code starting its own backend never reads the discovery file.
 export { connectBackendConfinement } from './connect-backend-confinement.js';
+// The launcher's rule that systemd's programs are run only behind `SystemTools`, created in cli.ts.
+export { systemdConfinement } from './systemd-confinement.js';
 // The storage package's rule that stored profiles and indexes are read through the migration.
 export { storedFileReads } from './stored-file-reads.js';
 // The providers package's rule that a model call goes through the injected fetch, not the global.

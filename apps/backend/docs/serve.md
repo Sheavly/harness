@@ -52,7 +52,10 @@ a token, so a mistyped flag never starts a server. The message names an option a
 pasted in the wrong place. The `settings.json` files of the user's folder
 (`SHEAVLY_HOME`) are read at each conversation's start.
 
-Without `SERVER_TOKEN` it makes one and prints it once, at start. Once it listens it prints
+Without `SERVER_TOKEN` it makes one and prints it once, at start, when its output is a terminal.
+Anywhere else (a service's journal, a pipe, a log file) it prints that it made one and did not
+show it, because text there is kept and read by others: the discovery file holds the token, which
+is how a client finds it. Once it listens it prints
 `→ listening on <url>`, last. Ctrl+C, SIGTERM, closing the terminal or (with
 `SERVER_EXIT_WITH_PARENT`) its stdin closing stops it, and with it every conversation's prompts,
 background tasks and processes. Skills that didn't load, and each model call with

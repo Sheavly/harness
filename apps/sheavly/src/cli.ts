@@ -5,11 +5,13 @@
  *   npm run sheavly -- <command>       from the checkout, from source
  *   node apps/sheavly/dist/cli.js      after `npm run build`
  *
- * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly chat`, `sheavly setup` and
- * `sheavly doctor`: see apps/sheavly/docs/design.md. An uncaught error is one line and a non-zero exit code; the stack
- * only with SHEAVLY_DEBUG set. This file wires the commands to the process; the table, the help
+ * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly service`, `sheavly chat`,
+ * `sheavly setup` and `sheavly doctor`: see apps/sheavly/docs/design.md. An uncaught error is one
+ * line and a non-zero exit code; the stack only with SHEAVLY_DEBUG set. This file wires the commands to the process; the table, the help
  * and the exit codes are `dispatch`.
  */
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { runServer } from '@sheavly/backend/run-server/run-server.helper';
 import { reportChatFailure } from '@sheavly/terminal/chat/chat-failure.helper';
 import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
@@ -19,6 +21,9 @@ import { findChatServer } from './chat/find-server.helper.js';
 import { dispatch } from './dispatch/dispatch.helper.js';
 import { createDoctorCommand } from './doctor/doctor.helper.js';
 import { createServeCommand } from './serve/serve.helper.js';
+import { askYesNo } from './service/ask.helper.js';
+import { createServiceCommand } from './service/service.helper.js';
+import { createSystemTools } from './service/system.helper.js';
 import { createSetupCommand } from './setup/setup.helper.js';
 import { readCliVersion } from './version/version.helper.js';
 
@@ -47,6 +52,17 @@ const code = await dispatch({
       streams,
     }),
     createServeCommand({ runServer }),
+    createServiceCommand({
+      platform: process.platform,
+      nodePath: process.execPath,
+      cliPath: fileURLToPath(import.meta.url),
+      homeDir: os.homedir(),
+      uid: process.getuid?.() ?? 0,
+      system: createSystemTools(),
+      interactive: process.stdin.isTTY && process.stdout.isTTY,
+      confirm: askYesNo,
+      streams,
+    }),
     createSetupCommand({
       runSetup: runTerminalSetup,
       findServer: findChatServer,

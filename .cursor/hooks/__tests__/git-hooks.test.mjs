@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,9 +8,46 @@ import { runHook as runHookIn } from './run-hook.utils.mjs';
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 let stateDir = '';
 let repo = '';
+/** Other checkouts a test made, removed after it. */
+let others = [];
 
 function git(...args) {
   spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
+}
+
+/** A commit scope in `dir`: a package folder with a `package.json`, as the guard reads them. */
+function addPackage(dir, name) {
+  mkdirSync(path.join(dir, 'packages', name), { recursive: true });
+  writeFileSync(path.join(dir, 'packages', name, 'package.json'), '{}');
+}
+
+/** A worktree of `repo` on a new `branch`, with the packages in `scopes` on disk. */
+function otherCheckout(params) {
+  const { branch, scopes } = params;
+  const parent = mkdtempSync(path.join(os.tmpdir(), 'hook-other-'));
+  const dir = path.join(parent, 'wt');
+
+  others.push(parent);
+  // A worktree needs a commit to start from.
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init');
+  git('worktree', 'add', '-q', '-b', branch, dir);
+
+  for (const scope of scopes) addPackage(dir, scope);
+
+  return dir;
+}
+
+/** A repository of its own, not a worktree of `repo`, on `branch`, with the packages in `scopes`. */
+function unrelatedRepo(params) {
+  const { branch, scopes } = params;
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'hook-unrelated-'));
+
+  others.push(dir);
+  spawnSync('git', ['init', '-q', '-b', branch], { cwd: dir, encoding: 'utf8' });
+
+  for (const scope of scopes) addPackage(dir, scope);
+
+  return dir;
 }
 
 /** Runs a hook script with `input` on stdin, against the temp state dir; returns its response. */
@@ -38,6 +75,10 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(stateDir, { recursive: true, force: true });
   rmSync(repo, { recursive: true, force: true });
+
+  for (const dir of others) rmSync(dir, { recursive: true, force: true });
+
+  others = [];
 });
 
 describe('the issue gate', () => {
@@ -164,11 +205,77 @@ describe('the git guard', () => {
 
   it("checks a commit's message and its Refs against the branch's issue", () => {
     git('switch', '-q', '-c', '12-export');
+    addPackage(repo, 'loop');
     const commit = (message) => shell(`git commit -m "$(cat <<'EOF'\n${message}\nEOF\n)"`);
 
     expect(commit('feat(loop): add export\n\nRefs: #12')).toEqual({ permission: 'allow' });
     expect(commit('feat(loop): add export\n\nRefs: #13')).toMatchObject({ permission: 'deny' });
     expect(commit('feat(loop): add export')).toMatchObject({ permission: 'deny' });
+  });
+
+  describe('a commit made in another checkout of the repo', () => {
+    // The session starts in `repo` (branch 12-export, scope `loop`); the commit lands in a worktree
+    // with its own branch and its own packages, so that is the one the message is checked against.
+    const message = (text) => `<<'EOF'\n${text}\nEOF\n`;
+    const commitIn = (prefix, text) => shell(`${prefix} commit -m "$(cat ${message(text)})"`);
+
+    beforeEach(() => {
+      git('switch', '-q', '-c', '12-export');
+      addPackage(repo, 'loop');
+    });
+
+    it.each([
+      ['git -C', (dir) => `git -C ${dir}`],
+      ['a leading cd', (dir) => `cd ${dir} && git`],
+    ])("reads the other checkout's branch and scopes with %s", (_name, prefix) => {
+      const dir = otherCheckout({ branch: '13-other', scopes: ['tools'] });
+
+      expect(commitIn(prefix(dir), 'feat(tools): add it\n\nRefs: #13')).toEqual({
+        permission: 'allow',
+      });
+      // The session's own branch (12) and scope (loop) are not what counts here.
+      expect(commitIn(prefix(dir), 'feat(tools): add it\n\nRefs: #12')).toMatchObject({
+        permission: 'deny',
+      });
+      expect(commitIn(prefix(dir), 'feat(loop): add it\n\nRefs: #13')).toMatchObject({
+        permission: 'deny',
+      });
+    });
+
+    it('names the other checkout in the message when the issue is wrong', () => {
+      const dir = otherCheckout({ branch: '13-other', scopes: ['tools'] });
+      const response = commitIn(`git -C ${dir}`, 'feat(tools): add it\n\nRefs: #12');
+
+      expect(response.agent_message).toContain('branch 13-other of ');
+    });
+
+    it('still checks a plain commit against the session’s own checkout', () => {
+      otherCheckout({ branch: '13-other', scopes: ['tools'] });
+
+      expect(commitIn('git', 'feat(loop): add it\n\nRefs: #12')).toEqual({ permission: 'allow' });
+      expect(commitIn('git', 'feat(tools): add it\n\nRefs: #12')).toMatchObject({
+        permission: 'deny',
+      });
+    });
+
+    it.each([
+      ['git -C', (dir) => `git -C ${dir}`],
+      ['a leading cd', (dir) => `cd ${dir} && git`],
+    ])(
+      'does not believe a repository that is not a worktree of the session’s, with %s',
+      (_name, prefix) => {
+        // A repository made for the purpose, on a branch and with packages of its choosing: what it
+        // says counts for nothing, the message is checked against the session's own checkout.
+        const dir = unrelatedRepo({ branch: '13-other', scopes: ['tools'] });
+
+        expect(commitIn(prefix(dir), 'feat(tools): add it\n\nRefs: #13')).toMatchObject({
+          permission: 'deny',
+        });
+        expect(commitIn(prefix(dir), 'feat(loop): add it\n\nRefs: #12')).toEqual({
+          permission: 'allow',
+        });
+      },
+    );
   });
 
   it('allows a cherry-pick once the user wrote "allow cherry-pick"', () => {

@@ -11,7 +11,8 @@
  * SERVER_HOST:SERVER_PORT (127.0.0.1:4310 by default, moving to a free port when taken; port 0
  * picks a free one, from 20000-32000 when the OS has none; an explicit port that is taken fails)
  * and needs SERVER_TOKEN on every request but `GET /health` and `QUERY /handshake`, as
- * `Authorization: Bearer <token>`; without one it makes one and prints it once. Once it listens it
+ * `Authorization: Bearer <token>`; without one it makes one and prints it once, to a terminal only
+ * (the discovery file holds it for a client). Once it listens it
  * prints `→ listening on <url>`, the line a UI that started it waits for. A server that is not
  * SERVER_EXIT_WITH_PARENT and has not SERVER_DISCOVERY=false first takes its home's one-server
  * lock (exit 1 when another holds it) and publishes its address and token in the discovery file

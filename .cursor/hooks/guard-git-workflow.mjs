@@ -24,8 +24,16 @@ import {
   listAreaLabels,
   listScopes,
 } from './git-workflow.utils.mjs';
-import { currentBranch, PROJECT_ROOT, readHookInput, runGuard } from './hooks.utils.mjs';
 import {
+  currentBranch,
+  PROJECT_ROOT,
+  readHookInput,
+  repoRoot,
+  runGuard,
+  sameRepo,
+} from './hooks.utils.mjs';
+import {
+  commitDirectory,
   normalize,
   readCommitMessage,
   stripMessages,
@@ -81,7 +89,29 @@ function checkSegment(params) {
   return null;
 }
 
-/** Why a `git commit` command's message would fail the format, or null. */
+/**
+ * The checkout a commit's message is checked against: the one the command names (`git -C <dir>`,
+ * a leading `cd`) when it is a worktree of the session's own repository, which has its own branch
+ * and its own new packages and is where the commit lands; otherwise the session's checkout. A
+ * repository the command made or points at is not believed, since it could carry any branch and
+ * any packages. The command is read as text, like the message: a `cd` that is not first, `GIT_DIR`,
+ * `--git-dir`, a second commit or text that only mentions `git -C` can still point it elsewhere,
+ * so this is a net for the honest mistake, not a boundary; the PR's commit list is what a
+ * reviewer reads.
+ */
+function commitCheckout(params) {
+  const { command, cwd } = params;
+  const session = repoRoot(cwd) ?? PROJECT_ROOT;
+  const named = repoRoot(commitDirectory({ command, cwd }));
+
+  return named && sameRepo(named, session) ? named : session;
+}
+
+/**
+ * Why a `git commit` command's message would fail the format, or null. The scopes and the branch
+ * are those of the checkout the commit is made in (`commitCheckout`), not always of the folder
+ * the session started in: a worktree has its own.
+ */
 function checkCommitCommand(params) {
   const { command, cwd } = params;
   const read = readCommitMessage(command);
@@ -96,12 +126,14 @@ function checkCommitCommand(params) {
   // PR's commit list shows it to the reviewer.
   if (/\$[({A-Za-z_]/.test(read.message)) return null;
 
-  const branch = currentBranch(cwd);
+  const root = commitCheckout({ command, cwd });
+  const branch = currentBranch(root);
+  const where = root === (repoRoot(cwd) ?? PROJECT_ROOT) ? '' : ` of ${root}`;
   const problems = checkCommitMessage({
     message: read.message,
-    scopes: listScopes(PROJECT_ROOT),
+    scopes: listScopes(root),
     issue: branch ? getBranchIssue(branch) : null,
-    issueSource: `branch ${branch ?? '(detached)'}`,
+    issueSource: `branch ${branch ?? '(detached)'}${where}`,
   });
 
   return problems.length > 0 ? `${problems.join(' ')} ${COMMIT_FORMAT_FIX}` : null;
