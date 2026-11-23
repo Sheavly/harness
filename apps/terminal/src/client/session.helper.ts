@@ -109,7 +109,7 @@ export async function closeSession(params: {
 }
 
 /** A found backend as the terminal holds one it only connected to: nothing to stop on the way out. */
-function attachedTo(server: FoundBackend): Backend {
+export function attachedTo(server: FoundBackend): Backend {
   return { url: server.url, token: server.token, attached: true, stop: async () => undefined };
 }
 

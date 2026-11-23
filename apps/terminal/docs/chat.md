@@ -19,7 +19,8 @@ but error text and paths can still be private: review logs before sharing.
 
 ## Model-first setup
 
-Run `npm run dev:terminal -- --setup`, choose a profile, then **Add a model**:
+Run `sheavly setup` (or `npm run dev:terminal -- --setup`, which also opens a chat afterwards),
+choose a profile, then **Add a model**:
 
 1. **What model do you want to add?** Select a backend-provided model, or **Custom model** and
    enter its name/identifier.
@@ -38,7 +39,8 @@ Run `npm run dev:terminal -- --setup`, choose a profile, then **Add a model**:
    are temporary). Setup then asks only for the secrets of the way you chose; they are stored apart
    from the model's settings. Editing the model to sign in the other way asks for the new way's
    secrets again, which replace the old way's. The profile must be the chosen model's own. See [models on Bedrock](../../../packages/providers/docs/backends.md#models-on-amazon-bedrock).
-5. Save and start chatting, or explicitly test the connection (a small paid API call).
+5. Save and finish (a chat then opens, unless this was `sheavly setup`), or explicitly test the
+   connection (a small paid API call).
 
 The selected identity is stored as model metadata, separate from hosting settings and credentials.
 It records the user's selection, not a verified cloud deployment inventory. DeepSeek's Azure
@@ -340,8 +342,9 @@ and sub-agents retain their own selections; new conversations use the profile's 
 Efforts take effect at the next model call, not midway through a response.
 
 On a workspace without a ready profile, the interactive chat opens setup before creating a
-conversation. You can also open it explicitly with `npm run dev:terminal -- --setup`, including
-when a profile already works.
+conversation. You can also open it explicitly with `sheavly setup`, which runs it on the running
+server and ends without a chat, or with `npm run dev:terminal -- --setup`, including when a
+profile already works.
 
 1. Choose an existing profile or create one, such as Personal or Work.
 2. Choose an existing model or add one. For a new model, choose a provider from the backend's
@@ -355,7 +358,7 @@ when a profile already works.
    and leave Thinking budget empty. Max tokens is the output limit per reply, not the context
    window; leave it empty for the model's default, and set one only to lower it. A low value
    can cut off adaptive thinking before any text or tool call.
-4. Choose **Save and start chatting**, or **Test connection** to make a small provider API call.
+4. Choose **Save and finish**, or **Test connection** to make a small provider API call.
    A failed check lets you replace the key or edit the model settings in the same screen.
 
 The chosen profile is bound to this workspace; an existing default for other workspaces is kept.

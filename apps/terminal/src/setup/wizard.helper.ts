@@ -54,7 +54,7 @@ export async function runSetupWizard(params: {
     await client.send('setDefaultProfile', { body: { profile }, signal: ui.signal });
   }
 
-  ui.notice('Setup complete. Opening your conversation…');
+  ui.notice('Setup complete.');
 
   return model;
 }

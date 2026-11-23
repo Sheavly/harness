@@ -331,7 +331,49 @@ describe('terminal setup over the API', () => {
     ]);
   });
 
-  it('explains how to set up without consuming piped prompts', async () => {
+  it('asks through the ui it is given when forced, with no terminal, and ends with a closing notice that opens nothing', async () => {
+    const backend = fakeSetupBackend();
+
+    backend.state.defaultProfile = profile;
+    backend.state.profiles.push(readyWorkProfile());
+    // A ready workspace is set up again only because setup was asked for.
+    const { ui, notices, questions } = setupAnswers({
+      choices: ['terminal-settings', 'reduced', 'off', profile, model, 'start'],
+      text: [],
+    });
+
+    await prepareSetup({
+      backend: backend.backend,
+      workspace: '/workspace',
+      interactive: false,
+      force: true,
+      ui,
+    });
+
+    expect(questions).toContain('Choose a model');
+    expect(notices.at(-1)).toBe('Setup complete.');
+  });
+
+  it('asks nothing of a ready workspace that setup was not asked for, even with a ui', async () => {
+    const backend = fakeSetupBackend();
+
+    backend.state.defaultProfile = profile;
+    backend.state.profiles.push(readyWorkProfile());
+
+    const { ui, questions } = setupAnswers({ choices: [], text: [] });
+
+    await prepareSetup({
+      backend: backend.backend,
+      workspace: '/workspace',
+      interactive: false,
+      force: false,
+      ui,
+    });
+
+    expect(questions).toEqual([]);
+  });
+
+  it('explains how to set up without consuming piped prompts, naming the command that does it', async () => {
     const backend = fakeSetupBackend();
 
     await expect(
@@ -341,7 +383,7 @@ describe('terminal setup over the API', () => {
         interactive: false,
         force: false,
       }),
-    ).rejects.toThrow('interactive terminal');
+    ).rejects.toThrow('Run `sheavly setup` (or `sheavly chat --setup`) in a terminal first.');
     expect(backend.calls).toHaveLength(2);
   });
 });
