@@ -5,8 +5,11 @@ import type { EntryStore } from '@sheavly/core/store/store.types';
 import { checkedParent } from './child-check.helper.js';
 import { EntryLog } from './entry-log.service.js';
 import { restoreSessions } from './restore.helper.js';
-import { releaseSubtree, subtreeOf } from './release.helper.js';
+import { releaseSubtree } from './release.helper.js';
 import { ReleasedSessions } from './released-sessions.service.js';
+import { SessionNodes } from './session-nodes.service.js';
+import type { NodeRegistry } from '../nodes/node-registry.service.js';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { lineageIds, lineageOf } from './lineage-ids.helper.js';
 import { missingSession } from './missing-session.helper.js';
 import { readStoredLog } from './stored-log.helper.js';
@@ -53,7 +56,8 @@ type Listener = (update: SessionUpdate) => void;
  * in the order it happened, for a UI following every session at once (`subscribeEntries`).
  */
 export class SessionRegistry {
-  #sessions = new Map<SessionId, SessionInfo>();
+  /** Each session is an agent node: its state and links live in the node registry. */
+  readonly #sessions: SessionNodes;
   #listeners = new Set<Listener>();
   readonly #entries: EntryLog;
   /** The session each waiting approval belongs to, so its answer lands in the same place. */
@@ -71,9 +75,10 @@ export class SessionRegistry {
    * sessions are back, and `restoredMain()` is the main session, idle for the next prompt. A
    * sub-agent that was still open when the process died is `interrupted`: it is not run again.
    */
-  constructor(options: { store?: EntryStore; resume?: StoredLog } = {}) {
-    const { store, resume } = options;
+  constructor(options: { store?: EntryStore; resume?: StoredLog; nodes?: NodeRegistry } = {}) {
+    const { store, resume, nodes } = options;
 
+    this.#sessions = new SessionNodes(nodes);
     this.#lastTokens = new LastTokens(resume?.lastTokens);
     this.#messageContexts = new MessageContexts(resume?.messageContexts);
     this.#entries = new EntryLog({
@@ -98,6 +103,16 @@ export class SessionRegistry {
    */
   static readStoredLog(store: EntryStore): Promise<StoredLog> {
     return readStoredLog(store);
+  }
+
+  /** The registry every node of this conversation is in: sessions, and the tasks that share it. */
+  get nodes(): NodeRegistry {
+    return this.#sessions.registry;
+  }
+
+  /** The node a session is, or none for an unknown or released session. */
+  nodeIdOf(id: SessionId): NodeId | undefined {
+    return this.#sessions.nodeIdOf(id);
   }
 
   /** The first failed write to the store, if any: the conversation should stop, not go on unrecorded. */
@@ -165,12 +180,14 @@ export class SessionRegistry {
 
     assertOpen({ session, consequence: 'its model is the one it ran on' });
 
-    if (session.modelId === modelId && session.effort === effort) return;
+    if (!this.#sessions.setModel({ id, modelId, effort })) return;
 
-    session.modelId = modelId;
-    if (effort) session.effort = effort;
-    else delete session.effort;
-    this.#emit({ type: 'session_model', session, modelId, ...(effort && { effort }) });
+    this.#emit({
+      type: 'session_model',
+      session: this.#require(id),
+      modelId,
+      ...(effort && { effort }),
+    });
   }
 
   /** A sub-agent's own status report ("editing core package"). Ignored once the session ended. */
@@ -178,8 +195,9 @@ export class SessionRegistry {
     const session = this.#require(params.id);
 
     if (session.state !== 'running') return;
-    session.status = params.status;
-    this.#emit({ type: 'session_status', session });
+
+    this.#sessions.report(params);
+    this.#emit({ type: 'session_status', session: this.#require(params.id) });
   }
 
   /**
@@ -190,10 +208,9 @@ export class SessionRegistry {
     const session = this.#require(params.id);
 
     if (!isOpen(session.state)) return;
-    session.state = params.state;
-    session.lastOutcome = params.state;
-    session.endedAt = now();
-    this.#emit({ type: 'session_ended', session });
+
+    this.#sessions.end(params);
+    this.#emit({ type: 'session_ended', session: this.#require(params.id) });
     this.#inboxes.wake(params.id); // nobody waits on an ended session's inbox
   }
 
@@ -205,9 +222,9 @@ export class SessionRegistry {
     const session = this.#require(params.id);
 
     if (session.state !== 'running') return;
-    session.state = 'idle';
-    session.lastOutcome = params.outcome;
-    this.#emit({ type: 'session_idle', session });
+
+    this.#sessions.idle(params);
+    this.#emit({ type: 'session_idle', session: this.#require(params.id) });
   }
 
   /** The next prompt of a conversation starts: an idle session runs again. Throws otherwise. */
@@ -222,8 +239,8 @@ export class SessionRegistry {
       });
     }
 
-    session.state = 'running';
-    this.#emit({ type: 'session_resumed', session });
+    this.#sessions.resume(id);
+    this.#emit({ type: 'session_resumed', session: this.#require(id) });
   }
 
   /**
@@ -295,9 +312,7 @@ export class SessionRegistry {
 
     if (!session || !('parentId' in session)) return false;
 
-    if (subtreeOf({ id, sessions: this.#sessions }).some((each) => isOpen(each.state))) {
-      return false;
-    }
+    if (this.#sessions.subtree(id).some((each) => isOpen(each.state))) return false;
 
     this.release(id);
 
@@ -340,13 +355,11 @@ export class SessionRegistry {
   }
 
   get(id: SessionId): SessionInfo | undefined {
-    const session = this.#sessions.get(id);
-
-    return session && { ...session };
+    return this.#sessions.get(id);
   }
 
   list(): SessionInfo[] {
-    return [...this.#sessions.values()].map((session) => ({ ...session }));
+    return this.#sessions.list();
   }
 
   /** The sessions `id` started directly. */
@@ -466,23 +479,11 @@ export class SessionRegistry {
 
   /** The first main session started: where an approval asked outside the loop goes. */
   #mainId(): SessionId {
-    const main = [...this.#sessions.values()].find(isMainSession);
-
-    if (!main) {
-      throw new SessionError({
-        reason: 'unknown_session',
-        sessionId: sessionIdSchema.parse('main'),
-        message: 'An approval outside a session needs a main session to go under',
-      });
-    }
-
-    return main.id;
+    return this.#sessions.firstMainId();
   }
 
   #add(params: SessionRef & { title: string }): SessionRef {
-    const session: SessionInfo = { ...params, state: 'running', startedAt: now() };
-
-    this.#sessions.set(session.id, session);
+    const session = this.#sessions.add(params);
 
     if ('parentId' in session) {
       this.#messageContexts.inherit({ sessionId: session.id, parentId: session.parentId });
@@ -498,7 +499,7 @@ export class SessionRegistry {
    * registry that was not restored.
    */
   restoredMain(): SessionRef | undefined {
-    const main = [...this.#sessions.values()].find(isMainSession);
+    const main = this.#sessions.list().find(isMainSession);
 
     return main && refOf(main);
   }
