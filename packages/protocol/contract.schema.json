@@ -1893,6 +1893,43 @@
       },
       "required": ["subscriptions"]
     },
+    "MessageNodeRequest": {
+      "type": "object",
+      "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 20000 } },
+      "required": ["text"]
+    },
+    "PromptSent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string", "const": "started" },
+            "node": { "$ref": "#/$defs/NodeId" },
+            "messageId": { "$ref": "#/$defs/ModelId" },
+            "queued": {
+              "maxItems": 100,
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          },
+          "required": ["status", "node", "messageId", "queued"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string", "const": "queued" },
+            "node": { "$ref": "#/$defs/NodeId" },
+            "queued": {
+              "maxItems": 100,
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          },
+          "required": ["status", "node", "queued"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "ApprovalConcern": {
       "type": "object",
       "properties": { "argument": { "type": "string" }, "reason": { "type": "string" } },
@@ -2331,6 +2368,7 @@
         "unknown_skill",
         "unknown_approval",
         "cursor_out_of_range",
+        "node_ended",
         "unknown_model",
         "storage_failed",
         "not_set_up",

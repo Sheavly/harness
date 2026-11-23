@@ -115,6 +115,10 @@ import {
 } from '../channel/channel.validator.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import {
+  messageNodeRequestSchema,
+  promptSentSchema,
+} from '../node-command/node-command.validator.js';
+import {
   subscribeFromSchema,
   subscribeRequestSchema,
 } from '../subscription/subscription.validator.js';
@@ -206,6 +210,8 @@ function contractSchemas(): Record<string, z.ZodType> {
     TreeSnapshot: treeSnapshotSchema,
     SubscribeFrom: subscribeFromSchema,
     SubscribeRequest: subscribeRequestSchema,
+    MessageNodeRequest: messageNodeRequestSchema,
+    PromptSent: promptSentSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,
