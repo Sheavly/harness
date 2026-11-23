@@ -13,6 +13,24 @@ A rebase (a fold, a reshape or a sync) stops at the commit that conflicts and li
 4. `git rebase --abort` restores the branch as it was before the rebase. With `rerere` enabled
    ([setup.md](setup.md)), a resolution repeats itself the next time the same conflict comes up.
 
+## A commit is refused for the wrong scope or the wrong issue
+
+`Refs: #466 but branch 393-… is for #393`, or a scope that exists in the branch you are on but
+"is not a package": the hooks run from the checkout the session was started in, and the commit
+landed in another one (a worktree from [start.md](start.md), step 5b). The guard reads the scopes
+and the branch of the checkout the commit is made in, found from `git -C <worktree> commit …`, a
+`cd <worktree> &&` (every `cd` before the commit counts, in order), or the shell's own folder, and
+its message says which checkout it checked (`branch 12-export of /path`). A folder it cannot read
+(a variable, `~`, a space, one that does not exist, `--git-dir`, `--work-tree`) is refused, not
+guessed: name it with an absolute `git -C`. So:
+
+- Commit in a worktree with `git -C <worktree> commit …`, and run the other commands there with
+  the command's `cwd` or `git -C <worktree>`.
+- If the message names the session's own checkout, the command did not name the worktree: add `-C`.
+- A guard that still checks the wrong checkout (hook files older than this fix in the checkout the
+  session started in) is fixed by updating those hook files there, or by starting the session in
+  the worktree. Never skip the hook.
+
 ## Push refused
 
 - `rejected … (fetch first)` or `stale info` with `--force-with-lease`: someone else pushed to the

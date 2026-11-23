@@ -39,6 +39,7 @@ flowchart BT
     core["@sheavly/core"]
     extension["@sheavly/extension"]
     host["@sheavly/host"]
+    logger["@sheavly/logger"]
     loop["@sheavly/loop"]
     process["@sheavly/process"]
     protocol["@sheavly/protocol"]
@@ -78,11 +79,12 @@ flowchart BT
   host --> extension
   host --> loop
   host --> tools
+  logger --> runtime
   loop --> runtime
   process --> runtime
   providers --> core
   runtime --> core
-  storage --> runtime
+  storage --> logger
   summary --> core
   terminal --> client
   terminal --> coding

@@ -4,6 +4,7 @@ import type { PublicRouteName, RouteBody, RouteName } from '@sheavly/protocol/ap
 import type { InstanceId } from '@sheavly/protocol/handshake/handshake.types';
 import type { ServerVersion } from '@sheavly/protocol/version/version.types';
 import type { ConversationId, ServerErrorCode } from '@sheavly/protocol/server/server.types';
+import type { BackendLogs } from '../logging/logging.types.js';
 import type { PermissionSetup } from '../profiles/permission-setup.service.js';
 import type { ProfileSetup } from '../profiles/setup.service.js';
 import type { WorkspaceSetup } from '../profiles/workspace-setup.service.js';
@@ -27,8 +28,11 @@ export type ApiOptions = {
   instanceId: InstanceId;
   /** The backend's own version, as `GET /health` reports it (`readServerVersion`). */
   serverVersion: ServerVersion;
-  /** Hears of a failure the API answers as `internal`: its name and message, never a stack. Default: none. */
-  log?: ((text: string) => void) | undefined;
+  /**
+   * Where a failure the API answers as `internal` is logged, once, with its stack and cause chain
+   * and the conversation's id when the route has one. The client is told none of it.
+   */
+  logs: BackendLogs;
 };
 
 /** A failure, as the API answers it: an HTTP status and one of the protocol's codes. */

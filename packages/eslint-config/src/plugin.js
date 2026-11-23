@@ -19,6 +19,11 @@ import { noBarrel } from './rules/no-barrel.js';
 import { noBrandCast } from './rules/no-brand-cast.js';
 import { noAdhocTaskKind } from './rules/no-adhoc-task-kind.js';
 import { noDirectTaskStart } from './rules/no-direct-task-start.js';
+import { logErrorAsValue } from './rules/log-error-as-value.js';
+import { logEventName } from './rules/log-event-name.js';
+import { noFailureOutputInCatch } from './rules/no-failure-output-in-catch.js';
+import { noLogAndThrow } from './rules/no-log-and-throw.js';
+import { noLoggerInPureKind } from './rules/no-logger-in-pure-kind.js';
 import { noRawError } from './rules/no-raw-error.js';
 import { noSilentCatch } from './rules/no-silent-catch.js';
 import { permissionStoreRoot } from './rules/permission-store-root.js';
@@ -60,7 +65,12 @@ const RULES = {
   imports: importsRule,
   'kind-contents': kindContents,
   layout: layoutRule,
+  'log-error-as-value': logErrorAsValue,
+  'log-event-name': logEventName,
   'no-adhoc-task-kind': noAdhocTaskKind,
+  'no-failure-output-in-catch': noFailureOutputInCatch,
+  'no-log-and-throw': noLogAndThrow,
+  'no-logger-in-pure-kind': noLoggerInPureKind,
   'no-barrel': noBarrel,
   'no-brand-cast': noBrandCast,
   'no-direct-task-start': noDirectTaskStart,

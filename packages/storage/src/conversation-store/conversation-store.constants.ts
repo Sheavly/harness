@@ -7,8 +7,28 @@ export const INDEX_FILE = 'index.json';
 /** A conversation's stream, one entry per line, in `seq` order. */
 export const STREAM_FILE = 'stream.jsonl';
 
-/** A searchable, private projection of run, hook and tool failures from the stream. */
-export const ERRORS_FILE = 'errors.jsonl';
+/**
+ * A conversation's log, one `LogEntry` per line: the failures the stream records (rebuilt from it
+ * when a write is lost) and what the backend logs about the conversation (`jq` reads it).
+ */
+export const LOG_FILE = 'log.jsonl';
+
+/** The events the conversation log records from the stream; the backend's own are its constants'. */
+export const LOG_EVENT = {
+  RUN_FAILED: 'run.failed',
+  HOOK_FAILED: 'hook.failed',
+  TOOL_FAILED: 'tool.failed',
+} as const;
+
+/** @public Read as text by the log-event catalogue suite, never imported. */
+export const LOG_EVENT_MEANING = {
+  RUN_FAILED:
+    'A model run failed: the stream recorded run_failed (fields: seq, sessionId, messageId, modelId, the error text and its captured details).',
+  HOOK_FAILED:
+    'A hook handler threw during a run, which went on: the stream recorded hook_failed (fields: seq, sessionId, hook, handler, the error text).',
+  TOOL_FAILED:
+    'A tool call ended with an error result: the stream recorded it (fields: seq, sessionId, toolCallId, toolName, the error text, never the input).',
+} satisfies Record<keyof typeof LOG_EVENT, string>;
 
 /** The main session's durable history log, one record per line, in `seq` order. */
 export const HISTORY_LOG_FILE = 'history.jsonl';

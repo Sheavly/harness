@@ -4,14 +4,15 @@ import { useTempFolders } from '@sheavly/testing/files/temp-folders.fake';
 import { createApiApp } from '../api.helper.js';
 import { testBackend } from '../../testing/backend.fake.js';
 import { TEST_INSTANCE_ID } from '../../testing/identity.fake.js';
+import { collectingLogs } from '../../testing/logs.fake.js';
 import { TEST_SECRET, TEST_SERVER_VERSION, TEST_TOKEN } from '../../testing/testing.constants.js';
 
 const folders = useTempFolders({ prefix: 'internal-failure-log-', names: ['app'] });
 
-/** The backend's API over `pick`'s conversations, with what its log heard. */
+/** The backend's API over `pick`'s conversations, with the entries it logged. */
 function apiOver(pick: (real: Conversations) => Conversations) {
   const made = testBackend({ home: `${folders.base}/home`, workspace: folders.app });
-  const logged: string[] = [];
+  const { logs, entries } = collectingLogs();
   const app = createApiApp({
     conversations: pick(made.conversations),
     setup: made.setup,
@@ -20,7 +21,7 @@ function apiOver(pick: (real: Conversations) => Conversations) {
     token: TEST_TOKEN,
     instanceId: TEST_INSTANCE_ID,
     serverVersion: TEST_SERVER_VERSION,
-    log: (text) => logged.push(text),
+    logs,
   });
   const call = (path: string, init: { method: string; body?: string } = { method: 'GET' }) =>
     app.request(path, {
@@ -28,13 +29,13 @@ function apiOver(pick: (real: Conversations) => Conversations) {
       headers: { authorization: `Bearer ${TEST_TOKEN}`, 'content-type': 'application/json' },
     });
 
-  return { call, logged };
+  return { call, entries };
 }
 
 describe('an unexpected failure the API answers as internal', () => {
-  it('tells the client nothing and the log its name and message, on one line, with no stack', async () => {
-    const failure = new TypeError(`broke at /w/\u001b[31mfile\nsecond ${TEST_SECRET}`);
-    const { call, logged } = apiOver(
+  it('tells the client nothing and logs one entry with the error, its stack and its route', async () => {
+    const failure = new TypeError(`broke at /w/file password=${TEST_SECRET}`);
+    const { call, entries } = apiOver(
       () =>
         new Conversations({
           create: () => {
@@ -50,17 +51,23 @@ describe('an unexpected failure the API answers as internal', () => {
       error: { code: 'internal', message: 'The server failed; see its log' },
     });
     expect(text).not.toContain('SECRET');
-    expect(logged).toEqual([
-      `api: request failed: TypeError: broke at /w/filesecond ${TEST_SECRET}\n`,
-    ]);
-    expect(logged.join('')).not.toContain('    at ');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: 'error',
+      event: 'api.request_failed',
+      route: 'POST /conversations',
+      status: 500,
+      error: { name: 'TypeError' },
+    });
+    expect((entries[0]?.error as { stack: string }).stack).toContain('internal-failure-log.test');
+    expect(JSON.stringify(entries)).not.toContain(TEST_SECRET);
   });
 
   it('logs nothing for a failure the client caused', async () => {
-    const { call, logged } = apiOver((real) => real);
+    const { call, entries } = apiOver((real) => real);
     const response = await call('/conversations/00000000-0000-4000-8000-0000000000ab');
 
     expect(response.status).toBe(404);
-    expect(logged).toEqual([]);
+    expect(entries).toEqual([]);
   });
 });

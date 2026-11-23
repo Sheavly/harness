@@ -2,23 +2,42 @@
 
 How this workspace works inside, why it is built this way, and how to extend it.
 
-## Chat diagnostics
+## The conversation log
 
-`FileConversationStore` keeps a private, failure-only `errors.jsonl` beside `stream.jsonl` and
-`history.jsonl`. Records include `at`, `seq`, `conversationId`, `sessionId` and `messageId`, plus
-model selection, tool-call or hook identity and structured run-error details when available.
-Join `messageId` to a user message's `id` in history and `seq` to the exact stream event. Background
-sessions retain their originating message even when the parent starts another prompt. Old records
-without IDs remain valid and are not assigned invented ones.
+A conversation's `log.jsonl` is the one place its failures are written: a private file of
+`LogEntry` lines (`@sheavly/logger`), beside `stream.jsonl` and `history.jsonl`. Two things write
+it, and both make their entries with `createLogEntry`, so there is one shape and one redaction:
+
+- **The stream's failures** (`run.failed`, `hook.failed`, `tool.failed`, `ConversationLog` and
+  `failureEntry`) are a projection of the authoritative stream. Each has the stream entry's `time`
+  and `seq`, its `conversationId`, `sessionId` and `messageId`, plus the model, tool-call or hook
+  identity and a failed run's captured `details`. Join `messageId` to a user message's `id` in
+  history and `seq` to the exact stream event. Background sessions retain their originating
+  message even when the parent starts another prompt. Old streams without message ids are replayed
+  without invented ones.
+- **What the backend logs about the conversation** reaches the file through `logSink(id)`: an
+  error that ended a request or a background run, with its stack and cause chain.
 
 The stream is authoritative. The first append after reopening trims partial lines and replays
-missing failures into the diagnostic log, using the last recorded stream sequence to avoid duplicates.
-A failed diagnostic write becomes a storage failure, so the host refuses further prompts instead
-of silently continuing unrecorded. Deleting a conversation deletes its diagnostics too.
+missing failures into the log, using the highest `seq` of a line that is one of the stream's own
+failure events (`isStreamFailureEvent`) to avoid duplicates; whatever else the backend logged is
+not part of the replay, whatever fields it has. A failed projection write becomes a storage
+failure, so the host refuses further prompts instead of silently continuing unrecorded.
 
-Logs use private file and folder permissions. Only selected exception fields are serialized, never
-request/response objects, authentication headers or tool inputs. Common credential forms in error
-text are redacted, but paths and error messages can still be private: review logs before sharing.
+The backend's lines are not awaited by its logger, so they go through one `OrderedAppends` per
+file (`jsonl-file/`): each waits for the one before it, and the file holds them in the order they
+were logged, even from two sinks made for one conversation. A sink's write is the caller's
+logger's to isolate: its failure never reaches the request. Deleting a conversation marks it
+deleted, waits for the lines already asked for, then removes the folder; a line that arrives
+after the mark is dropped, so a failure while a conversation closes cannot bring its folder back.
+
+Failures with no conversation go to `<home>/logs/backend.jsonl` (`serverLogSink`). Neither file is
+trimmed or rotated; a person deletes them.
+
+Files use private permissions. Only selected exception fields are serialized, never
+request/response objects, authentication headers or tool inputs. Credential forms and
+identity-shaped text in error text are redacted, but paths and error messages can still be
+private: review logs before sharing.
 
 ## History logs
 
@@ -49,9 +68,9 @@ written or removed.
   conversation belongs to the one process serving it, and a second writer would count its own
   `seq`. A refused or out-of-order append is how that would show.
 - **Crash consistency is a write order, not a journal.** Decided for #272: no journal. Per
-  conversation the stream is written first and is the source of truth; history, `errors.jsonl`
+  conversation the stream is written first and is the source of truth; history, `log.jsonl`
   and the index follow, and each can be rebuilt or repaired from what precedes it on reopening
-  (`interrupted` is computed on read, `errors.jsonl` is replayed from the stream, a cut-off last
+  (`interrupted` is computed on read, `log.jsonl`'s failures are replayed from the stream, a cut-off last
   line is trimmed). A crash can lose the newest derived write, never leave the files disagreeing
   in a way a reopen cannot repair.
 - **A failed write is retried, never silently sticky.** `EntryLog` (runtime) and
@@ -94,6 +113,7 @@ replaced is decided once.
   config.json                            # profile bindings and global terminal preferences
   settings.json                          # global extension settings, written by hand
   trusted-workspaces.json                # shared: trust is about a repo, not a provider
+  logs/backend.jsonl                     # the server's log: failures with no conversation
   permissions/<workspace-key>.json       # shared: what run_command may do in a folder
   profiles/<profile-id>/
     profile.json                         # identity, lastModelSelection and modelEfforts keyed by UUID
@@ -105,7 +125,7 @@ replaced is decided once.
         index.json                            # the index entry
         stream.jsonl                          # the stream, one entry per line
         history.jsonl                         # the main session's history log
-        errors.jsonl                          # failure-only diagnostics
+        log.jsonl                             # the conversation log: stream failures and the backend's
         shell.json                            # working root shared by the agents
         queue.json                            # lines queued behind a running prompt
         outputs/                              # complete command output logs

@@ -295,6 +295,126 @@ describe('the git guard', () => {
   });
 });
 
+// The forms a command can name that worktree in (every `cd`, git's global options, a folder it
+// cannot read), against a session that sits on another branch with other packages.
+describe('how a commit names the worktree it is made in', () => {
+  let worktree = '';
+
+  beforeEach(() => {
+    prompt('#12: add export');
+    worktree = otherCheckout({ branch: '12-export', scopes: ['widget'] });
+    git('switch', '-q', '-c', '99-other');
+  });
+
+  const message = (text) => `-m "$(cat <<'EOF'\n${text}\nEOF\n)"`;
+  const OK = 'feat(widget): add export\n\nRefs: #12';
+
+  it.each([
+    ['git -C <dir>', (dir) => `git -C ${dir} commit`],
+    [
+      'git -C with a path relative to the session',
+      (dir, from) => `git -C ${path.relative(from, dir)} commit`,
+    ],
+    ['a leading cd', (dir) => `cd ${dir} && git commit`],
+  ])('reads that checkout’s branch and scopes through %s', (_name, command) => {
+    const run = (text) => shell(`${command(worktree, repo)} ${message(text)}`);
+
+    expect(run(OK)).toEqual({ permission: 'allow' });
+    expect(run('feat(widget): add export\n\nRefs: #99')).toMatchObject({ permission: 'deny' });
+    expect(run('feat(gadget): add export\n\nRefs: #12')).toMatchObject({ permission: 'deny' });
+  });
+
+  it.each([
+    ['a cd after another command', (dir) => `true && cd ${dir} && git commit`],
+    ['two cds, the last one counting', (dir) => `cd ${os.tmpdir()} && cd ${dir} && git commit`],
+    ['a subshell', (dir) => `(cd ${dir} && git commit`],
+    ['git options before -C', (dir) => `git --no-pager -C ${dir} commit`],
+    ['git -c before -C', (dir) => `git -c core.quotepath=off -C ${dir} commit`],
+    ['a cd with a ; after the folder', (dir) => `cd ${dir}; git commit`],
+    ['a cd with && attached', (dir) => `cd ${dir}&&git commit`],
+    ['a quoted -c value with a space', (dir) => `git -c user.name="A B" -C ${dir} commit`],
+    ['a cd inside bash -c', (dir) => `bash -c 'cd ${dir} && git commit`],
+  ])('reads that checkout’s branch and scopes through %s', (_name, command) => {
+    const run = (text) => shell(`${command(worktree)} ${message(text)}`);
+
+    expect(run(OK)).toEqual({ permission: 'allow' });
+    expect(run('feat(widget): add export\n\nRefs: #99')).toMatchObject({ permission: 'deny' });
+  });
+
+  it.each([
+    ['a variable', 'cd "$WORKTREE" && git commit'],
+    ['a home folder', 'cd ~/worktree && git commit'],
+    ['a folder with a space', 'git -C "my worktree" commit'],
+    ['a folder that does not exist', 'git -C /no/such/worktree commit'],
+    ['cd -', 'cd - && git commit'],
+    ['--git-dir with =', 'git --git-dir=/tmp/x/.git commit'],
+    ['--git-dir with a space', 'git --git-dir /tmp/x/.git --work-tree /tmp/x commit'],
+  ])('refuses to guess the checkout when it is %s, and says how to name it', (_name, command) => {
+    const response = shell(`${command} ${message(OK)}`);
+
+    expect(response).toMatchObject({ permission: 'deny' });
+    expect(response.agent_message).toContain('git -C <absolute worktree path> commit');
+  });
+
+  it.each([
+    ['a grep -C', 'rg -C 2 foo'],
+    ['a git diff -C', 'git diff -C HEAD~'],
+    ['a git log --no-edit', 'git log --no-edit'],
+    ['a grep -c', 'grep -c x file'],
+  ])('checks the commit’s message, not the flags of what follows it: %s', (_name, after) => {
+    const bad = 'feat(widget): add export\n\nRefs: #99';
+
+    expect(shell(`git -C ${worktree} commit ${message(bad)} && ${after}`)).toMatchObject({
+      permission: 'deny',
+    });
+    expect(shell(`git -C ${worktree} commit ${message(OK)} && ${after}`)).toEqual({
+      permission: 'allow',
+    });
+  });
+
+  it('reads the commit’s message, not the heredoc of a command chained after it', () => {
+    const body = `gh pr create --body-file - <<'EOF'\nfeat(widget): add export\n\nRefs: #12\nEOF`;
+    const bad = 'feat(widget): add export\n\nRefs: #99';
+
+    expect(shell(`git -C ${worktree} commit ${message(bad)} && ${body}`)).toMatchObject({
+      permission: 'deny',
+    });
+  });
+
+  it('still checks a message that mentions a flag such as -C or --no-edit', () => {
+    // No `Refs:` trailer: it must be refused, whatever the text says about git's options.
+    expect(
+      shell(`git -C ${worktree} commit -m "fix(widget): do not skip the -C and --no-edit forms"`),
+    ).toMatchObject({ permission: 'deny' });
+  });
+
+  it('names the checkout it checked, so the cause is visible', () => {
+    const { agent_message: reason } = shell(
+      `git -C ${worktree} commit ${message('feat(widget): add export\n\nRefs: #99')}`,
+    );
+
+    expect(reason).toContain('Refs: #99');
+    expect(reason).toContain('branch 12-export of ');
+  });
+
+  it('still checks a commit with no -C against the checkout the shell is in', () => {
+    // The session's own checkout is on 99-other and has no `widget` package.
+    expect(shell(`git commit ${message(OK)}`)).toMatchObject({ permission: 'deny' });
+  });
+
+  it('falls back to the session’s checkout when the folder is not a repo', () => {
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'hook-not-a-repo-'));
+
+    try {
+      expect(shell(`git -C ${outside} commit ${message(OK)}`)).toMatchObject({
+        permission: 'deny',
+      });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('a guard that fails', () => {
   // A corrupt chat state makes both guards crash while deciding: each denies, saying why.
   beforeEach(() => writeFileSync(path.join(stateDir, 'c1.json'), '{ not json'));

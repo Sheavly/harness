@@ -2,20 +2,23 @@
 
 ## Chat diagnostics
 
-Kept chats have a private `errors.jsonl` beside `history.jsonl` and `stream.jsonl` under
+Kept chats have a private `log.jsonl` beside `history.jsonl` and `stream.jsonl` under
 `~/.sheavly/profiles/<profile-id>/workspaces/<workspace-key>/conversations/<chat-id>/`.
 The startup line prints the chat ID. Find its log with:
 
 ```sh
-find ~/.sheavly -path '*/conversations/<chat-id>/errors.jsonl'
+find ~/.sheavly -path '*/conversations/<chat-id>/log.jsonl'
 ```
 
-Records include timestamps, chat/session IDs, stream sequence and originating user-message IDs.
-Look up `messageId` as a user message's `id` in history, or find the event by `seq` in the stream.
-The modern UI reports run errors with that message ID too. Run diagnostics include selected error
-details, a bounded stack and cause chain. Tool and hook failures name their tool call or hook.
-Prompts, tool inputs and successful outputs are not copied. Common credential forms are redacted,
-but error text and paths can still be private: review logs before sharing.
+Each line is a log entry: `level`, `event`, `time`, and the fields of that event. Entries include
+chat/session IDs, stream sequence and originating user-message IDs. Look up `messageId` as a user
+message's `id` in history, or find the event by `seq` in the stream. The modern UI reports run
+errors with that message ID too. Run failures (`run.failed`) include selected error details, a
+bounded stack and cause chain. Tool and hook failures (`tool.failed`, `hook.failed`) name their
+tool call or hook. A failure the backend itself hit while serving the chat (a request that
+answered `internal`, a prompt that failed in the background) is in the same file, with its stack.
+Prompts, tool inputs and successful outputs are not copied. Credential forms and identity-shaped
+text are redacted, but error text and paths can still be private: review logs before sharing.
 
 ## Model-first setup
 

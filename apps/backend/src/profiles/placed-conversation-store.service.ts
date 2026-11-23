@@ -6,6 +6,8 @@ import type {
   EntryStore,
   HistoryLog,
 } from '@sheavly/core/store/store.types';
+import type { LogSink } from '@sheavly/logger/logger/logger.types';
+import type { FileConversationStore } from '@sheavly/storage/conversation-store/conversation-store.service';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
@@ -14,7 +16,7 @@ import type { Placement } from './profiles.types.js';
 import type { Profiles } from './profiles.service.js';
 
 /** Where one conversation lives: its placement, and the store of that folder under that profile. */
-type Home = { placement: Placement; store: ConversationStore };
+type Home = { placement: Placement; store: FileConversationStore };
 
 /**
  * The backend's conversations, kept wherever each belongs: under the profile it runs on, in the
@@ -71,6 +73,36 @@ export class PlacedConversationStore implements ConversationStore {
       append: async (entry) => (await this.#placed(id)).store.entries(id).append(entry),
       read: (from) => this.#readEntries({ id, from }),
     };
+  }
+
+  /**
+   * Where conversation `id`'s log entries go: its own `log.jsonl`, wherever it is kept, or
+   * `otherwise` when nothing placed or kept it (a failure before it started, an id nobody has).
+   */
+  logSink(params: { id: ConversationId; otherwise: LogSink }): LogSink {
+    const { id, otherwise } = params;
+
+    return async (entry) => {
+      const home = await this.#homeForLog(id);
+
+      await (home ? home.store.logSink(id) : otherwise)(entry);
+    };
+  }
+
+  /**
+   * The home of `id` for a log entry: `undefined` when there is none, or when looking for it
+   * failed. The entry describes a failure, often of these very stores, and must reach a file
+   * anyway: it goes where an unplaced conversation's goes.
+   */
+  async #homeForLog(id: ConversationId): Promise<Home | undefined> {
+    try {
+      return await this.#homeOf(id);
+    } catch (caughtError) {
+      // Any error of the lookup (a profile folder that cannot be read) means no known home; what
+      // is not an error is not ours to hide.
+      if (caughtError instanceof Error) return undefined;
+      throw caughtError;
+    }
   }
 
   shell(id: ConversationId): DocumentStore {

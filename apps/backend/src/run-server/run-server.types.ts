@@ -4,6 +4,7 @@ import type { Conversations } from '@sheavly/host/conversations/conversations.se
 import type { InstanceId } from '@sheavly/protocol/handshake/handshake.types';
 import type { ServerVersion } from '@sheavly/protocol/version/version.types';
 import type { parseServerEnv } from '../harness/settings.validator.js';
+import type { BackendLogs } from '../logging/logging.types.js';
 
 /**
  * What `runServer` reads instead of the process's own: the environment, the arguments after the
@@ -22,6 +23,7 @@ export type ServerSettings = ReturnType<typeof parseServerEnv>;
 export type BuiltServer = {
   listening: ServerType;
   conversations: Conversations;
+  logs: BackendLogs;
   token: string;
   instanceId: InstanceId;
   serverVersion: ServerVersion;

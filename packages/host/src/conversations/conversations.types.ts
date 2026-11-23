@@ -137,6 +137,12 @@ export type ConversationStorage = {
 /** What the service builds a conversation on: the storage when the host keeps anything, else none. */
 export type StorageOf = { storage?: ConversationStorage };
 
+/**
+ * A prompt the conversation ran itself that failed: which conversation, and what threw. Clients
+ * see the failure on the stream (`run_failed`); this is for the app to log with the conversation.
+ */
+export type PromptFailure = { id: ConversationId; error: unknown };
+
 /** One prompt's events, and the text and parts it sent. */
 export type SentPrompt = {
   events: AsyncIterable<AgentEvent>;

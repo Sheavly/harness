@@ -7,6 +7,7 @@ import { readEntries } from '@sheavly/client/client/entries.helper';
 import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { reply, testApi } from '../../testing/api.fake.js';
+import { collectingLogs } from '../../testing/logs.fake.js';
 import { TEST_TOKEN } from '../../testing/testing.constants.js';
 import { honoPath } from '../api.utils.js';
 import type { HarnessNotice } from '@sheavly/protocol/notice/notice.types';
@@ -129,14 +130,19 @@ describe('the API’s guards', () => {
   });
 
   it('ends a prompt whose run fails with a done as failed, and keeps serving', async () => {
-    const written = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const { request, start, conversations, runOf } = testApi({
-      boom: [
-        () => {
-          throw new Error('model down');
-        },
-      ],
-    });
+    const { logs, entries: logged } = collectingLogs();
+    const { request, start, conversations, runOf } = testApi(
+      {
+        boom: [
+          () => {
+            throw new Error('model down');
+          },
+        ],
+      },
+      undefined,
+      undefined,
+      logs,
+    );
     const id = await start();
     const entries = [];
 
@@ -151,11 +157,15 @@ describe('the API’s guards', () => {
     expect(frames).toContain('"lastOutcome":"failed"');
     // Logged as the run that nobody awaits throws, just after its `done` reached the stream.
     await vi.waitFor(() => {
-      expect(written).toHaveBeenCalledWith('prompt failed: model down\n');
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toMatchObject({
+        event: 'prompt.failed',
+        conversationId: id,
+        error: { message: 'model down' },
+      });
     });
     expect((await request(`/conversations/${id}/messages`)).status).toBe(200);
 
-    written.mockRestore();
     await conversations.closeAll();
   });
 

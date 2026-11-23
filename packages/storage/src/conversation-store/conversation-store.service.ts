@@ -6,12 +6,14 @@ import type {
   EntryStore,
   HistoryLog,
 } from '@sheavly/core/store/store.types';
+import type { LogSink } from '@sheavly/logger/logger/logger.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { StoredConversation } from '@sheavly/protocol/store/store.types';
 import { StorageFileError } from '../errors/storage.errors.js';
 import { readJsonFile, writeJsonFile } from '../json-file/json-file.helper.js';
+import { OrderedAppends } from '../jsonl-file/ordered-appends.service.js';
 import { storedConversationIndexSchema } from '../legacy-effort/legacy-effort.validator.js';
 import { listFolderNames } from '../listing/listing.helper.js';
 import type { FileProblem, ListedFile } from '../listing/listing.types.js';
@@ -21,6 +23,7 @@ import { FileOutputStore } from '../output-store/output-store.service.js';
 import {
   CONVERSATIONS_FOLDER,
   INDEX_FILE,
+  LOG_FILE,
   OUTPUTS_FOLDER,
   QUEUE_FILE,
   SHELL_FILE,
@@ -47,6 +50,10 @@ export class FileConversationStore implements ConversationStore {
   readonly #shells = new Map<ConversationId, DocumentStore>();
   readonly #outputs = new Map<ConversationId, FileOutputStore>();
   readonly #queues = new Map<ConversationId, DocumentStore>();
+  /** Each conversation's log writer, so every line asked for is written in the order asked. */
+  readonly #logAppends = new Map<ConversationId, OrderedAppends>();
+  /** Deleted conversations: a conversation id is never reused, so a late log line is dropped. */
+  readonly #deleted = new Set<ConversationId>();
   /** Each session's history log, by `<conversation>/<session>`, so one queue orders its appends. */
   readonly #logs = new Map<string, HistoryFile>();
 
@@ -86,6 +93,22 @@ export class FileConversationStore implements ConversationStore {
     this.#logs.set(key, log);
 
     return log;
+  }
+
+  /**
+   * Where conversation `id`'s log entries go: its `log.jsonl`, beside the failures its stream
+   * records. Entries are written in the order they are given, even when the caller does not wait
+   * for each (one writer per conversation, however often this is called), and the folder is made
+   * if the conversation has not stored anything yet. Once the conversation is deleted a late
+   * entry is dropped, so a failure while it is closing cannot bring its folder back.
+   */
+  logSink(id: ConversationId): LogSink {
+    const known = this.#logAppends.get(id);
+    const appends = known ?? new OrderedAppends({ file: path.join(this.#folderOf(id), LOG_FILE) });
+
+    this.#logAppends.set(id, appends);
+
+    return (entry) => appends.append({ value: entry, unless: () => this.#deleted.has(id) });
   }
 
   shell(id: ConversationId): DocumentStore {
@@ -167,7 +190,12 @@ export class FileConversationStore implements ConversationStore {
     // Made if need be: a store that was never opened must still be the retired one afterwards.
     const outputs = this.#outputStore(id);
 
+    // Before the folder goes: a log entry written meanwhile must not make it again.
+    this.#deleted.add(id);
+
     try {
+      // Lines already asked for are written or dropped by now, so none is in flight to make it.
+      await this.#logAppends.get(id)?.settled();
       // First: a command still printing must not recreate the folder that is about to go.
       await outputs.retire();
       await this.#streams.get(id)?.forget();
@@ -179,8 +207,9 @@ export class FileConversationStore implements ConversationStore {
       // The retired store stays: a new `outputs(id)` must not hand out a store that could make
       // the folder again. A conversation id is a fresh UUID each time, so it is never reused.
     } catch (caughtError) {
-      // Nothing was deleted, so the conversation keeps storing output.
+      // Nothing was deleted, so the conversation keeps storing output and its log.
       outputs.resume();
+      this.#deleted.delete(id);
       throw asStoreError(caughtError);
     }
   }

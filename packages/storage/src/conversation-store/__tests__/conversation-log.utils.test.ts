@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diagnosticRecord } from '../diagnostic-record.utils.js';
+import { failureEntry } from '../conversation-log.utils.js';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { callIdSchema, messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
@@ -14,10 +14,10 @@ const base = {
 const conversationId = conversationIdSchema.parse('00000000-0000-4000-8000-000000000002');
 
 function recorded(entry: StreamEntry) {
-  return diagnosticRecord({ entry, conversationId, modelId: undefined });
+  return failureEntry({ entry, conversationId, modelId: undefined });
 }
 
-describe('diagnostic record projection', () => {
+describe('failure entry projection', () => {
   it('records tool identity and failure text without copying arguments', () => {
     const call = {
       id: callIdSchema.parse('read-1'),
@@ -44,12 +44,14 @@ describe('diagnostic record projection', () => {
     const record = recorded(entry);
 
     expect(record).toMatchObject({
-      type: 'tool_failed',
+      event: 'tool.failed',
       toolCallId: call.id,
       toolName: 'read_file',
       messageId: base.messageId,
+      time: 100,
+      seq: 2,
     });
-    expect(record?.error).toBe('password=[REDACTED]');
+    expect(record?.error).toMatchObject({ message: 'password=[REDACTED]' });
     expect(JSON.stringify(record)).not.toContain('private');
     expect(
       recorded({
@@ -73,10 +75,10 @@ describe('diagnostic record projection', () => {
         },
       }),
     ).toMatchObject({
-      type: 'hook_failed',
+      event: 'hook.failed',
       hook: 'audit',
       handler: 'onError',
-      error: 'Hook failed',
+      error: { message: 'Hook failed' },
     });
     expect(
       recorded({
@@ -85,5 +87,24 @@ describe('diagnostic record projection', () => {
         event: { seq: 0, type: 'text_delta', text: 'private prompt' },
       }),
     ).toBeUndefined();
+  });
+
+  it('keeps a failed run’s captured details beside its text', () => {
+    const record = recorded({
+      ...base,
+      kind: 'event',
+      event: {
+        seq: 0,
+        type: 'run_failed',
+        error: 'Model failed',
+        details: { name: 'ModelApiError', stack: 'at x', causes: [{ name: 'E', message: 'down' }] },
+        session: { id: base.sessionId, rootId: base.sessionId, depth: 1 },
+      },
+    });
+
+    expect(record).toMatchObject({
+      event: 'run.failed',
+      details: { name: 'ModelApiError', causes: [{ message: 'down' }] },
+    });
   });
 });

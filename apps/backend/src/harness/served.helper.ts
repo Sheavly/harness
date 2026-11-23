@@ -13,7 +13,8 @@ import { harnessConversation } from './conversation.helper.js';
 import { createBackendHarness } from './harness.helper.js';
 import type { SearchChains } from './search-chains.service.js';
 import type { ServedSettings } from './harness.types.js';
-import { errorMessage } from '@sheavly/runtime/errors/errors.utils';
+import { LOG_EVENT } from '../logging/logging.constants.js';
+import type { BackendLogs } from '../logging/logging.types.js';
 import { startOnRequestedModel } from './starting-model.helper.js';
 import { reportedWorkingRoot } from './working-root-report.helper.js';
 import { modelCallsTo } from './model-calls.helper.js';
@@ -63,6 +64,8 @@ export async function servedConversation(params: {
   /** Shared with the backend's other conversations, so a rate-limited backend is skipped by all. */
   searchChains: SearchChains;
   log: (text: string) => void;
+  /** Where an error that ends without a caller is logged, under this conversation's id. */
+  logs: BackendLogs;
 }): Promise<LiveConversation> {
   const {
     env,
@@ -75,8 +78,10 @@ export async function servedConversation(params: {
     fileLocks,
     searchChains,
     log,
+    logs,
   } = params;
   const { id, messages, storage } = asked;
+  const logger = logs.conversation(id);
   const placement = await places.decide({ id, asked });
   const permissions = workspacePermissions({
     store: permissionStore,
@@ -137,7 +142,9 @@ export async function servedConversation(params: {
     home: homedir(),
     onModelCall,
     onFileReadsProblem: (caughtError) =>
-      log(`Could not restore or keep the file reads: ${errorMessage(caughtError)}\n`),
+      logger.error(LOG_EVENT.FILE_READS_PROBLEM, { error: caughtError }),
+    onExtensionProblem: (caughtError) =>
+      logger.error(LOG_EVENT.EXTENSION_PROBLEM, { error: caughtError }),
     ...(storage && {
       entries: storage.entries,
       resume: storage.resume,
@@ -165,6 +172,7 @@ export async function servedConversation(params: {
       harness,
       messages,
       storage,
+      logger,
       ...(settings.maxTurns !== undefined && { maxTurns: settings.maxTurns }),
       summary,
       run: {
@@ -188,7 +196,7 @@ export async function servedConversation(params: {
           reportedWorkingRoot({
             workingRoots: harness.workingRoots,
             onFailure: (caughtError) =>
-              log(`Could not read the working root for the header: ${errorMessage(caughtError)}\n`),
+              logger.error(LOG_EVENT.WORKING_ROOT_FAILED, { error: caughtError }),
           }),
         useModel: (id, effort) => useModel({ workspace, id, ...(effort && { effort }) }),
       },

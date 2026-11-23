@@ -12,6 +12,7 @@ import type { ServedSettings } from '../harness/harness.types.js';
 import { sharedScratchRoot } from '../harness/scratch.helper.js';
 import { parseCliSettings, parseRunEnv, parseServerEnv } from '../harness/settings.validator.js';
 import { listenServer } from '../listen/listen.helper.js';
+import { LOG_EVENT } from '../logging/logging.constants.js';
 import { buildServer } from './build-server.helper.js';
 import { printStarted } from './print-started.helper.js';
 import type { BuiltServer, RunServerParams, ServerSettings } from './run-server.types.js';
@@ -138,7 +139,7 @@ export async function runServer(params: RunServerParams = {}): Promise<void> {
 
   // Stale scratch entries are removed once at startup; a failure is reported, never fatal.
   pruneScratch({ root: sharedScratchRoot() }).catch((caughtError: unknown) =>
-    log(`Could not prune the scratch folder: ${String(caughtError)}\n`),
+    built.logs.server.warn(LOG_EVENT.SCRATCH_PRUNE_FAILED, { error: caughtError }),
   );
 
   const address = await listenOrRelease({ built, server, presence });

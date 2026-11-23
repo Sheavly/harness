@@ -1,0 +1,44 @@
+{
+  "name": "@sheavly/logger",
+  "version": "0.0.0",
+  "description": "A structured logger: closed event names and fields, redaction before any sink, sinks passed in",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -b tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "prepack": "npm run build"
+  },
+  "type": "module",
+  "license": "Apache-2.0",
+  "sheavly": {
+    "domain": "generic"
+  },
+  "private": true,
+  "exports": {
+    "./*.types": {
+      "@sheavly/source": "./src/*.types.ts",
+      "default": "./dist/*.types.js"
+    },
+    "./*.utils": {
+      "@sheavly/source": "./src/*.utils.ts",
+      "default": "./dist/*.utils.js"
+    },
+    "./*.helper": {
+      "@sheavly/source": "./src/*.helper.ts",
+      "default": "./dist/*.helper.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "dependencies": {
+    "@sheavly/core": "^0.0.0",
+    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/runtime": "^0.0.0"
+  },
+  "devDependencies": {
+    "@sheavly/testing": "^0.0.0"
+  }
+}

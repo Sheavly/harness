@@ -7,13 +7,13 @@ import type {
 } from '@sheavly/host/conversations/conversations.types';
 import type { SummaryOptions } from '@sheavly/core/summary/summary.types';
 import { streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
-import { redactDiagnosticText } from '@sheavly/core/text/diagnostic-text.utils';
-import { errorMessage } from '@sheavly/runtime/errors/errors.utils';
+import type { Logger } from '@sheavly/logger/logger/logger.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { UnknownSkillError } from '@sheavly/coding/errors/skills.errors';
 import { skillRequest } from '@sheavly/coding/skills/skill-files.helper';
 import { findSkills } from '@sheavly/coding/skills/skills.helper';
 import type { SkillRoots } from '@sheavly/coding/skills/skills.types';
+import { LOG_EVENT } from '../logging/logging.constants.js';
 import type { BackendHarness } from './harness.types.js';
 
 /**
@@ -58,11 +58,13 @@ export function harnessConversation(params: {
   messages?: HistoryMessage[] | undefined;
   /** Where the host keeps this conversation (see `ConversationStorage`); none keeps nothing. */
   storage?: ConversationStorage | undefined;
+  /** The conversation's logger: a run it starts for finished work has no caller to throw to. */
+  logger: Logger;
   maxTurns?: number;
   /** Summarize the history when the context nears the window; none never does. */
   summary?: SummaryOptions | undefined;
 }): LiveConversation {
-  const { harness, run, messages, storage, maxTurns, summary } = params;
+  const { harness, run, messages, storage, logger, maxTurns, summary } = params;
 
   return {
     harness,
@@ -73,9 +75,7 @@ export function harnessConversation(params: {
       hooks: harness.hooks,
       // No caller iterates a run the conversation starts for finished work: the operator sees it.
       onWakeFailure: (caughtError) =>
-        process.stderr.write(
-          `wake run failed: ${redactDiagnosticText(errorMessage(caughtError))}\n`,
-        ),
+        logger.error(LOG_EVENT.WAKE_RUN_FAILED, { error: caughtError }),
       ...(maxTurns !== undefined && { maxTurns }),
       ...(summary && { summary }),
       ...(messages && { messages }),

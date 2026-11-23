@@ -9,7 +9,7 @@ import { createConversation } from '../../conversation/conversation.helper.js';
 import { createHarness } from '../../host/host.helper.js';
 import { twoModelRun } from '../../testing/run.fake.js';
 import { Conversations } from '../conversations.service.js';
-import type { ConversationSkills } from '../conversations.types.js';
+import type { ConversationSkills, PromptFailure } from '../conversations.types.js';
 
 /** Skills that know none: a prompt `/nope` names one that does not exist. */
 const NO_SKILLS: ConversationSkills = {
@@ -30,7 +30,7 @@ function heldConversations(
     held?: number[];
     store?: ConversationStore;
     skills?: ConversationSkills;
-    onPromptFailure?: (error: unknown) => void;
+    onPromptFailure?: (failure: PromptFailure) => void;
   } = {},
 ) {
   const gates = new Map((params.held ?? []).map((n) => [n, Promise.withResolvers<undefined>()]));
@@ -354,7 +354,7 @@ describe('submitting a prompt, at the edges', () => {
   });
 
   it('keeps a queued line a stop reaches while it prepares its skills, parked until the next send', async () => {
-    const failures: unknown[] = [];
+    const failures: PromptFailure[] = [];
     const store = new MemoryConversationStore();
     const preparing = Promise.withResolvers<undefined>();
     const skills: ConversationSkills = {
@@ -371,7 +371,7 @@ describe('submitting a prompt, at the edges', () => {
         return NO_SKILLS.prepare({ prompt });
       },
     };
-    const held = await runningFirst({ store, skills, onPromptFailure: (e) => failures.push(e) });
+    const held = await runningFirst({ store, skills, onPromptFailure: (f) => failures.push(f) });
     const { id } = held;
     const entries = follow({ conversations: held.conversations, id });
 
@@ -412,7 +412,7 @@ describe('submitting a prompt, at the edges', () => {
   });
 
   it('tells followers a fixed text when a line fails to start unexpectedly, and the app the error', async () => {
-    const failures: unknown[] = [];
+    const failures: PromptFailure[] = [];
     const skills: ConversationSkills = {
       ...NO_SKILLS,
       prepare: async ({ prompt }) => {
@@ -423,7 +423,7 @@ describe('submitting a prompt, at the edges', () => {
         return NO_SKILLS.prepare({ prompt });
       },
     };
-    const held = await runningFirst({ skills, onPromptFailure: (e) => failures.push(e) });
+    const held = await runningFirst({ skills, onPromptFailure: (f) => failures.push(f) });
     const { id } = held;
     const entries = follow({ conversations: held.conversations, id });
 
@@ -433,7 +433,9 @@ describe('submitting a prompt, at the edges', () => {
 
     expect(JSON.stringify(entries)).not.toContain('/home/someone');
     expect(queueOf(entries)).toContain('prompt_refused /broken []');
-    expect(failures).toHaveLength(1);
+    expect(failures).toMatchObject([
+      { id, error: { message: expect.stringContaining('ENOENT') as string } },
+    ]);
   });
 
   it('starts no wake while a prompt prepares its skills, so the send is answered once it starts', async () => {

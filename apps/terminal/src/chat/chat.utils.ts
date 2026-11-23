@@ -35,7 +35,7 @@ export function mainRunStart(params: {
 
 /**
  * The originating message of a main run that failed, for the user to look up in the
- * conversation's `errors.jsonl`; undefined for any other entry or a failure without one.
+ * conversation's `log.jsonl`; undefined for any other entry or a failure without one.
  */
 export function failedRunMessage(params: {
   entry: StreamEntry;

@@ -5,7 +5,7 @@ import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { storedStreamEntrySchema } from '../legacy-effort/legacy-effort.validator.js';
 import { AppendLog } from './append-log.service.js';
 import { STREAM_FILE } from './conversation-store.constants.js';
-import { DiagnosticFile } from './diagnostic-file.service.js';
+import { ConversationLog } from './conversation-log.service.js';
 
 /**
  * One conversation's stream file, `stream.jsonl`: an entry a line, in `seq` order with no gaps.
@@ -20,15 +20,15 @@ export class EntryFile implements EntryStore {
   readonly #log: AppendLog<StreamEntry>;
 
   constructor(params: { folder: string; conversationId?: ConversationId }) {
-    const diagnostics = new DiagnosticFile(params);
+    const log = new ConversationLog(params);
 
     this.#log = new AppendLog({
       file: path.join(params.folder, STREAM_FILE),
       schema: storedStreamEntrySchema,
       noun: 'Stream',
       unit: 'entry',
-      prepare: async () => diagnostics.prepare(),
-      observe: async (entry) => diagnostics.observe(entry),
+      prepare: async () => log.prepare(),
+      observe: async (entry) => log.observe(entry),
     });
   }
 

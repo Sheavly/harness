@@ -25,7 +25,7 @@ export async function buildServer(params: {
   // Made once per start and returned by no route: it only salts the handshake proof.
   const instanceId = newInstanceId();
   const serverVersion = await readServerVersion();
-  const { conversations, setup, workspaces, permissions } = createBackend({
+  const { conversations, setup, workspaces, permissions, logs } = createBackend({
     env,
     settings,
     log,
@@ -39,12 +39,12 @@ export async function buildServer(params: {
     token,
     instanceId,
     serverVersion,
-    log,
+    logs,
   });
   const listening = createAdaptorServer({ fetch: app.fetch, hostname: server.host });
 
   // Two public routes read a body without a token: a client that trickles one is cut off.
   configureServerTimeouts({ server: listening });
 
-  return { listening, conversations, token, instanceId, serverVersion };
+  return { listening, conversations, logs, token, instanceId, serverVersion };
 }
