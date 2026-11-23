@@ -16,7 +16,7 @@ const project = typedProject({
     'src/override.ts':
       "import { TaskRegistry } from './tasks/tasks.service';\nexport class Loud extends TaskRegistry {\n  override start(input: { command: string }): string {\n    return input.command;\n  }\n}\nexport class Deeper extends Loud {}\n",
     'src/tasks/tasks.service.ts':
-      'export class TaskRegistry {\n  start(input: { command: string }): string {\n    return input.command;\n  }\n\n  list(): string[] {\n    return [];\n  }\n}\n',
+      'export class TaskRegistry {\n  start(input: { command: string }): string {\n    return input.command;\n  }\n\n  list(): string[] {\n    return [];\n  }\n\n  readonly nodes = { open: (): number => 1 };\n}\n',
     'src/other.ts': 'export class Other {\n  start(): number {\n    return 1;\n  }\n}\n',
     'src/sub.ts':
       "import { TaskRegistry } from './tasks/tasks.service';\nexport class Sub extends TaskRegistry {}\n",
@@ -44,6 +44,15 @@ describe('no-direct-task-start: what it allows', () => {
       await findingsIn({
         file: 'src/valid.ts',
         code: body('return [tasks.list(), other.start()];'),
+      }),
+    ).toEqual([]);
+  });
+
+  it('lets a registry’s nodes be read: they are the node registry’s, and not start', async () => {
+    expect(
+      await findingsIn({
+        file: 'src/nodes.ts',
+        code: body('const { nodes } = tasks;\nreturn [nodes, tasks.nodes.open()];'),
       }),
     ).toEqual([]);
   });

@@ -1,6 +1,7 @@
 import type { Provider, ProviderRequest } from '@sheavly/core/provider/provider.types';
 import type { EntryStore } from '@sheavly/core/store/store.types';
 import type { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
+import type { NodeRegistry } from '@sheavly/runtime/nodes/node-registry.service';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { StoredLog } from '@sheavly/runtime/sessions/sessions.types';
 import type { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
@@ -33,7 +34,11 @@ export type HarnessOptions = {
   omitInstructionSections?: readonly string[] | undefined;
   /** Sees every model call (main session and sub-agents) before it is made. */
   onModelCall?: ((request: ProviderRequest) => void) | undefined;
-  /** Pass registries in when a tool needs them before the harness exists (default: new ones). */
+  /**
+   * Pass registries in when a tool needs them before the harness exists (default: new ones). A
+   * `tasks` passed in has its own node registry unless it was built on one that is shared, and
+   * `Harness.nodes` is always the sessions'; the default tasks share it.
+   */
   tasks?: TaskRegistry;
   approvals?: ApprovalRegistry;
   /** Where the run's combined stream is kept; without it, only in memory (`SessionRegistry`). */
@@ -63,6 +68,12 @@ export type Harness = {
   sessions: SessionRegistry;
   mainSession: SessionRef;
   tasks: TaskRegistry;
+  /**
+   * Every node of the run, of any kind: the registry `sessions` and `tasks` are views of. An
+   * extension never holds it (`harness/extension-no-runtime-registries` reads this type to know
+   * which registries those are); it reads its own nodes through the scoped services.
+   */
+  nodes: NodeRegistry;
   /**
    * Where tools ask the user to approve something (run_command's risky arguments). A UI
    * subscribes, renders each `approval_requested` its own way and answers with `respond`; with no

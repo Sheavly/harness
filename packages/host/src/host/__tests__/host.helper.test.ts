@@ -61,11 +61,30 @@ describe('createHarness', () => {
       'approvals',
       'instructions',
       'mainSession',
+      'nodes',
       'provider',
       'sessions',
       'systemPrompt',
       'tasks',
     ]);
+  });
+
+  it('shares one node registry between its sessions and its tasks, and carries it as nodes', async () => {
+    const harness = createHarness({ provider: provider(), title: 'parse it' });
+    const task = harness.tasks.start({
+      command: 'cmd',
+      description: 'work',
+      sessionId: harness.mainSession.id,
+      run: () => Promise.resolve({ exitCode: 0 }),
+    });
+
+    expect(harness.nodes).toBe(harness.sessions.nodes);
+    expect(harness.tasks.nodes).toBe(harness.nodes);
+    // The command is a node under the main session's node: one tree, whichever registry started it.
+    expect(harness.nodes.list().map((node) => node.kind)).toEqual(['agent', 'command']);
+    expect(harness.nodes.list()[1]?.parent).toBe(harness.sessions.nodeIdOf(harness.mainSession.id));
+
+    await harness.tasks.cancel(task.id);
   });
 
   it('runs the tools and hooks a UI picked, and reads no AGENTS.md or .sheavly/', async () => {

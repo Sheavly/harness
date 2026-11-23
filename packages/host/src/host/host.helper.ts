@@ -59,6 +59,7 @@ export function createHarness(options: HarnessOptions): Harness {
     sessions,
     mainSession,
     tasks,
+    nodes: sessions.nodes,
     approvals,
   };
 }
