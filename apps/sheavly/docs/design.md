@@ -75,6 +75,16 @@ several (a settings error lists its issues).
   else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
   user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
 
+  A launcher in another repo (the tmux client) that must know which conversation each of its chats
+  is creates the conversation through the API and starts `sheavly chat --resume <id>`: the chat
+  joins a live conversation as it is and starts no other, so the launcher holds the id before the
+  chat exists and `sheavly` adds no flag or file for it
+  ([the terminal's doc](../../terminal/docs/chat.md#a-chat-on-a-conversation-another-program-created)
+  has what a launcher must know: one chat per conversation, since the chat's end closes it; the
+  folder and profile are fixed at creation; and trust the folder before creating the
+  conversation, since hooks load then). `chat/__tests__/resume-live.processes.test.ts` pins it,
+  with two chats started at once in one folder.
+
 - **`connection --json`** prints how to reach the user's running server as one line of JSON on
   stdout, for a front end in another repo (the tmux client) that must not read the home folder or
   repeat the safe read of the discovery file:

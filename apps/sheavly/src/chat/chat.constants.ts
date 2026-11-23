@@ -19,7 +19,7 @@ Options:
   --trust              Trust the workspace's .sheavly/ folder (its hooks and settings)
   --setup              Open the setup: profiles, models and keys
   --profile <id>       Run on that profile
-  --resume <id>        Reopen a stored conversation
+  --resume <id>        Reopen a stored conversation, or join a live one another program made
 
 The settings are environment variables: WORKSPACE_ROOT, SHOW_MODEL_CALLS and the rest of
 apps/terminal/docs/chat.md.
