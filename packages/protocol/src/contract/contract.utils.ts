@@ -113,6 +113,7 @@ import {
   cursorSchema,
   sequenceCursorSchema,
 } from '../channel/channel.validator.js';
+import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -197,6 +198,8 @@ function contractSchemas(): Record<string, z.ZodType> {
     ChannelName: channelNameSchema,
     ChannelBoundary: channelBoundarySchema,
     ChannelLog: channelLogSchema,
+    TreeChannelEntry: treeChannelEntrySchema,
+    TreeSnapshot: treeSnapshotSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,

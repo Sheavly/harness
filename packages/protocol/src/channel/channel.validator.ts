@@ -93,7 +93,7 @@ const nodeClosedSchema = entrySchema
   );
 
 /** The first entry of the tree channel: the conversation opened it. */
-const treeOpenedSchema = entrySchema
+export const treeOpenedSchema = entrySchema
   .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('opened') })
   .refine(
     ({ cursor }) => sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) === 0,
@@ -101,7 +101,7 @@ const treeOpenedSchema = entrySchema
   );
 
 /** The last entry of the tree channel: the conversation closed it. */
-const treeClosedSchema = entrySchema
+export const treeClosedSchema = entrySchema
   .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('closed') })
   .refine(({ cursor }) => sequenceCursorSchema.safeParse(cursor).success, {
     error: 'the tree channel is numbered',
