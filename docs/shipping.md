@@ -505,20 +505,55 @@ a later one is refused.
 
 ### The service
 
-On Linux the server will be installed as a systemd user unit that restarts on failure, writes its
+On Linux the server is installed as a systemd user unit that restarts on failure, writes its
 log to the journal and keeps running after the user logs out. Reason: the server runs as the
 user, with the user's keys, so it is a user unit and not a system one. macOS (a launch agent) and
 Windows (a task that starts at logon) follow and are not part of the first release. A command,
-`sheavly service`, installs, starts, stops and removes it.
+`sheavly service` (built: `install`, `uninstall`, `start`, `stop`, `restart`, `status` and
+`logs`; [#393](https://github.com/Sheavly/harness/issues/393)), installs, starts, stops and removes
+it. `install` says what it will do and asks first, and it refuses off Linux, with no systemd user
+manager, from source (the unit runs the built `dist/cli.js`, so it runs whatever that file holds
+at every start, and an agent that edits a checkout's `dist/` changes what runs after a restart)
+and with `--trust`: a server-wide `--trust` would trust every folder with hooks or settings that
+any conversation opens, so a folder is trusted from the chat. The unit carries the installing
+shell's `PATH` and `SHEAVLY_HOME`, so the commands an agent runs find the user's tools: `install`
+prints both, and refuses a `PATH` that is empty or has an empty or relative entry, because they
+go to a server that is always on; an absolute entry such as a project's `node_modules/.bin` that
+`npm run` put there is not refused, so read the printed `PATH` before agreeing. Installing again
+refreshes them, and does not restart a running
+service; a node moved by a version manager needs `install` again. `--yes` skips the question and
+is the same for a person and for an agent's own shell: the question is the only guard against an
+agent that installs the service, which it could also do by writing a unit by hand. A server that
+cannot start (another one holds the home's lock, or a setting is wrong) exits 1, and the unit's
+start limit stops the retries after five failures in five minutes, and `start` or `restart` clears
+that before trying again. `uninstall` removes the unit and the token file, only once systemd says
+the service is `inactive` or `failed` (anything else, a stop that is slow included, removes
+nothing), and leaves the user's data and linger on.
 
-The service is not a terminal, so the token is never written to the journal. The server prints its
-token today when none is set; `sheavly service install` will instead make the token once and store
-it in a file that only the user can read, which the unit passes to the server as a credential and
-not as a line of the unit file, where `systemctl show` would print it. The discovery file carries the
-same token. The token also
+The service is not a terminal, so the token is never written to the journal. The server prints a
+token it made only to a terminal; `sheavly service install` makes the token once and stores it in
+`service.env` in the Sheavly home, mode 0600, which the unit reads with `EnvironmentFile`, not as
+a line of the unit file, where `systemctl show` would print it. The discovery file carries the
+same token. Mode 0600 keeps other users from reading it; it does not keep the user's own
+processes from it, so a command an agent runs as the user can read `service.env`, the discovery
+file and the server's environment (the agent's commands run with `SERVER_TOKEN` removed from their
+own environment, which is not the same). The token also
 lives much longer than it does today, where it ends with the terminal, and a leaked copy is
 persistent command execution as the user. There is no way yet to rotate it or revoke a copy short of
 restarting the server, which is a known gap.
+
+`install` turns on linger (`loginctl enable-linger`), which starts the user's manager at boot and
+keeps it after the last logout, so the server runs when the user is logged out. Linger also keeps
+the user's runtime directory (`$XDG_RUNTIME_DIR`) alive while the service runs. That directory is
+cleared when the user's manager stops, so the discovery file in it is cleared at reboot and the
+server writes it again when it starts (see "The discovery file"). The service gets
+`XDG_RUNTIME_DIR` from the user's manager, so it publishes in the same folder a terminal's
+`sheavly chat` reads; where there is no usable runtime directory the server falls back to the home
+folder, or runs with a warning and without a lock or a file when that is not private either. The
+server also wants the user's session bus for the desktop notifications of
+[#401](https://github.com/Sheavly/harness/issues/401), which are not built: what the service does
+when the bus is missing is decided there. `install` checks none of this: it checks that systemd
+user services are available, and `status` shows whether linger is on.
 
 ### Platforms
 
