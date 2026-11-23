@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import type { AgentEvent, AgentEventBody } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { SessionRef } from '@sheavly/protocol/session/session.types';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { startHeldTask } from '@sheavly/runtime/testing/held-task.fake';
@@ -29,7 +30,7 @@ async function finishedAgent(params: {
     registry.startChild({ parentId: child.id, startedByCall: callIdSchema.parse('g'), title: 'G' });
   }
 
-  registry.end({ id: child.id, state: outcome });
+  // The task starts while its session runs and the loop ends the session after, as a real run does.
   tasks.start({
     command: 'sub-agent',
     description: 'Child',
@@ -38,6 +39,7 @@ async function finishedAgent(params: {
     agentSessionId: child.id,
     run: async () => (outcome === 'completed' ? { exitCode: 0, report: 'done' } : { exitCode: 1 }),
   });
+  registry.end({ id: child.id, state: outcome });
   await until(() => tasks.runningCount === 0);
 
   return child;
@@ -101,9 +103,7 @@ it('preserves every whole report when a synchronous completion listener releases
       title: `Review ${String(index)}`,
     });
 
-    registry.end({ id: child.id, state: 'completed' });
-
-    return tasks.start({
+    const member = tasks.start({
       command: 'review',
       description: 'Review',
       callId,
@@ -115,6 +115,10 @@ it('preserves every whole report when a synchronous completion listener releases
         return { exitCode: 0, report };
       },
     });
+
+    registry.end({ id: child.id, state: 'completed' });
+
+    return member;
   });
 
   tasks.group({ ids: members.slice(0, 2).map((task) => task.id), reason: 'Compare reviews' });
@@ -233,4 +237,23 @@ it('leaves alone a session that has the task’s tool call id but is not the one
   ]);
   expect(registry.isReleased(real.id)).toBe(true);
   expect(registry.get(other.id)).toBeDefined();
+});
+
+it('never releases a session that is not a child of the task’s owner, whoever named it', async () => {
+  const { registry, ref, tasks, deliver } = conversation();
+  const mainTwo = registry.startMain({ title: 'Other main', id: sessionIdSchema.parse('other') });
+  const theirs = registry.startChild({
+    parentId: mainTwo.id,
+    startedByCall: callIdSchema.parse('theirs'),
+    title: 'Theirs',
+  });
+  const task = startHeldTask({ tasks, sessionId: ref.id, agentSessionId: theirs.id });
+
+  registry.end({ id: theirs.id, state: 'completed' });
+  await tasks.cancel(task.id);
+  deliver();
+
+  // The session is ended and has nothing open, so `releaseAgent` would let it go: the loop does not.
+  expect(registry.get(theirs.id)).toBeDefined();
+  expect(registry.isReleased(theirs.id)).toBe(false);
 });

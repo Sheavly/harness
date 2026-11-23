@@ -26,6 +26,8 @@ export class ChildSessionsScope implements ChildSessionScope {
   readonly #owned = new Map<SessionId, SessionRef>();
   /** The children with a `runChild` in flight: a second run on one is refused. */
   readonly #running = new Set<SessionId>();
+  /** The children this extension has started, shared with its `background-tasks` scope. */
+  readonly #started: Set<SessionId>;
 
   constructor(params: {
     guard: ScopeGuard<'child-sessions'>;
@@ -33,7 +35,9 @@ export class ChildSessionsScope implements ChildSessionScope {
     tasks: TaskRegistry;
     main: SessionRef;
     runLoop: RunLoop;
+    started?: Set<SessionId>;
   }) {
+    this.#started = params.started ?? new Set();
     this.#guard = params.guard;
     this.#registry = params.registry;
     this.#tasks = params.tasks;
@@ -54,6 +58,7 @@ export class ChildSessionsScope implements ChildSessionScope {
     const child = this.#registry.startChild({ parentId, startedByCall, title });
 
     this.#owned.set(child.id, Object.freeze({ ...child }));
+    this.#started.add(child.id);
 
     // A different object from the one kept: whatever the caller does to it, the scope's own
     // record (what the loop is handed) stays as the registry made it.
@@ -124,7 +129,10 @@ export class ChildSessionsScope implements ChildSessionScope {
    */
   #requireRoom(): void {
     for (const id of [...this.#owned.keys()]) {
-      if (!this.#registry.get(id)) this.#owned.delete(id);
+      if (this.#registry.get(id)) continue;
+
+      this.#owned.delete(id);
+      this.#started.delete(id);
     }
 
     if (this.#owned.size >= MAX_SCOPE_CHILDREN) {

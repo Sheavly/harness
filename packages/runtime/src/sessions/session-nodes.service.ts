@@ -95,6 +95,8 @@ export class SessionNodes {
 
   /** Starts the session `params` names, running, under its parent. */
   add(params: SessionRef & { title: string }): SessionInfo {
+    this.#refuseDuplicate(params.id);
+
     const parent = 'parentId' in params ? this.#require(params.parentId) : undefined;
     const node = this.registry.open({
       kind: 'agent',
@@ -119,14 +121,7 @@ export class SessionNodes {
 
   /** Puts back a session as a stored conversation left it; its parent must be back already. */
   restore(session: SessionInfo): SessionInfo {
-    // Two stored sessions under one id would orphan the first node, which could never be released.
-    if (this.#nodeOf.has(session.id)) {
-      throw new SessionError({
-        reason: 'unknown_session',
-        sessionId: session.id,
-        message: `Session ${session.id} is stored twice`,
-      });
-    }
+    this.#refuseDuplicate(session.id);
 
     const parent = 'parentId' in session ? this.#require(session.parentId) : undefined;
     const node = this.registry.restore({
@@ -216,6 +211,20 @@ export class SessionNodes {
     }
 
     return subtree;
+  }
+
+  /**
+   * Two sessions under one id would leave the first's node orphaned, never released, and in the
+   * registry for good: refused, for a session started or one stored twice.
+   */
+  #refuseDuplicate(id: SessionId): void {
+    if (!this.#nodeOf.has(id)) return;
+
+    throw new SessionError({
+      reason: 'duplicate_session',
+      sessionId: id,
+      message: `Session ${id} already exists`,
+    });
   }
 
   #link(params: { session: SessionId; node: NodeId; given: Given }): void {

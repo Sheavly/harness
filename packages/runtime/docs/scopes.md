@@ -53,6 +53,9 @@ session of the run.
 `start`, so a work kind's policy is still decided by its factory (`harness/no-direct-task-start`).
 
 A task can be told the session it runs (`WorkDefinition.agentSessionId`), which pairs it with that
-sub-agent's node and has the loop release the session with the task. Only the harness's own
-`start_agent` says it: `BackgroundTaskScope.start` drops the field, so an extension cannot name a
-session it did not start, take its node or have it released.
+sub-agent's node and has the loop release the session with the task. The harness's `start_agent`
+says it, and it starts the child and its task through one extension (`agents`), so
+`BackgroundTaskScope.start` keeps the field only for a session that extension's own
+`child-sessions` scope started, and drops it for any other: an extension cannot name another's
+child (or the main session), take its node or have it released. The loop adds its own check when it
+releases, a session is released only if it is a child of the session whose turn it is.

@@ -1,4 +1,5 @@
 import type { BackgroundTaskScope } from '@sheavly/extension/run-services/run-services.types';
+import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import { TaskError } from '@sheavly/runtime/errors/tasks.errors';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
@@ -19,6 +20,8 @@ export class BackgroundTasksScope implements BackgroundTaskScope {
   readonly #guard: ScopeGuard<'background-tasks'>;
   readonly #registry: TaskRegistry;
   readonly #sessions: Pick<SessionRegistry, 'get'>;
+  /** The sub-agents this extension's child-sessions scope started: the sessions it may name. */
+  readonly #children: ReadonlySet<SessionId>;
   readonly #owned = new Set<TaskId>();
   readonly #observers = new Set<TaskObserver>();
   /**
@@ -36,10 +39,13 @@ export class BackgroundTasksScope implements BackgroundTaskScope {
     guard: ScopeGuard<'background-tasks'>;
     registry: TaskRegistry;
     sessions: Pick<SessionRegistry, 'get'>;
+    /** Without it the scope pairs no task with a session. */
+    children?: ReadonlySet<SessionId>;
   }) {
     this.#guard = params.guard;
     this.#registry = params.registry;
     this.#sessions = params.sessions;
+    this.#children = params.children ?? new Set();
     this.#guard.track(
       this.#registry.observe((event) => {
         this.#queue.push(event);
@@ -57,10 +63,7 @@ export class BackgroundTasksScope implements BackgroundTaskScope {
       refused: 'work cannot start for it',
     });
 
-    // Which session a task runs is for the harness's own sub-agent tool to say: an extension that
-    // named one could take its node, and have the loop release it with the task, though it did
-    // not start it. Its work is paired with no session.
-    const { agentSessionId: _named, ...work } = given;
+    const work = this.#withOwnSession(given);
 
     this.#starting++;
 
@@ -123,6 +126,19 @@ export class BackgroundTasksScope implements BackgroundTaskScope {
 
     this.#registry.group(params);
   };
+
+  /**
+   * `work`, with the session it says it runs kept only when this extension's own child-sessions
+   * scope started that session: the harness's sub-agent tool starts a child and its task through
+   * one extension, so it pairs them. An extension that names a session it did not start (another's
+   * child, the main session) would take its node, and have the loop release it with the task, so
+   * its work is paired with no session.
+   */
+  #withOwnSession(work: Parameters<BackgroundTaskScope['start']>[0]) {
+    const { agentSessionId, ...rest } = work;
+
+    return agentSessionId !== undefined && this.#children.has(agentSessionId) ? work : rest;
+  }
 
   /** Delivers the queue in order, unless a `start` is running or an outer drain is already at it. */
   #drain(): void {

@@ -2,6 +2,7 @@ import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { MAX_NODE_CALL_ID_CHARS } from '@sheavly/protocol/node/node.constants';
 import { nodeInfoSchema } from '@sheavly/protocol/node/node.validator';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
+import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { describe, expect, it } from 'vitest';
@@ -157,7 +158,18 @@ describe('a stored session id that appears twice', () => {
           lastTokens: [],
         },
       });
-    }).toThrow(expect.objectContaining({ reason: 'unknown_session' }));
+    }).toThrow(expect.objectContaining({ reason: 'duplicate_session' }));
+  });
+
+  it('is refused for a session started under a live id too, not left as a ghost that is never released', () => {
+    const sessions = new SessionRegistry();
+    const first = sessions.startMain({ title: 'a', id: sessionIdSchema.parse('m') });
+
+    expect(() => sessions.startMain({ title: 'b', id: first.id })).toThrow(
+      expect.objectContaining({ reason: 'duplicate_session' }),
+    );
+    expect(sessions.list().map((session) => session.title)).toEqual(['a']);
+    expect(sessions.nodes.list()).toHaveLength(1);
   });
 });
 
