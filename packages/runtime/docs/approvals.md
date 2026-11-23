@@ -22,6 +22,15 @@ a released session. A request that expired is announced as `approval_cancelled` 
 that heard it asked does not keep showing it. Settled states are kept for `SETTLED_KEPT`
 approvals, oldest forgotten first.
 
+**An id is unique** in its conversation for as long as the server keeps it, reopening included, so
+an answer can only mean the approval it was made for: it is `a-` and a random UUID, never a counter
+that starts again, and a registry made later refuses an id it never issued as `unknown_id`, with
+the request still waiting. A test that wants to name its requests uses `numberedApprovals()`
+(`@sheavly/runtime/testing/approvals.fake`), which numbers them `a1`, `a2`. At most
+`MAX_PENDING_APPROVALS` (1000) wait at once, the bound of the tree's snapshot: a request past it
+fails closed as `too_many_pending`, the way one nobody can hear does, and another is taken as soon
+as one is answered or given up.
+
 ## The harness asks, the UI renders
 
 The harness renders no prompt. A command that needs approval waits in an `ApprovalRegistry`

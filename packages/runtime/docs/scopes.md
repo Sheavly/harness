@@ -1,6 +1,9 @@
 # Scoped services
 
-An extension never holds a `SessionRegistry` or a `TaskRegistry`. The host builds, per extension,
+An extension never holds a `SessionRegistry`, a `TaskRegistry` or the `NodeRegistry` they are
+views of (`harness/extension-no-runtime-registries` reads the registries from the host's `Harness`
+type, so the node registry is denied without being named): the node registry reaches every node of
+the conversation, which skips the scoping below. The host builds, per extension,
 a narrow service whose type is declared here (`@sheavly/runtime/sessions/session-scope.types`,
 `@sheavly/runtime/tasks/task-scope.types`) and whose methods each check a **grant**: a
 `<noun>:<verb>` string in the extension's `sheavly.json` `grants` list. The host implements the

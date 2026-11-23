@@ -39,8 +39,9 @@ export const MAX_NODE_STATUS_CHARS = 200;
 /**
  * The longest a command node's `command` may be. It is a bound for the wire, not a limit the
  * system puts on a command (a script's steps run as separate processes, so the line as a whole has
- * none, and `run_command` takes any length): the node registry shortens a longer line when it
- * makes the node, as it does for `reason` and `error`.
+ * none, and `run_command` takes any length): whoever builds the node's body for the wire shortens
+ * a longer line, as for `reason` and `error`. The node registry holds only a node's title and
+ * status, and shortens those.
  */
 export const MAX_NODE_COMMAND_CHARS = 131_072;
 

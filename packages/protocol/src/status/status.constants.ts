@@ -70,7 +70,8 @@ export const INCONSISTENT_SESSION_MESSAGE =
  * its value the states it may move to; a state with none is final. A running session moves to
  * `idle` (kept for the conversation's next prompt) or to an ended state; an idle one runs again or
  * ends. A node is the one lifecycle that replaces both the session and the task (the wire model:
- * `packages/protocol/docs/wire-model.md`); until the node registry exists the other two stand.
+ * `packages/protocol/docs/wire-model.md`), moved by the runtime's node registry; the other two are
+ * the states its session and task views report.
  * Restoring a stored conversation is not a move: it builds a session from what was stored.
  * `status.utils.test.ts` checks the keys against the lists above and every pair against this
  * table, and the state-machines guide prints it (`npm run schema -w @sheavly/protocol`).

@@ -10,6 +10,30 @@ later parent prompts do not reassign existing children. Restoring the stream reb
 from every entry, not only its retained tail. An entry may carry no ID, because only a typed prompt has one. The identity
 is diagnostic metadata, never model input.
 
+## The node registry under the sessions
+
+A session is an **agent node** of the run's `NodeRegistry` (`@sheavly/runtime/nodes/`), and
+`SessionRegistry` is the view that keeps the session API and the session ids. The node holds what a
+session has (its parent, title, status, state, last outcome, model and times), and the node machine
+moves it: starting, going idle, running again, reporting, switching model and ending each go
+through the node, so a move the status table does not list is refused there, and an ended session
+ends once. The node's state for an ended session is the one its outcome gives (`max_turns` is
+`failed`, `interrupted` is `cancelled`); the session reports how its last run ended.
+
+Each node has a **channel**: an in-memory log of `opened`, `updated` and `closed` entries numbered 0,
+1, 2 with no gap, each the node as it was then, and the conversation has a **tree channel** with
+every node's entries in one order. A channel keeps its newest `MAX_CHANNEL_ENTRIES`; a position
+before them, or past the end, is `cursor_out_of_range` and is never clamped. `snapshot()` is every
+node and the position to read on from. A registry holds at most `MAX_TREE_NODES` nodes, ended ones
+included, since the snapshot holds them all: a node past it is refused (`too_many_nodes`), and
+finished work released at the turn boundary makes room. Nothing serves these channels yet: the stream below is still
+the one a UI reads.
+
+Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
+command's node sits under the node of the session that started it. A node's title and status are
+made one line of plain text, capped and non-blank as it is made, because a tool call's description
+or an agent's report can be anything and the protocol refuses what is not a line.
+
 ## Sessions
 
 `SessionRegistry` (`@sheavly/runtime/sessions/`) holds the session tree of one main run. A session
@@ -176,8 +200,9 @@ A stored conversation can be carried on: `SessionRegistry.readStoredLog(store)` 
 `new SessionRegistry({ store, resume })` continues from there. Numbering carries on from the last
 stored entry, the newest entries are the ones in memory, and every session is back as its last
 update left it. The main session is idle for its next prompt (`restoredMain()` is its ref). A
-sub-agent that was still open when the process ended is settled as `interrupted` and announced in
-the stream: it is not run again, since what it was doing is gone. If its report never reached the
+sub-agent that was still open when the process ended is closed as `lost` in its node (`lose`, the
+only way a node becomes `lost`), reads as `interrupted` as a session (the nearest state a session
+has), and is announced in the stream: it is not run again, since what it was doing is gone. If its report never reached the
 parent's history, `Conversations.reopen` (host) appends an `agent-report` notice for it, read from
 the sub-agent's stored history and with no task id, so the next prompt tells the model once. Stored entries with a gap throw
 a `StoreError` instead of resuming a conversation with a hole in it.
