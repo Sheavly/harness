@@ -87,6 +87,12 @@ export type ConversationOptions = {
 };
 
 /**
+ * What a conversation runs now: nothing (`idle`), a user's prompt, or a run it started itself to
+ * deliver finished work (`wake`). One at a time; the moves are `CONVERSATION_RUN_TRANSITIONS`.
+ */
+export type ConversationRunState = 'idle' | 'prompt' | 'wake';
+
+/**
  * One conversation the user keeps talking to: each prompt continues from the history so far, in
  * the same session, which is idle between prompts and ends only on `close`.
  */
@@ -120,8 +126,10 @@ export type Conversation = {
   settleWake: () => Promise<void>;
   /** The history so far: every finished prompt's, valid to continue from. */
   readonly messages: readonly HistoryMessage[];
-  /** Whether a prompt is running now. */
+  /** Whether a run is going now: a prompt, or one the conversation started itself. */
   readonly running: boolean;
+  /** What runs now; it stays `idle` once closed, when no run is left. */
+  readonly state: ConversationRunState;
   /**
    * Ends this live conversation: stops the running prompt, cancels its background tasks (and the
    * processes they run) and ends the session. Idempotent. It deletes nothing: `messages` stays

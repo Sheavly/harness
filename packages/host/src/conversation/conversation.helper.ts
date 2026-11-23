@@ -5,8 +5,27 @@ import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { Message } from '@sheavly/protocol/message/message.types';
+import { ConversationRunError } from '../errors/conversation.errors.js';
 import { WAKE_AFTER_YIELD_MS } from './conversation.constants.js';
 import type { Conversation, ConversationOptions } from './conversation.types.js';
+import { canMoveRun } from './conversation.utils.js';
+
+/** A run that is going: what ends it, what yields it, and what stops it once its loop runs. */
+type RunControls = {
+  /** Ends the run: the caller's signal and a close, and its own stop once its loop runs. */
+  signal: AbortSignal;
+  /** Aborted by `yieldPrompt`: the run ends at its next completion point. */
+  yielding: AbortController;
+  /** Stops the run; none until its loop runs, so a stop before that is its caller's to make. */
+  stop: (() => void) | undefined;
+  /** Settles once the run has ended and the conversation decided what comes next. */
+  ended: PromiseWithResolvers<undefined>;
+};
+
+type ActiveRun = RunControls & { state: 'prompt' | 'wake' };
+
+/** What a conversation runs now: one run at a time, or none. */
+type CurrentRun = { state: 'idle' } | ActiveRun;
 
 /**
  * A conversation on the harness's main session. Every prompt runs `options.run` (the loop's
@@ -25,11 +44,9 @@ export function createConversation(options: ConversationOptions): Conversation {
   /** Stops the running prompt when the conversation closes. */
   const closing = new AbortController();
   let messages: HistoryMessage[] = [...(options.messages ?? [])];
-  let running = false;
   let started = options.resumed ?? false;
-  let runSignal: AbortSignal | undefined;
-  /** The run `wake` started, until it ends. */
-  let waking: Promise<void> | undefined;
+  /** What runs now; it changes only through `moveRun`. */
+  let ongoing: CurrentRun = { state: 'idle' };
   /** Runs `wake` started since the user's last prompt. */
   let wakesInRow = 0;
   const maxWakes = options.maxConsecutiveWakes ?? Infinity;
@@ -43,12 +60,17 @@ export function createConversation(options: ConversationOptions): Conversation {
     yieldWake = undefined;
   }
 
-  /** Stops the running prompt or wake, whoever iterates it. */
-  let stopRun: (() => void) | undefined;
-  /** Aborted by `yieldPrompt`; replaced for each prompt. */
-  let yielding = new AbortController();
   /** Set by the first close(): the cleanup every close() call waits for. */
   let closed: Promise<void> | undefined;
+
+  /** Moves the run to `next`, refusing a move `CONVERSATION_RUN_TRANSITIONS` does not have. */
+  function moveRun(next: CurrentRun): void {
+    if (!canMoveRun({ from: ongoing.state, to: next.state })) {
+      throw new ConversationRunError({ from: ongoing.state, to: next.state });
+    }
+
+    ongoing = next;
+  }
 
   function refuse(params: { reason: 'session_running' | 'session_ended'; why: string }): never {
     const { reason, why } = params;
@@ -65,20 +87,16 @@ export function createConversation(options: ConversationOptions): Conversation {
     /** The user's prompt; none for a wake, which continues from the history with a notice. */
     user: Message | undefined;
     resumed: boolean;
-    signal: AbortSignal;
-    yieldSignal: AbortSignal;
+    /** The run this is, already moved to: it ends idle here, however it ends. */
+    current: ActiveRun;
   }): AsyncGenerator<AgentEvent> {
+    const { user, current } = params;
     const stop = new AbortController();
-    const signal = AbortSignal.any([
-      stop.signal,
-      closing.signal,
-      ...(params.signal ? [params.signal] : []),
-    ]);
-    const { user } = params;
+    const signal = AbortSignal.any([stop.signal, closing.signal, current.signal]);
     const startingMessages = user ? [...messages, user] : [...messages];
 
-    runSignal = signal;
-    stopRun = () => stop.abort();
+    current.signal = signal;
+    current.stop = () => stop.abort();
     // The longest history handed to `keepHistory` so far: it only grows, so if the run ends before
     // `done` or `onError` gave us one (it failed before its first turn), this is the truth, and
     // it holds the prompt that was already recorded.
@@ -100,7 +118,7 @@ export function createConversation(options: ConversationOptions): Conversation {
         latest = kept;
         options.keepHistory?.(kept);
       },
-      yieldSignal: params.yieldSignal,
+      yieldSignal: current.yielding.signal,
       resumed: params.resumed,
       instructions: options.instructions ?? harness.instructions,
       ...(options.maxTurns !== undefined && { maxTurns: options.maxTurns }),
@@ -134,9 +152,10 @@ export function createConversation(options: ConversationOptions): Conversation {
         }
       }
 
-      running = false;
-      runSignal = undefined;
-      stopRun = undefined;
+      moveRun({ state: 'idle' });
+      // What follows is synchronous, so a waiter resumes only after the history is kept and the
+      // wake is decided; resolving first means a hook that throws below cannot strand it.
+      current.ended.resolve(undefined);
 
       if (messages.length < latest.length) messages = [...latest];
 
@@ -148,7 +167,7 @@ export function createConversation(options: ConversationOptions): Conversation {
       // cancelled work leaves notices behind). A yielded run gives the line the user queued
       // behind it a moment to arrive as the next prompt, then wakes if none did.
       // No `return` here: it would swallow the error of a run that threw.
-      if (finished && completed && params.yieldSignal.aborted) {
+      if (finished && completed && current.yielding.signal.aborted) {
         yieldWake = setTimeout(wake, WAKE_AFTER_YIELD_MS);
         yieldWake.unref();
       } else if (finished && completed) {
@@ -164,7 +183,9 @@ export function createConversation(options: ConversationOptions): Conversation {
    * nothing while a prompt runs (its own loop delivers), before the first prompt, or once closed.
    */
   function wake(): void {
-    if (closed || running || !started || closing.signal.aborted || wakesSuppressed) return;
+    if (closed || ongoing.state !== 'idle' || !started || closing.signal.aborted) return;
+    // A stop holds it back until the next prompt.
+    if (wakesSuppressed) return;
 
     try {
       if (!tasks.hasWakingDeliveries(mainSession.id)) return;
@@ -179,21 +200,20 @@ export function createConversation(options: ConversationOptions): Conversation {
 
       sessions.resume(mainSession.id);
       wakesInRow++;
-      running = true;
-      yielding = new AbortController();
-      runSignal = closing.signal;
-      const woken = drain(
-        prompt({ user: undefined, resumed: true, signal: runSignal, yieldSignal: yielding.signal }),
-      ).finally(() => {
-        if (waking === woken) waking = undefined;
-      });
+      const woken: ActiveRun = {
+        state: 'wake',
+        signal: closing.signal,
+        yielding: new AbortController(),
+        stop: undefined,
+        ended: Promise.withResolvers<undefined>(),
+      };
 
-      waking = woken;
+      moveRun(woken);
+      void drain(prompt({ user: undefined, resumed: true, current: woken }));
     } catch (caughtError) {
       // Nothing awaits a wake, so a refusal (an ended session) or a throwing `onWakeCapped` goes
       // to the app, not the process. Keep that call inside the try: a throw out of `wake` would
-      // reject the settle loop and end every later wake.
-      running = false;
+      // reject the settle loop and end every later wake. Each throws before the run moves.
       options.onWakeFailure?.(caughtError);
     }
   }
@@ -203,9 +223,9 @@ export function createConversation(options: ConversationOptions): Conversation {
    * The ended wake is a yielded run: it wakes again after a short grace only if no prompt came.
    */
   async function settleWake(): Promise<void> {
-    if (!waking) return;
-    yielding.abort();
-    await waking;
+    if (ongoing.state !== 'wake') return;
+    ongoing.yielding.abort();
+    await ongoing.ended.promise;
   }
 
   /**
@@ -221,7 +241,7 @@ export function createConversation(options: ConversationOptions): Conversation {
   }
 
   /**
-   * `running` is cleared only when the prompt's run ends, which needs someone to iterate it. A
+   * The run goes back to idle only when the prompt's run ends, which needs someone to iterate it. A
    * stream that closed before it was read (the SSE callback never ran) is drained here once it is
    * stopped, so the conversation is not left running for good. A stop that came before `send`
    * leaves the prompt to its caller: it ends as interrupted when read.
@@ -266,7 +286,7 @@ export function createConversation(options: ConversationOptions): Conversation {
         refuse({ reason: 'session_ended', why: 'This conversation is closed; start a new one' });
       }
 
-      if (running) {
+      if (ongoing.state !== 'idle') {
         refuse({
           reason: 'session_running',
           why: 'A prompt is still running in this conversation: wait for it to finish, or stop it, before sending the next',
@@ -288,12 +308,19 @@ export function createConversation(options: ConversationOptions): Conversation {
 
       if (resumed) sessions.resume(mainSession.id);
       started = true;
-      running = true;
-      yielding = new AbortController();
-      runSignal = AbortSignal.any([
+      const signal = AbortSignal.any([
         closing.signal,
         ...(sendOptions.signal ? [sendOptions.signal] : []),
       ]);
+      const current: ActiveRun = {
+        state: 'prompt',
+        signal,
+        yielding: new AbortController(),
+        stop: undefined,
+        ended: Promise.withResolvers<undefined>(),
+      };
+
+      moveRun(current);
       const user: Message = {
         role: 'user',
         id: messageId,
@@ -303,18 +330,15 @@ export function createConversation(options: ConversationOptions): Conversation {
         at: now(),
       };
 
-      return endIfNeverIterated({
-        events: prompt({ user, resumed, signal: runSignal, yieldSignal: yielding.signal }),
-        signal: runSignal,
-      });
+      return endIfNeverIterated({ events: prompt({ user, resumed, current }), signal });
     },
     yieldPrompt() {
       if (closed) {
         refuse({ reason: 'session_ended', why: 'This conversation is closed; start a new one' });
       }
 
-      if (!running || runSignal?.aborted) return false;
-      yielding.abort();
+      if (ongoing.state === 'idle' || ongoing.signal.aborted) return false;
+      ongoing.yielding.abort();
 
       return true;
     },
@@ -325,8 +349,8 @@ export function createConversation(options: ConversationOptions): Conversation {
       wakesSuppressed = true;
       cancelYieldWake();
 
-      if (!running || !stopRun) return false;
-      stopRun();
+      if (ongoing.state === 'idle' || !ongoing.stop) return false;
+      ongoing.stop();
 
       return true;
     },
@@ -334,7 +358,10 @@ export function createConversation(options: ConversationOptions): Conversation {
       return messages;
     },
     get running() {
-      return running;
+      return ongoing.state !== 'idle';
+    },
+    get state() {
+      return ongoing.state;
     },
     close() {
       // Every call waits for the same cleanup: a second close() never resolves before it's done.
