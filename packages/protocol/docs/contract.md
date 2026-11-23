@@ -2,6 +2,10 @@
 
 What is in the contract, what stays out, and how it is kept honest.
 
+The stream, session and task shapes below are the wire as it is built today. The model that
+replaces them (nodes, channels and one subscribe endpoint) is decided and written in
+[the wire model](wire-model.md), and not built yet.
+
 ## What is in it
 
 `@sheavly/protocol` is the bottom layer: everything the harness sends a UI or accepts from one
@@ -62,6 +66,18 @@ absence means something (the first checkpoint's `incorporated`, an ungrouped tas
 message a caller wrote without `at`), never so that older data still parses. A field that stopped
 being optional drops the data that lacks it, with no compatibility reader;
 `required-fields.test.ts` pins the fields that were once optional.
+
+**The wire model is a wire-breaking change** ([wire-model.md](wire-model.md), decided in #438).
+It replaces the combined stream, the session and task updates, `QUERY .../stream` with
+`Last-Event-ID`, and how a task is addressed, so a client or server of the previous version cannot
+read it and a stored conversation's stream does not parse under it. It lands over many pull
+requests (#422 to #437), so it is marked here once, not in each. The version bump that carries it
+is taken by #422, where the schemas change (a minor bump while the protocol is below 1.0.0), and
+not by this page, which only says that the change is breaking. The protocol is not frozen until
+the model is built (decision 9 of #438), and nothing is published. There is no compatibility
+reader, as above: a one-time migration of a stored conversation, when it is first opened (#437),
+is not one. The old shapes are removed last (#436). This repository has no `.changeset` yet; when
+it has, the change is written in its changeset.
 
 ## The handshake proof
 

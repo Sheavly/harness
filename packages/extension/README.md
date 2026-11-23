@@ -74,3 +74,4 @@ its manifest declares for a service, the call listed for it must refuse a consum
 - [Lifecycle](docs/lifecycle.md): activation order, failure isolation, trust gating and deactivation.
 - [Services](docs/services.md): how extensions share typed services, and what each may read.
 - [Contributions](docs/contributions.md): system-prompt sections and the replacement base, settings an extension declares and reads, and where a hook goes among the others.
+- [Node kinds](docs/node-kinds.md): specification, not built: how an extension adds a kind of node to the wire model, and how a front end shows one it does not know.

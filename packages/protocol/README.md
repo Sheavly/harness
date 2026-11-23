@@ -94,3 +94,9 @@ including a bounded stack and cause chain, before the failed session update. The
 never enter model history.
 
 - [The wire contract](docs/contract.md): what is in it, what stays out, and how it is checked.
+- [The wire model](docs/wire-model.md): the decided, not yet built, replacement for the single
+  combined stream: nodes, channels and subscriptions.
+- [Where each current entry goes](docs/wire-model-mapping.md): every entry of today's stream and
+  the channel and entry type it becomes.
+- [Who changes with the wire model](docs/wire-model-consumers.md): every workspace that reads or
+  writes today's stream, and what changes in each.
