@@ -21,6 +21,7 @@ const config = await readJsonFile({ file: path.join(root, 'config.json'), schema
 | `permission-store/`   | `PermissionStore`: what `run_command` may do in each workspace, a file each under `permissions/`                            |
 | `conversation-store/` | `FileConversationStore`: a workspace's conversations, a folder each with its stream, history and index                      |
 | `output-store/`       | `FileOutputStore`: a conversation's complete command output, one private log file per command                               |
+| `server-log/`         | `serverLogSink`: where failures with no conversation go, `<home>/logs/backend.jsonl`                                        |
 | `document-file/`      | `DocumentFile`: one JSON document in one file for an owner with its own schema; changes go one at a time                    |
 | `profile-store/`      | `ProfileStore`: the profiles, one `<profile-id>/` folder each; deleting one deletes everything in it                        |
 | `profile-registry/`   | `ProfileRegistry`: profiles, config and each profile's models and keys, kept in step (the backend's door)                   |
@@ -46,11 +47,15 @@ asks of every module here.
 
 ## Docs
 
-Each kept chat gets a private `errors.jsonl` beside its history and stream when a run, hook or tool
-fails. Records include conversation, session and originating user-message IDs, timestamps, stream
-sequence and relevant tool-call IDs. Run errors include a bounded stack and cause chain. Prompts,
-tool inputs and successful outputs are not copied. Common credential forms in exception text are
-redacted. The first write after reopening repairs missing diagnostics from the authoritative stream.
+Each kept chat gets a private `log.jsonl` beside its history and stream: one `LogEntry`
+(`@sheavly/logger`) a line. When a run, hook or tool fails the store writes `run.failed`,
+`hook.failed` or `tool.failed` with the conversation, session and originating user-message IDs, the
+timestamp, the stream sequence and the tool-call ID; a run error carries a bounded stack and cause
+chain. What the backend logs about the conversation (`FileConversationStore.logSink(id)`) goes to
+the same file. Prompts, tool inputs and successful outputs are not copied. Credential forms and
+identity-shaped text in exception text are redacted. The first write after reopening repairs
+missing failures from the authoritative stream. Failures with no conversation go to
+`<home>/logs/backend.jsonl` (`serverLogSink`).
 
 Complete command output (`ConversationStore.outputs(id)`, `FileOutputStore`) is kept under
 `<conversation>/outputs/<output-ref>.log` (the bytes as captured, stdout and stderr in arrival order)

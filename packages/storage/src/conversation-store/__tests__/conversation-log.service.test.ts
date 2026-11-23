@@ -7,9 +7,8 @@ import { messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { FileConversationStore } from '../conversation-store.service.js';
-import { diagnosticRecordSchema } from '../diagnostic-record.validator.js';
 
-const temp = useTempFolder('chat-diagnostics-');
+const temp = useTempFolder('conversation-log-');
 const messageId = messageIdSchema.parse('00000000-0000-4000-8000-000000000001');
 const main = sessionIdSchema.parse('main');
 
@@ -35,53 +34,90 @@ function open() {
   return { store, folder: path.join(temp.path(), 'conversations', CONVERSATION) };
 }
 
-async function records(folder: string) {
-  const text = await readFile(path.join(folder, 'errors.jsonl'), 'utf8');
+async function lines(folder: string) {
+  const text = await readFile(path.join(folder, 'log.jsonl'), 'utf8');
 
   return text
     .trim()
     .split('\n')
-    .map((line) => diagnosticRecordSchema.parse(JSON.parse(line)));
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-describe('per-chat diagnostic files', () => {
-  it('writes fault metadata, correlated to a message, and excludes ordinary transcript entries', async () => {
+describe('a conversation log', () => {
+  it('writes failure metadata, correlated to a message, and excludes ordinary transcript entries', async () => {
     const { store, folder } = open();
     const stream = store.entries(CONVERSATION);
 
     await stream.append(entry(0));
     await stream.append(failure(1));
-    expect(await records(folder)).toEqual([
+    expect(await lines(folder)).toMatchObject([
       {
-        type: 'run_failed',
+        level: 'error',
+        event: 'run.failed',
+        time: 1234,
+        service: 'storage',
         seq: 1,
-        at: 1234,
         conversationId: CONVERSATION,
         sessionId: main,
         messageId,
-        error: 'API failed password=[REDACTED]',
+        error: { message: 'API failed password=[REDACTED]' },
       },
     ]);
-    await expectPrivate(path.join(folder, 'errors.jsonl'));
+    await expectPrivate(path.join(folder, 'log.jsonl'));
   });
 
-  it('repairs a missing or partial diagnostic write from the stream on restart, without duplicates', async () => {
+  it('repairs a missing or partial write from the stream on restart, without duplicates', async () => {
     const { store, folder } = open();
 
     await store.entries(CONVERSATION).append(failure(0));
-    await appendFile(path.join(folder, 'errors.jsonl'), '{"partial":');
+    await appendFile(path.join(folder, 'log.jsonl'), '{"partial":');
     await open().store.entries(CONVERSATION).append(failure(1));
-    expect((await records(folder)).map((record) => record.seq)).toEqual([0, 1]);
+    expect((await lines(folder)).map((line) => line.seq)).toEqual([0, 1]);
 
-    await rm(path.join(folder, 'errors.jsonl'));
+    await rm(path.join(folder, 'log.jsonl'));
     await open().store.entries(CONVERSATION).append(entry(2));
-    expect((await records(folder)).map((record) => record.seq)).toEqual([0, 1]);
+    expect((await lines(folder)).map((line) => line.seq)).toEqual([0, 1]);
   });
 
-  it('fails loudly when the diagnostic log cannot be written', async () => {
+  it('does not replay an entry the backend logged, which has no seq', async () => {
     const { store, folder } = open();
 
-    await mkdir(path.join(folder, 'errors.jsonl'), { recursive: true });
+    await store.entries(CONVERSATION).append(failure(0));
+    await store.logSink(CONVERSATION)({
+      level: 'error',
+      event: 'api.request_failed',
+      time: 1,
+      service: 'backend',
+    });
+    await open().store.entries(CONVERSATION).append(failure(1));
+    expect((await lines(folder)).map((line) => line.event)).toEqual([
+      'run.failed',
+      'api.request_failed',
+      'run.failed',
+    ]);
+  });
+
+  it('is not held back by an entry the backend logged with a seq of its own', async () => {
+    const { store, folder } = open();
+
+    await store.logSink(CONVERSATION)({
+      level: 'error',
+      event: 'api.request_failed',
+      time: 1,
+      service: 'backend',
+      seq: 99,
+    });
+    await open().store.entries(CONVERSATION).append(failure(0));
+    expect((await lines(folder)).map((line) => line.event)).toEqual([
+      'api.request_failed',
+      'run.failed',
+    ]);
+  });
+
+  it('fails loudly when the log cannot be written', async () => {
+    const { store, folder } = open();
+
+    await mkdir(path.join(folder, 'log.jsonl'), { recursive: true });
     await expect(store.entries(CONVERSATION).append(failure(0))).rejects.toMatchObject({
       name: 'StoreError',
     });
@@ -94,6 +130,6 @@ describe('per-chat diagnostic files', () => {
     await mkdir(folder, { recursive: true });
     await writeFile(path.join(folder, 'stream.jsonl'), `${JSON.stringify(old)}\n`);
     await open().store.entries(CONVERSATION).append(entry(1));
-    expect((await records(folder))[0]).not.toHaveProperty('messageId');
+    expect((await lines(folder))[0]).not.toHaveProperty('messageId');
   });
 });
