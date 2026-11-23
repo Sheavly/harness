@@ -22,6 +22,7 @@ import { ReleasedAgents } from './released-agents.service.js';
 import { SettleWaiters } from './settle-waiters.service.js';
 import { runningTasksOf } from './running-tasks.helper.js';
 import { runTask } from './task-run.helper.js';
+import { WORK_IS_SUB_AGENT } from './tasks.constants.js';
 import { isIssued, runningInfo, settledStatus } from './tasks.utils.js';
 import { isFiniteKind } from './work.utils.js';
 
@@ -272,7 +273,10 @@ export class TaskRegistry {
    * `release`.
    */
   agentSessionOf(id: TaskId): SessionId | undefined {
-    return this.#tasks.get(id)?.agentSessionId;
+    const entry = this.#tasks.get(id);
+
+    // Only sub-agent work runs a session: a command that was told one is not given a card for it.
+    return entry && WORK_IS_SUB_AGENT[entry.info.kind] ? entry.agentSessionId : undefined;
   }
 
   /**

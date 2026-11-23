@@ -190,44 +190,54 @@ describe('reopening a conversation whose sub-agent report was never delivered', 
     expect(reopened).toHaveLength(1);
   });
 
-  it('delivers the report of a sub-agent whose release was stored but whose report never reached history', async () => {
-    const store = await storedWithAgents([{ agent: 'a', outcome: 'completed' }]);
+  it.each([
+    ['completed', [{ outcome: 'completed', report: 'findings of a' }]],
+    ['failed', [{ outcome: 'failed', report: '' }]],
+    ['max_turns', [{ outcome: 'max_turns', report: '' }]],
+    // A task cancelled on request is released with no notice by design: nothing is owed.
+    ['interrupted', []],
+  ] as const)(
+    'for a sub-agent whose release was stored but whose notice never reached history, owes what a %s one owes',
+    async (state, owed) => {
+      const store = await storedWithAgents([
+        { agent: 'a', outcome: state === 'completed' ? 'completed' : 'failed' },
+      ]);
 
-    // The loop releases a sub-agent as its report enters the history; a crash can keep the release.
-    await store.entries(ID).append({
-      seq: 3,
-      at: 4,
-      sessionId: sessionIdSchema.parse('a'),
-      kind: 'update',
-      update: {
-        type: 'session_released',
-        session: {
-          id: sessionIdSchema.parse('a'),
-          parentId: sessionIdSchema.parse('main'),
-          startedByCall: callIdSchema.parse('call-a'),
-          rootId: sessionIdSchema.parse('main'),
-          depth: 2,
-          title: 'Agent a',
-          state: 'completed',
-          startedAt: 2,
-          endedAt: 3,
-          lastOutcome: 'completed',
+      // The loop releases a sub-agent as its notice enters the history; a crash can keep the release.
+      await store.entries(ID).append({
+        seq: 3,
+        at: 4,
+        sessionId: sessionIdSchema.parse('a'),
+        kind: 'update',
+        update: {
+          type: 'session_released',
+          session: {
+            id: sessionIdSchema.parse('a'),
+            parentId: sessionIdSchema.parse('main'),
+            startedByCall: callIdSchema.parse('call-a'),
+            rootId: sessionIdSchema.parse('main'),
+            depth: 2,
+            title: 'Agent a',
+            state,
+            startedAt: 2,
+            endedAt: 3,
+            lastOutcome: state,
+          },
         },
-      },
-    });
+      });
 
-    const { conversations } = setup({ store, replies: [] });
+      const { conversations } = setup({ store, replies: [] });
 
-    await conversations.reopen(ID);
+      await conversations.reopen(ID);
 
-    expect(notices(conversations.messages(ID))).toMatchObject([
-      { kind: 'agent-report', outcome: 'completed', report: 'findings of a', agent: { id: 'a' } },
-    ]);
-    // It is released, as it was: not a live session of the reopened conversation.
-    expect(conversations.get(ID).harness.sessions.isReleased(sessionIdSchema.parse('a'))).toBe(
-      true,
-    );
-  });
+      expect(notices(conversations.messages(ID))).toMatchObject(owed);
+      expect(notices(conversations.messages(ID))).toHaveLength(owed.length);
+      // It is released, as it was: not a live session of the reopened conversation.
+      expect(conversations.get(ID).harness.sessions.isReleased(sessionIdSchema.parse('a'))).toBe(
+        true,
+      );
+    },
+  );
 
   it('leaves a sub-agent already reported in history alone', async () => {
     const store = await storedWithAgents([{ agent: 'a', outcome: 'completed' }]);

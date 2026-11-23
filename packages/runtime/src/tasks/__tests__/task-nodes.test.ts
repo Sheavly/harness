@@ -4,6 +4,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { describe, expect, it } from 'vitest';
 import { SessionRegistry } from '../../sessions/sessions.service.js';
+import { startHeldTask } from '../../testing/held-task.fake.js';
 import { TaskRegistry } from '../tasks.service.js';
 import type { StartTask } from '../tasks.types.js';
 
@@ -365,6 +366,26 @@ describe('the sub-agent sessions of released tasks', () => {
 
     expect(world.sessions.get(world.child.id)).toBeUndefined();
     expect(world.tasks.nodes.list().map((node) => node.kind)).toEqual(['agent']);
+  });
+});
+
+describe('the session a task runs', () => {
+  it('is answered for sub-agent work only: a command that was told one runs none', () => {
+    const world = conversation();
+    const agent = startHeldTask({
+      tasks: world.tasks,
+      sessionId: world.main.id,
+      agentSessionId: world.child.id,
+      backgroundKind: 'agent',
+    });
+    const command = startHeldTask({
+      tasks: world.tasks,
+      sessionId: world.main.id,
+      agentSessionId: world.child.id,
+    });
+
+    expect(world.tasks.agentSessionOf(agent.id)).toBe(world.child.id);
+    expect(world.tasks.agentSessionOf(command.id)).toBeUndefined();
   });
 });
 

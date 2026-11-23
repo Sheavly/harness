@@ -128,7 +128,7 @@ export class ChildSessionsScope implements ChildSessionScope {
    * elsewhere (the loop releases a delivered sub-agent) is forgotten first, so it stops counting.
    */
   #requireRoom(): void {
-    for (const id of [...this.#owned.keys()]) {
+    for (const id of new Set([...this.#owned.keys(), ...this.#started])) {
       if (this.#registry.get(id)) continue;
 
       this.#owned.delete(id);

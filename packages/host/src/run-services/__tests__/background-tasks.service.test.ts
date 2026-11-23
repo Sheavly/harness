@@ -122,6 +122,35 @@ describe('the background-tasks service', () => {
     expect(run.harness.tasks.agentSessionOf(task.id)).toBe(mine.id);
   });
 
+  it('keeps one extension’s children apart from another’s, though both hold both scopes', async () => {
+    const run = scopeRun();
+    const both = (name: string) => ({
+      name,
+      requires: [BACKGROUND_TASKS.name, CHILD_SESSIONS.name],
+      grants: [...allGrants, 'sub-agent:create'],
+    });
+
+    await run.activate([both('agents'), both('other')]);
+
+    const theirs = run
+      .servicesOf('agents')
+      .get(CHILD_SESSIONS)
+      .startChild({
+        parentId: run.harness.mainSession.id,
+        startedByCall: callIdSchema.parse('theirs'),
+        title: 'theirs',
+      });
+    const { task, opened } = await startAgentTask({
+      run,
+      tasks: run.servicesOf('other').get(BACKGROUND_TASKS),
+      agent: theirs.id,
+    });
+
+    // `other` started no child, so its ledger is empty: it cannot take `agents`' child or its node.
+    expect(opened).toBe(1);
+    expect(run.harness.tasks.agentSessionOf(task.id)).toBeUndefined();
+  });
+
   it('refuses each verb without its grant, naming the extension and the grant', async () => {
     const { main, scope } = await activated({ names: ['none'], held: [] });
     const tasks = scope('none');

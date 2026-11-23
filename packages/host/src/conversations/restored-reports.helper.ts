@@ -34,16 +34,17 @@ export async function owedAgentReports(params: {
 
   if (!main) return [];
 
-  // The released ones that completed too: a sub-agent is released as its report enters the history,
-  // and a crash can lose that write while keeping the release, which is exactly the report that is
-  // owed. One that did not complete (cancelled in silence, failed) is released without a notice by
-  // design, so its absence from the history is not a report owed.
-  const releasedCompleted = (resume.released ?? []).filter(
-    (session) => session.state === 'completed',
+  // The released ones too: a sub-agent is released as its notice enters the history, and a crash
+  // can lose that write while keeping the release, which is exactly the report that is owed, for a
+  // failed or limit-stopped one as much as for a completed one. Except one that ended interrupted:
+  // a task cancelled on request (`cancel_task`) is released with no notice by design, and the model
+  // was told by the cancel itself, so its absence from the history is not a report owed.
+  const releasedWithNotice = (resume.released ?? []).filter(
+    (session) => session.state !== 'interrupted',
   );
   const agents = undeliveredAgents({
     main: main.id,
-    sessions: [...resume.sessions, ...releasedCompleted],
+    sessions: [...resume.sessions, ...releasedWithNotice],
     history,
   });
   const reports = new Map<SessionId, string>();

@@ -83,7 +83,7 @@ While idle it accepts messages, kept for its next prompt, but no status reports 
   sub-agent, recording the tool call in the parent's history that started it. It
   throws if the parent is unknown, has ended, or is at the depth cap.
 - Every refusal is a `SessionError` (`@sheavly/runtime/errors/`) with a `reason` (`unknown_session`,
-  `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`) and the `sessionId` it was
+  `duplicate_session` for an id a live session already has, `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`) and the `sessionId` it was
   about, so a caller tells the cases apart without reading the message.
 - `release(id)` forgets an ended session and every sub-agent under it, with their queued messages,
   last tokens and message ids, announces each as `session_released`, and returns how many sessions
@@ -226,8 +226,10 @@ a `StoreError` instead of resuming a conversation with a hole in it.
 Sessions that were released come back as released (`StoredLog.released`), not live, so a long
 conversation does not carry every sub-agent it ever had and they do not count toward the node bound.
 A sub-agent whose parent was released but whose own release was never written (a crash between the
-two writes) comes back released too. Because a released session is no longer live, the reopen no
-longer owes a report for one whose history write was lost just before the crash. A stored log that
+two writes) comes back released too. The reopen still owes the report of a released sub-agent whose
+notice never reached the history (the loop releases a sub-agent as its notice enters the history, and
+a crash can keep the release and lose the write), except one that ended `interrupted`: a task
+cancelled on request is released with no notice by design. A stored log that
 is otherwise corrupt (a session whose parent was never stored, an id stored twice, an ended session
 with no end time) fails the reopen loudly with a `SessionError` or `NodeError` rather than being
 repaired.

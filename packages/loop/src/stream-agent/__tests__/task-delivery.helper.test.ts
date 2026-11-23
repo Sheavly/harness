@@ -37,6 +37,7 @@ async function finishedAgent(params: {
     callId,
     sessionId: ref.id,
     agentSessionId: child.id,
+    backgroundKind: 'agent',
     run: async () => (outcome === 'completed' ? { exitCode: 0, report: 'done' } : { exitCode: 1 }),
   });
   registry.end({ id: child.id, state: outcome });
@@ -109,6 +110,7 @@ it('preserves every whole report when a synchronous completion listener releases
       callId,
       sessionId: ref.id,
       agentSessionId: child.id,
+      backgroundKind: 'agent',
       run: async ({ onOutput }) => {
         onOutput(report);
 
