@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { now } from '@sheavly/core/clock/clock.helper';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
+import { MAX_NODE_STATUS_CHARS, MAX_NODE_TITLE_CHARS } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { isConsistentNode } from '@sheavly/protocol/node/node.utils';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
@@ -9,6 +10,7 @@ import { NODE_STATE_OF_OUTCOME } from '@sheavly/protocol/status/status.constants
 import { canTransition } from '@sheavly/protocol/status/status.utils';
 import { NodeError } from '../errors/nodes.errors.js';
 import { ChannelLog } from './channel-log.service.js';
+import { UNTITLED } from './nodes.constants.js';
 import type {
   NodeEntry,
   NodeRecord,
@@ -17,7 +19,7 @@ import type {
   ReadableChannel,
   RestoredNode,
 } from './nodes.types.js';
-import { depthOf, isOpenState, isVisibleTo, subtreeOf } from './nodes.utils.js';
+import { depthOf, isOpenState, isVisibleTo, oneLineOf, subtreeOf } from './nodes.utils.js';
 
 /** How a node of any kind other than an agent ends; an agent ends with how its last run did. */
 type WorkEnd = Extract<NodeState, 'completed' | 'failed' | 'cancelled'>;
@@ -115,10 +117,11 @@ export class NodeRegistry {
   /** What an agent says it is doing now. Ignored once the node ended; returns whether it changed. */
   setStatus(params: { id: NodeId; status: string }): boolean {
     const node = this.#require(params.id);
+    const status = oneLineOf({ text: params.status, max: MAX_NODE_STATUS_CHARS });
 
-    if (!isOpenState(node.state)) return false;
+    if (!isOpenState(node.state) || status === undefined) return false;
 
-    node.status = params.status;
+    node.status = status;
     this.#append({ type: 'updated', node });
 
     return true;
@@ -237,17 +240,21 @@ export class NodeRegistry {
 
   #add(params: RestoredNode & { state: NodeState; startedAt: number }): NodeRecord {
     const { kind, parent, title, state, startedAt } = params;
+    const status =
+      params.status === undefined
+        ? undefined
+        : oneLineOf({ text: params.status, max: MAX_NODE_STATUS_CHARS });
 
     if (parent !== undefined) this.#require(parent);
 
     const node: NodeRecord = {
       id: nodeIdSchema.parse(randomUUID()),
       kind,
-      title,
+      title: oneLineOf({ text: title, max: MAX_NODE_TITLE_CHARS }) ?? UNTITLED,
       state,
       startedAt,
       ...(parent && { parent }),
-      ...(params.status !== undefined && { status: params.status }),
+      ...(status !== undefined && { status }),
       ...(params.endedAt !== undefined && { endedAt: params.endedAt }),
       ...(params.spawnedBy && { spawnedBy: params.spawnedBy }),
       ...(params.modelId && { modelId: params.modelId }),

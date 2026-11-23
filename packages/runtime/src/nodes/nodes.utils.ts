@@ -1,5 +1,20 @@
+import { BLANK_PATTERN } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
+import { NOT_ONE_LINE } from './nodes.constants.js';
 import type { NodeRecord, NodeState } from './nodes.types.js';
+
+/**
+ * `text` as a node's title or status on the wire: the characters a line cannot hold become spaces,
+ * runs of space become one, and it is cut to `max`. Undefined when nothing is left, or only text
+ * that draws as nothing, so a caller picks what stands for a blank. A command's description or an
+ * agent's status report can be anything; the schema refuses what is not one line.
+ */
+export function oneLineOf(params: { text: string; max: number }): string | undefined {
+  const line = params.text.replace(NOT_ONE_LINE, ' ').replaceAll(/\s+/gu, ' ').trim();
+  const cut = Array.from(line).slice(0, params.max).join('').trim();
+
+  return BLANK_PATTERN.test(cut) ? undefined : cut;
+}
 
 /** Whether a node in `state` is still open: running, or idle between prompts (an agent's). */
 export function isOpenState(state: NodeState): boolean {
