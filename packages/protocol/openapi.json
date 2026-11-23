@@ -1,6 +1,6 @@
 {
   "openapi": "3.2.0",
-  "info": { "title": "Sheavly harness", "version": "0.0.0" },
+  "info": { "title": "Sheavly harness", "version": "0.1.0" },
   "paths": {
     "/conversations": {
       "get": {
@@ -2515,7 +2515,7 @@
           }
         ]
       },
-      "NodeId": { "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+      "NodeId": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9_-]*$" },
       "NodeState": {
         "type": "string",
         "enum": ["running", "idle", "completed", "failed", "cancelled", "lost"]
@@ -2532,17 +2532,17 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "state": { "$ref": "#/components/schemas/NodeState" },
                   "status": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
                   "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
                   "kind": { "type": "string", "const": "agent" },
                   "modelId": { "$ref": "#/components/schemas/ModelId" },
                   "effort": { "$ref": "#/components/schemas/ModelEffort" },
@@ -2558,21 +2558,21 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "state": { "$ref": "#/components/schemas/NodeState" },
                   "status": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
                   "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
-                  "command": { "type": "string" },
-                  "description": { "type": "string" },
-                  "reason": { "type": "string" },
-                  "output": { "type": "string" },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
+                  "command": { "type": "string", "maxLength": 131072 },
+                  "description": { "type": "string", "maxLength": 2000 },
+                  "reason": { "type": "string", "maxLength": 1000 },
+                  "output": { "type": "string", "maxLength": 30000 },
                   "outputLog": {
                     "type": "object",
                     "properties": {
@@ -2596,7 +2596,7 @@
                       { "type": "null" }
                     ]
                   },
-                  "error": { "type": "string" },
+                  "error": { "type": "string", "maxLength": 2000 },
                   "kind": { "type": "string", "const": "command" }
                 },
                 "required": [
@@ -2618,21 +2618,21 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "state": { "$ref": "#/components/schemas/NodeState" },
                   "status": {
                     "type": "string",
                     "maxLength": 200,
-                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
                   },
                   "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
                   "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
-                  "command": { "type": "string" },
-                  "description": { "type": "string" },
-                  "reason": { "type": "string" },
-                  "output": { "type": "string" },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
+                  "command": { "type": "string", "maxLength": 131072 },
+                  "description": { "type": "string", "maxLength": 2000 },
+                  "reason": { "type": "string", "maxLength": 1000 },
+                  "output": { "type": "string", "maxLength": 30000 },
                   "outputLog": {
                     "type": "object",
                     "properties": {
@@ -2656,7 +2656,7 @@
                       { "type": "null" }
                     ]
                   },
-                  "error": { "type": "string" },
+                  "error": { "type": "string", "maxLength": 2000 },
                   "kind": { "type": "string", "const": "service" }
                 },
                 "required": [
@@ -2680,17 +2680,17 @@
               "title": {
                 "type": "string",
                 "maxLength": 200,
-                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
               },
               "state": { "$ref": "#/components/schemas/NodeState" },
               "status": {
                 "type": "string",
                 "maxLength": 200,
-                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
               },
               "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+              "spawnedBy": { "type": "string", "maxLength": 200 },
               "kind": {
                 "type": "string",
                 "maxLength": 257,
@@ -2751,7 +2751,7 @@
                   { "type": "null" }
                 ]
               },
-              "error": { "type": "string" }
+              "error": { "type": "string", "maxLength": 2000 }
             },
             "required": ["cursor", "at", "channel", "type", "state"]
           },
@@ -2785,14 +2785,14 @@
             "cursor": { "$ref": "#/components/schemas/Cursor" },
             "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
             "channel": { "$ref": "#/components/schemas/ChannelName" },
-            "type": { "type": "string", "minLength": 1 }
+            "type": { "type": "string", "minLength": 1, "maxLength": 128 }
           },
           "required": ["cursor", "at", "channel", "type"],
           "additionalProperties": {}
         }
       },
       "TreeChannelEntry": {
-        "anyOf": [
+        "oneOf": [
           {
             "type": "object",
             "properties": {
@@ -2905,7 +2905,7 @@
               "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "type": { "type": "string", "const": "prompt_started" },
-              "text": { "type": "string" },
+              "text": { "type": "string", "maxLength": 20000 },
               "messageId": { "$ref": "#/components/schemas/ModelId" },
               "queued": {
                 "maxItems": 100,
@@ -2922,8 +2922,8 @@
               "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "type": { "type": "string", "const": "prompt_refused" },
-              "text": { "type": "string" },
-              "error": { "type": "string" },
+              "text": { "type": "string", "maxLength": 20000 },
+              "error": { "type": "string", "maxLength": 2000 },
               "queued": {
                 "maxItems": 100,
                 "type": "array",
@@ -2939,7 +2939,7 @@
               "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "type": { "type": "string", "const": "storage_failed" },
-              "error": { "type": "string" }
+              "error": { "type": "string", "maxLength": 2000 }
             },
             "required": ["channel", "cursor", "at", "type", "error"]
           },
@@ -2985,8 +2985,13 @@
           "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
           "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "type": { "type": "string", "const": "snapshot" },
-          "nodes": { "type": "array", "items": { "$ref": "#/components/schemas/NodeInfo" } },
+          "nodes": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/NodeInfo" }
+          },
           "approvals": {
+            "maxItems": 1000,
             "type": "array",
             "items": {
               "type": "object",

@@ -27,6 +27,6 @@
     "sheavly": "dist/cli.js"
   },
   "devDependencies": {
-    "@sheavly/protocol": "^0.0.0"
+    "@sheavly/protocol": "^0.1.0"
   }
 }

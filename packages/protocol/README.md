@@ -32,7 +32,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `subscription/`      | The subscribe request: channels to follow, where to start in each, and the limits on it       |
 | `node-command/`      | Commands addressed by node: a message to an agent, and the ids a prompt send returns          |
 | `task/`              | Background task states                                                                        |
-| `status/`            | The one status table (session, run, task, turn stop) and `runEnd`: how a run ended            |
+| `status/`            | The one status table (session, run, task, node, turn stop) and `runEnd`: how a run ended      |
 | `message/`           | What a model is sent, and the `PromptPart`s a user typed                                      |
 | `history/`           | `HistoryMessage`: the stored conversation, above message, session and task                    |
 | `skill/`             | `SkillInfo`: a skill as a UI lists it                                                         |

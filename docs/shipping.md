@@ -92,7 +92,9 @@ wait with it.
   handshake needs the instance id that only the discovery file holds.
   The package is not packed or installed yet ([#450](https://github.com/Sheavly/harness/issues/450)),
   and `update` is not built.
-- **Every package is private at version `0.0.0`** and is consumed from source inside this repository.
+- **Every package is private** and is consumed from source inside this repository. They start at
+  version `0.0.0`; the protocol is at `0.1.0`, taken with the wire model, and each workspace that
+  depends on a package names the version it has now.
 
 ## Decisions
 

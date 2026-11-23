@@ -19,7 +19,7 @@
     "@sheavly/core": "^0.0.0",
     "@sheavly/extension": "^0.0.0",
     "@sheavly/loop": "^0.0.0",
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "@sheavly/runtime": "^0.0.0",
     "@sheavly/tools": "^0.0.0"
   },

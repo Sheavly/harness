@@ -1,6 +1,6 @@
 {
   "name": "@sheavly/protocol",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The wire contract: every event, update and answer the harness sends a UI or accepts from one, as zod schemas.",
   "scripts": {
     "typecheck": "tsc --noEmit",

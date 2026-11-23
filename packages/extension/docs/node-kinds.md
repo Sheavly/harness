@@ -34,7 +34,10 @@ it, mark it `lost` after a restart and hold it to the extension's grants. A node
   a convention (the manifest's namespace check is applied to `settings`, `emits.events` and
   `serves.actions`, not to `workKinds`), so the host must also refuse a
   work kind, and a wildcard's prefix, outside the extension's own `<extension>.` namespace. Without
-  it a kind could be named in another extension's namespace or as a built-in.
+  it a kind could be named in another extension's namespace or as a built-in. The same check
+  refuses an extension named `agent`, `command`, `service` or `tree`: the wire schemas already
+  refuse a node kind or a tree event under those names, but the manifest still accepts them, so
+  such an extension would validate and then have every kind and event refused.
 - **`activate` contributes its wire shape**, beside `events` and `notices`:
   `nodeKinds: [{ kind, version, schema }]`. `schema` is the extension's zod schema for the node's
   `data`, `version` is a positive integer, the version of that shape, as for `events`. The host

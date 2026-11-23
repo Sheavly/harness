@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@sheavly/host": "^0.0.0",
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "@sheavly/testing": "^0.0.0"
   }
 }

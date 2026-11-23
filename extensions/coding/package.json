@@ -20,7 +20,7 @@
     "@sheavly/core": "^0.0.0",
     "@sheavly/extension": "^0.0.0",
     "@sheavly/process": "^0.0.0",
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "@sheavly/runtime": "^0.0.0",
     "@sheavly/workspace": "^0.0.0",
     "@vscode/ripgrep": "^1.18.0",

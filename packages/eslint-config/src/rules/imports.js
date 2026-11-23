@@ -68,7 +68,11 @@ export const importsRule = {
         return 'A generic workspace never imports a coding one.';
       }
 
-      return `If the dependency is real, add it: \`npm install ${target}@0.0.0${workspaceFlag(entry.dir)}\` (a dev dependency for tests).`;
+      // The version the target has now: a pinned `@0.0.0` would stop matching it the day it moves.
+      const version = workspaces.find(({ name }) => name === target)?.manifest.version;
+      const spec = version === undefined ? target : `${target}@${version}`;
+
+      return `If the dependency is real, add it: \`npm install ${spec}${workspaceFlag(entry.dir)}\` (a dev dependency for tests).`;
     };
 
     const checkAppOnlyModule = (params) => {

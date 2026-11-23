@@ -21,7 +21,7 @@
     "@sheavly/client": "^0.0.0",
     "@sheavly/coding": "^0.0.0",
     "@sheavly/core": "^0.0.0",
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "@sheavly/runtime": "^0.0.0",
     "@sheavly/storage": "^0.0.0",
     "@sheavly/workspace": "^0.0.0",
