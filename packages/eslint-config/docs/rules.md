@@ -533,6 +533,28 @@ is split by responsibility only when it does several jobs, not to fit a number. 
   socket path, a path held in a variable, a template literal with expressions, a relative path
   through `node_modules`, or a file outside the folder that `src/client/` code is made to call;
   those stay with review.
+- **The launcher's systemd programs** (`systemdConfinement`, two config blocks the `sheavly`
+  app spreads into its config, not a `harness/*` rule: `no-restricted-imports` and
+  `no-restricted-syntax` selectors for `import('…')`, with a message each): `sheavly service` runs
+  `systemctl`, `loginctl` and `journalctl` only through `SystemTools`, by name with an argument
+  array, in `apps/sheavly/src/service/system.helper.ts`. So the files of `src/service/` (tests
+  and fakes included) may not import `node:child_process`, and no file of the app but
+  `apps/sheavly/src/cli.ts`
+  may import `system.helper`, which makes the real tools: a command takes `SystemTools` as a
+  dependency and a test passes the fake, so a test cannot get the real tools by importing them.
+  It is not a guarantee that no test runs `systemctl`: a process test that starts the real command
+  line still reaches the real systemd for a service action that gets as far as asking it (today
+  `service.processes.test.ts` runs only refusals, before systemd is asked, and that stays with
+  review), and a test outside `src/service/` may start a program of its own. The two blocks do not overlap, because a
+  rule set twice for one file keeps only the later options, and the process rule stops at
+  `src/service/`: other launcher code (a test that starts the command line itself) may start a
+  process. `systemd-confinement.test.js` lints the real launcher config and pins both imports,
+  static or a dynamic `import('…')` of a string literal or of a template literal without
+  expressions, in the service folder, in the rest of the app and in `cli.ts` and the wrapper. It
+  does not see `createRequire`, `process.getBuiltinModule`, a specifier in a variable or a
+  template literal with expressions, `node:worker_threads`, `@sheavly/process`, `child_process`
+  reached through another module, a file outside the globs (`.mts`, `.cts`, `.jsx`), or a program
+  started by the shell tool of the harness itself; those stay with review.
 - **File writes** (`harness/no-direct-file-writes`, source files; tests and fakes write fixtures
   into temp folders and are exempt): no import of a function that creates, changes, moves or
   deletes a file or folder from `node:fs` or `node:fs/promises` (`writeFile`, `appendFile`,
