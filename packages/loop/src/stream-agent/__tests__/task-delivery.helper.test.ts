@@ -4,6 +4,7 @@ import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { SessionRef } from '@sheavly/protocol/session/session.types';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
+import { startHeldTask } from '@sheavly/runtime/testing/held-task.fake';
 import { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import { until } from '@sheavly/testing/wait/until.fake';
 import { OrderedQueue } from '../../queue/queue.service.js';
@@ -34,6 +35,7 @@ async function finishedAgent(params: {
     description: 'Child',
     callId,
     sessionId: ref.id,
+    agentSessionId: child.id,
     run: async () => (outcome === 'completed' ? { exitCode: 0, report: 'done' } : { exitCode: 1 }),
   });
   await until(() => tasks.runningCount === 0);
@@ -45,7 +47,7 @@ async function finishedAgent(params: {
 async function deliverAgent(options: { grandchildOpen?: boolean; outcome?: 'failed' } = {}) {
   const registry = new SessionRegistry();
   const ref = registry.startMain({ title: 'Parent' });
-  const tasks = new TaskRegistry();
+  const tasks = new TaskRegistry(registry.nodeOwners);
   const child = await finishedAgent({ registry, tasks, ref, ...options });
   const messages: HistoryMessage[] = [];
 
@@ -87,7 +89,7 @@ it('keeps a sub-agent session whose own sub-agent is still open, and still deliv
 it('preserves every whole report when a synchronous completion listener releases all delivered tasks', async () => {
   const registry = new SessionRegistry();
   const ref = registry.startMain({ title: 'Parent' });
-  const tasks = new TaskRegistry();
+  const tasks = new TaskRegistry(registry.nodeOwners);
   const reports = ['first', 'second', 'ungrouped'].map((label) =>
     `${label} findings\n`.repeat(1_000),
   );
@@ -106,6 +108,7 @@ it('preserves every whole report when a synchronous completion listener releases
       description: 'Review',
       callId,
       sessionId: ref.id,
+      agentSessionId: child.id,
       run: async ({ onOutput }) => {
         onOutput(report);
 
@@ -162,4 +165,72 @@ it('preserves every whole report when a synchronous completion listener releases
   ).toEqual(
     released.filter((event) => event.type === 'harness_notice').map((event) => event.notice),
   );
+});
+
+/** A conversation with a main session, and what `deliver` runs at its turn boundary. */
+function conversation() {
+  const registry = new SessionRegistry();
+  const ref = registry.startMain({ title: 'Parent' });
+  const tasks = new TaskRegistry(registry.nodeOwners);
+  const messages: HistoryMessage[] = [];
+  const deliver = () =>
+    reportFinishedTasks({
+      tasks,
+      session: { registry, ref },
+      messages,
+      events: new OrderedQueue<AgentEventBody>(),
+    });
+
+  return { registry, ref, tasks, messages, deliver };
+}
+
+it('releases the session of a sub-agent cancelled in silence, which no notice names', async () => {
+  const { registry, ref, tasks, messages, deliver } = conversation();
+  const callId = callIdSchema.parse('child-call');
+  const child = registry.startChild({ parentId: ref.id, startedByCall: callId, title: 'Child' });
+  const task = startHeldTask({
+    tasks,
+    sessionId: ref.id,
+    callId,
+    agentSessionId: child.id,
+    backgroundKind: 'agent',
+  });
+
+  // `cancel_task` on an ungrouped task: the run stops the session as it ends, and nobody is told.
+  await tasks.cancel(task.id);
+  registry.end({ id: child.id, state: 'interrupted' });
+  deliver();
+
+  expect(messages).toEqual([]);
+  expect(registry.isReleased(child.id)).toBe(true);
+  expect(registry.nodes.list().map((node) => node.kind)).toEqual(['agent']);
+});
+
+it('leaves alone a session that has the task’s tool call id but is not the one it runs', async () => {
+  const { registry, ref, tasks, messages, deliver } = conversation();
+  const callId = callIdSchema.parse('same-call');
+  // An extension’s child, started under the call id before the real sub-agent's.
+  const other = registry.startChild({ parentId: ref.id, startedByCall: callId, title: 'Other' });
+  const real = registry.startChild({ parentId: ref.id, startedByCall: callId, title: 'Real' });
+
+  tasks.start({
+    command: 'sub-agent',
+    description: 'Real',
+    callId,
+    sessionId: ref.id,
+    agentSessionId: real.id,
+    backgroundKind: 'agent',
+    run: async () => ({ exitCode: 0, report: 'the real report' }),
+  });
+  registry.end({ id: other.id, state: 'completed' });
+  registry.end({ id: real.id, state: 'completed' });
+  await until(() => tasks.runningCount === 0);
+  deliver();
+
+  // The card is the real sub-agent's, and it, not the other, is released.
+  expect(messages.map((message) => message.role === 'notice' && message.notice)).toMatchObject([
+    { kind: 'agent-report', agent: { id: real.id, title: 'Real' }, report: 'the real report' },
+  ]);
+  expect(registry.isReleased(real.id)).toBe(true);
+  expect(registry.get(other.id)).toBeDefined();
 });

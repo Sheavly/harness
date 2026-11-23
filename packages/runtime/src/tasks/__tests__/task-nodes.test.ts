@@ -1,5 +1,6 @@
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { TaskKind } from '@sheavly/protocol/task/task.types';
+import type { SessionId } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { describe, expect, it } from 'vitest';
 import { SessionRegistry } from '../../sessions/sessions.service.js';
@@ -45,19 +46,43 @@ function nodeOf(params: { world: ReturnType<typeof conversation>; id: string }) 
   return params.world.tasks.nodes.list().find((node) => node.title === params.id);
 }
 
-/** Starts the work of the sub-agent `world.child`, the one `start_agent` makes, running `run`. */
-function startSubAgent(params: { world: ReturnType<typeof conversation>; run: StartTask['run'] }) {
-  const { world, run } = params;
+/**
+ * Starts the work of a sub-agent, as `start_agent` does: `agent` is the session it runs
+ * (`world.child` unless a test names another), running `run`.
+ */
+function startSubAgent(params: {
+  world: ReturnType<typeof conversation>;
+  run: StartTask['run'];
+  agent?: SessionId;
+}) {
+  const { world, run, agent = world.child.id } = params;
 
   return world.tasks.start({
     command: 'sub-agent: sub',
     description: 'sub',
     callId: CALL,
     sessionId: world.main.id,
+    agentSessionId: agent,
     backgroundKind: 'agent',
     run,
   });
 }
+
+/** How many nodes starting a sub-agent's work opens: none when it takes its session's own. */
+function nodesOpenedBy(params: { world: ReturnType<typeof conversation>; agent?: SessionId }) {
+  const { world, agent } = params;
+  const before = world.tasks.nodes.list().length;
+
+  startSubAgent({ world, run: () => new Promise(() => undefined), ...(agent && { agent }) });
+
+  return world.tasks.nodes.list().length - before;
+}
+
+/** A run that goes on until it is aborted, as a stopped command does. */
+const UNTIL_ABORTED: StartTask['run'] = ({ signal }) =>
+  new Promise((resolve) => {
+    signal.addEventListener('abort', () => resolve({ exitCode: null }), { once: true });
+  });
 
 /** A sub-agent whose work finished and whose notice was taken: the state `release` accepts. */
 async function reportedSubAgent(world: ReturnType<typeof conversation>) {
@@ -229,7 +254,7 @@ describe('a sub-agent', () => {
     });
     const agent = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 0 }) });
 
-    // The agent task takes its session's node, and settles: no throw, no hang.
+    // The agent task takes its own session's node, whatever else has its call id, and settles.
     await world.tasks.nextSettled();
 
     expect(world.tasks.get(agent.id)?.status).toBe('completed');
@@ -238,32 +263,47 @@ describe('a sub-agent', () => {
     expect(world.tasks.nodes.list().find((node) => node.kind === 'command')?.state).toBe('running');
   });
 
-  it('gives two sub-agents with one tool call id a node each: a node is taken by one task', () => {
+  it('is paired with the session it runs, never with another that has the same tool call id', () => {
     const world = conversation();
-    const second = world.sessions.startChild({
+    // A session an extension started under the same call id, before the real sub-agent's.
+    const real = world.sessions.startChild({
       parentId: world.main.id,
       startedByCall: CALL,
-      title: 'second',
+      title: 'real',
     });
     const before = world.tasks.nodes.list().length;
+    const task = startSubAgent({ world, agent: real.id, run: () => new Promise(() => undefined) });
 
-    startSubAgent({ world, run: () => new Promise(() => undefined) });
-    startSubAgent({ world, run: () => new Promise(() => undefined) });
-    // A third has no session left to take, so it is a node of its own, never the first's again.
-    startSubAgent({ world, run: () => new Promise(() => undefined) });
+    // No node was opened: the task took the real one, and the first child is left alone.
+    expect(world.tasks.nodes.list().length).toBe(before);
+    expect(world.tasks.agentSessionOf(task.id)).toBe(real.id);
+  });
 
-    expect(second.depth).toBe(2);
-    expect(world.tasks.nodes.list().length).toBe(before + 1);
+  it('takes a session once: a second task for it gets a node of its own', () => {
+    const world = conversation();
+
+    expect(nodesOpenedBy({ world })).toBe(0);
+    expect(nodesOpenedBy({ world })).toBe(1);
+  });
+
+  it('is not paired with a session another session started: the node must be its own child', () => {
+    const world = conversation();
+    const other = world.sessions.startMain({ title: 'other', id: sessionIdSchema.parse('other') });
+    const theirs = world.sessions.startChild({
+      parentId: other.id,
+      startedByCall: CALL,
+      title: 'theirs',
+    });
+
+    expect(nodesOpenedBy({ world, agent: theirs.id })).toBe(1);
   });
 
   it('does not take the node of a session that has ended', () => {
     const world = conversation();
-    const before = world.tasks.nodes.list().length;
 
     world.sessions.end({ id: world.child.id, state: 'completed' });
-    startSubAgent({ world, run: () => new Promise(() => undefined) });
 
-    expect(world.tasks.nodes.list().length).toBe(before + 1);
+    expect(nodesOpenedBy({ world })).toBe(1);
   });
 
   it('is not released by its task: its session owns the node', async () => {
@@ -286,11 +326,53 @@ describe('a sub-agent', () => {
   });
 });
 
+describe('the sub-agent sessions of released tasks', () => {
+  it('are handed to the session that owns the task, once, whether the task was delivered or cancelled in silence', async () => {
+    const world = conversation();
+    const silent = startSubAgent({ world, run: UNTIL_ABORTED });
+
+    // Cancelled on request: never notified, so nothing delivers it, and the loop releases it silently.
+    await world.tasks.cancel(silent.id);
+
+    expect(world.tasks.agentSessionOf(silent.id)).toBe(world.child.id);
+    expect(world.tasks.releaseFinished(world.main.id)).toBe(1);
+    // The task is gone, and so is what it knew; the owner is handed the session to release.
+    expect(world.tasks.agentSessionOf(silent.id)).toBeUndefined();
+    expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([world.child.id]);
+    expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([]);
+  });
+
+  it('are not handed to another session, and are kept for the owner', async () => {
+    const world = conversation();
+    const task = await reportedSubAgent(world);
+
+    expect(world.tasks.release(task.id)).toBe(true);
+    expect(world.tasks.takeReleasedAgents(sessionIdSchema.parse('someone-else'))).toEqual([]);
+    expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([world.child.id]);
+  });
+
+  it('let the owner release an ended sub-agent whose task nobody was told about', async () => {
+    const world = conversation();
+    const task = startSubAgent({ world, run: UNTIL_ABORTED });
+
+    await world.tasks.cancel(task.id);
+    world.sessions.end({ id: world.child.id, state: 'interrupted' });
+    world.tasks.releaseFinished(world.main.id);
+
+    for (const agent of world.tasks.takeReleasedAgents(world.main.id)) {
+      world.sessions.releaseAgent(agent);
+    }
+
+    expect(world.sessions.get(world.child.id)).toBeUndefined();
+    expect(world.tasks.nodes.list().map((node) => node.kind)).toEqual(['agent']);
+  });
+});
+
 describe('an agent task with no session to share', () => {
   it('has an agent node of its own, which the task ends with how it settled', async () => {
     const world = conversation();
 
-    // No session of this call id is open and unclaimed: this one has a node of its own.
+    // The session this task runs has ended, so it cannot be shared: the task has a node of its own.
     world.sessions.end({ id: world.child.id, state: 'completed' });
 
     const task = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 1 }) });

@@ -1,7 +1,7 @@
 /** Background work and completion notices shared by tools and session-scoped loops. */
 import { now } from '@sheavly/core/clock/clock.helper';
 import { NodeRegistry } from '../nodes/node-registry.service.js';
-import { endTaskNode, openTaskNode, releaseTaskNode } from './task-nodes.helper.js';
+import { endTaskNode, newTaskEntry, releaseTaskNode } from './task-nodes.helper.js';
 import type {
   Delivery,
   Entry,
@@ -17,10 +17,12 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId, TaskInfo, TaskStatus, TaskUpdate } from '@sheavly/protocol/task/task.types';
 import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { TaskError } from '../errors/tasks.errors.js';
-import { abortableWait } from '../wait/abortable-wait.helper.js';
 import { groupMemberError, unknownTaskError } from './group-member.helper.js';
+import { ReleasedAgents } from './released-agents.service.js';
+import { SettleWaiters } from './settle-waiters.service.js';
+import { runningTasksOf } from './running-tasks.helper.js';
 import { runTask } from './task-run.helper.js';
-import { isIssued, newEntry, runningInfo, runningTaskOf, settledStatus } from './tasks.utils.js';
+import { isIssued, runningInfo, settledStatus } from './tasks.utils.js';
 import { isFiniteKind } from './work.utils.js';
 
 /**
@@ -36,8 +38,9 @@ export class TaskRegistry {
   #nextId = 1;
   /** Notices in the order they became ready, not the order tasks started. */
   #ready: Delivery[] = [];
-  #waiters: (() => void)[] = [];
   #observers = new Set<TaskObserver>();
+  readonly #releasedAgents = new ReleasedAgents();
+  readonly #settleWaiters = new SettleWaiters();
   readonly #owners: NodeOwners;
 
   constructor(owners?: NodeOwners) {
@@ -54,6 +57,7 @@ export class TaskRegistry {
     description,
     callId,
     sessionId,
+    agentSessionId,
     backgroundKind: kind = 'task',
     capture,
     run,
@@ -61,16 +65,14 @@ export class TaskRegistry {
     const id = taskIdSchema.parse(`t${this.#nextId++}`);
     const controller = new AbortController();
     const info = runningInfo({ id, callId, command, description, kind, startedAt: now() });
-    const entries = this.#tasks.values();
-    const node = openTaskNode({
+    const entry = newTaskEntry({
       owners: this.#owners,
-      entries,
+      entries: this.#tasks.values(),
+      info,
+      controller,
       sessionId,
-      callId,
-      description,
-      kind,
+      agentSessionId,
     });
-    const entry = newEntry({ info, controller, sessionId, backgroundKind: kind, ...node });
 
     entry.settled = runTask({
       info,
@@ -126,23 +128,11 @@ export class TaskRegistry {
    * hides the shared group ID and reason while retaining compatible tasks with their descriptions.
    */
   runningTasks(sessionId?: SessionId): RunningTask[] {
-    // Each large group's ownership is checked once, not once per running member.
-    const visibility = new Map<Delivery, boolean>();
-
-    return [...this.#tasks.values()]
-      .filter((entry) => entry.info.status === 'running' && this.#owns({ entry, sessionId }))
-      .map((entry) => {
-        const { info, group } = entry;
-
-        if (group && !visibility.has(group)) {
-          visibility.set(group, this.#ownsDelivery({ delivery: group, sessionId }));
-        }
-
-        return runningTaskOf({
-          info,
-          group: group && visibility.get(group) ? group.ids[0] : undefined,
-        });
-      });
+    return runningTasksOf({
+      entries: this.#tasks.values(),
+      owns: (entry) => this.#owns({ entry, sessionId }),
+      ownsDelivery: (delivery) => this.#ownsDelivery({ delivery, sessionId }),
+    });
   }
 
   /** The task a tool call started; with a session, only among the ones it owns. */
@@ -268,7 +258,29 @@ export class TaskRegistry {
 
     releaseTaskNode({ nodes: this.nodes, entry });
 
+    // The session of a sub-agent is released by its owner (the loop), not here: it is left to be
+    // asked for, so a task released without a delivery (a silent cancel) still lets it go.
+    if (entry.agentSessionId !== undefined) {
+      this.#releasedAgents.add({ agent: entry.agentSessionId, owner: entry.sessionId });
+    }
+
     return this.#tasks.delete(id);
+  }
+
+  /**
+   * The sub-agent session a task runs, when `start` was told which. Gone with the task: ask before
+   * `release`.
+   */
+  agentSessionOf(id: TaskId): SessionId | undefined {
+    return this.#tasks.get(id)?.agentSessionId;
+  }
+
+  /**
+   * The sub-agent sessions of the tasks `owner` had released since it last asked, each once, for
+   * the owner to release as well (see `ReleasedAgents`).
+   */
+  takeReleasedAgents(owner: SessionId): SessionId[] {
+    return this.#releasedAgents.take(owner);
   }
 
   /**
@@ -329,17 +341,11 @@ export class TaskRegistry {
 
   /** Resolves on the next settlement; aborting drops the wait and resolves it. */
   nextSettled(signal?: AbortSignal): Promise<void> {
-    return abortableWait({
-      signal,
-      register: (wake) => this.#waiters.push(wake),
-      unregister: (wake) => {
-        this.#waiters = this.#waiters.filter((waiter) => waiter !== wake);
-      },
-    });
+    return this.#settleWaiters.next(signal);
   }
 
   get settleWaiters(): number {
-    return this.#waiters.length;
+    return this.#settleWaiters.count;
   }
 
   #entry(id: TaskId): Entry {
@@ -394,7 +400,7 @@ export class TaskRegistry {
   }
 
   #wakeWaiters(): void {
-    this.#waiters.splice(0).forEach((wake) => wake());
+    this.#settleWaiters.wake();
   }
 
   #settle(params: { entry: Entry; status: TaskStatus; result: TaskResult }) {

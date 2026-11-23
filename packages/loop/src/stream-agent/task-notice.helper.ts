@@ -11,7 +11,7 @@ type FinishedTaskNotice = Extract<HarnessNotice, { kind: 'agent-report' | 'task-
 
 /**
  * The notice that tells the model a task it started has finished. A sub-agent, found by the
- * `start_agent` call that started it, is an `agent-report`: its card (who it is, how it ended) and
+ * session its task runs (`TaskRegistry.agentSessionOf`), is an `agent-report`: its card (who it is, how it ended) and
  * the report it wrote, whole. Any other task is a `task-finished`, with its bounded output preview.
  * Both are typed data: the model is shown them as text by the core formatter, and a UI reads the
  * same data from history and from the `harness_notice` event.
@@ -34,15 +34,13 @@ export function finishedTaskNotice(params: {
     ...(task.callId !== undefined && { callId: task.callId }),
   });
   const report = tasks.report(task.id);
-  // No call id means no sub-agent: two undefined ids must not count as a match.
-  const agent =
-    task.callId === undefined
-      ? undefined
-      : sessions
-          .children(parent)
-          .find((child) => 'startedByCall' in child && child.startedByCall === task.callId);
+  // The session the task runs, as `start_agent` recorded it: a tool call id is a provider's, may
+  // repeat, and cannot say which sub-agent this is. A task with none is not a sub-agent's.
+  const agentId = tasks.agentSessionOf(task.id);
+  const found = agentId === undefined ? undefined : sessions.get(agentId);
+  const agent = found && 'parentId' in found && found.parentId === parent ? found : undefined;
 
-  if (report === undefined || !agent || !('parentId' in agent)) {
+  if (report === undefined || !agent) {
     return { kind: 'task-finished', task, context };
   }
 

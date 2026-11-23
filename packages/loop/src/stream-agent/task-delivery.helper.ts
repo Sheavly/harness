@@ -71,25 +71,13 @@ export function reportFinishedTasks(params: {
   // tasks go too: this turn's `cancel_task` result has reached the model by now.
   tasks.releaseFinished(session.ref.id);
 
-  // `finishedTaskNotice` found each sub-agent by its session, so the session can go only now. A
-  // failed or stopped sub-agent has no report, hence a `task-finished` notice, and goes too. One
-  // with a session still open under it stays and is not retried.
-  for (const delivery of deliveries) {
-    for (const task of delivery.tasks) releaseAgentOf({ task, session });
+  // `finishedTaskNotice` found each sub-agent by its session, so the session can go only now: the
+  // session of every task released above, delivered or cancelled in silence (which no notice names,
+  // and nothing else would release). A failed or stopped sub-agent has no report, hence a
+  // `task-finished` notice, and goes too. One with work still open under it stays, not retried.
+  for (const agent of tasks.takeReleasedAgents(session.ref.id)) {
+    session.registry.releaseAgent(agent);
   }
 
   return deliveries.map((delivery) => delivery.tasks);
-}
-
-/** Releases the sub-agent session the task's `start_agent` call started, if it started one. */
-function releaseAgentOf(params: { task: TaskInfo; session: RunSession }): void {
-  const { task, session } = params;
-
-  if (task.callId === undefined) return;
-
-  const agent = session.registry
-    .children(session.ref.id)
-    .find((child) => 'startedByCall' in child && child.startedByCall === task.callId);
-
-  if (agent) session.registry.releaseAgent(agent.id);
 }

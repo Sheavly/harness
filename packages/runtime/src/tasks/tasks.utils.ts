@@ -51,6 +51,7 @@ export function newEntry(params: {
   info: TaskInfo;
   controller: AbortController;
   sessionId: SessionId | undefined;
+  agentSessionId: SessionId | undefined;
   backgroundKind: TaskKind;
   nodeId: NodeId;
   sharesNode: boolean;

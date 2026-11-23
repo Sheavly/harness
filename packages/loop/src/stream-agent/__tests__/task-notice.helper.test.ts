@@ -30,18 +30,24 @@ const task = (extra: Record<string, unknown> = {}) =>
     ...extra,
   });
 
-const registries = (report: string | undefined, children: object[]) => ({
-  tasks: { report: () => report } as unknown as TaskRegistry,
-  sessions: { children: () => children } as unknown as SessionRegistry,
+/** The registries a notice reads: the task's report and the session it runs, the sessions by id. */
+const registries = (params: { report: string | undefined; sessions: object[]; runs?: string }) => ({
+  tasks: {
+    report: () => params.report,
+    agentSessionOf: () => params.runs,
+  } as unknown as TaskRegistry,
+  sessions: {
+    get: (id: string) => params.sessions.find((session) => 'id' in session && session.id === id),
+  } as unknown as SessionRegistry,
   history: [],
 });
 
 describe('finishedTaskNotice', () => {
-  it('is an agent-report with the whole report when the task started a sub-agent', () => {
+  it('is an agent-report with the whole report when the task runs a sub-agent session', () => {
     const notice = finishedTaskNotice({
       task: task({ callId: 'call-1' }),
       parent: PARENT,
-      ...registries('THE WHOLE REPORT', [CHILD]),
+      ...registries({ report: 'THE WHOLE REPORT', sessions: [CHILD], runs: 'sub-1' }),
     });
 
     expect(notice).toMatchObject({
@@ -51,15 +57,30 @@ describe('finishedTaskNotice', () => {
     });
   });
 
-  it('is a task-finished when no sub-agent started it, or it has no report', () => {
+  it('is a task-finished when the task runs no session, it has no report, or the session is not its own', () => {
     const withCall = task({ callId: 'call-1' });
+    const stranger = { ...CHILD, parentId: sessionIdSchema.parse('main-2') };
 
     expect(
-      finishedTaskNotice({ task: withCall, parent: PARENT, ...registries('r', []) }).kind,
+      finishedTaskNotice({
+        task: withCall,
+        parent: PARENT,
+        ...registries({ report: 'r', sessions: [] }),
+      }).kind,
     ).toBe('task-finished');
     expect(
-      finishedTaskNotice({ task: withCall, parent: PARENT, ...registries(undefined, [CHILD]) })
-        .kind,
+      finishedTaskNotice({
+        task: withCall,
+        parent: PARENT,
+        ...registries({ report: undefined, sessions: [CHILD], runs: 'sub-1' }),
+      }).kind,
+    ).toBe('task-finished');
+    expect(
+      finishedTaskNotice({
+        task: withCall,
+        parent: PARENT,
+        ...registries({ report: 'r', sessions: [stranger], runs: 'sub-1' }),
+      }).kind,
     ).toBe('task-finished');
   });
 
@@ -69,7 +90,7 @@ describe('finishedTaskNotice', () => {
       const notice = finishedTaskNotice({
         task: task({ callId: 'call-1', status }),
         parent: PARENT,
-        ...registries('r', [noOutcome]),
+        ...registries({ report: 'r', sessions: [noOutcome], runs: 'sub-1' }),
       });
 
       return notice.kind === 'agent-report' ? notice.outcome : undefined;
@@ -80,12 +101,12 @@ describe('finishedTaskNotice', () => {
     expect(outcomeFor('cancelled')).toBe('interrupted');
   });
 
-  it('does not pair a task with no call id with a child that has none either', () => {
-    const orphan = { ...CHILD, startedByCall: undefined };
+  it('does not pair by tool call id: a child that has the task’s call id is not its sub-agent', () => {
     const notice = finishedTaskNotice({
-      task: task(),
+      task: task({ callId: 'call-1' }),
       parent: PARENT,
-      ...registries('r', [orphan]),
+      // The task runs no session, as a command does; a child with its call id is somebody else's.
+      ...registries({ report: 'r', sessions: [CHILD] }),
     });
 
     expect(notice.kind).toBe('task-finished');

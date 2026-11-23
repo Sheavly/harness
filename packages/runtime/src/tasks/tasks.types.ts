@@ -13,6 +13,13 @@ export type StartTask = {
   /** The session whose tool started it: its start and end go in that session's stream. */
   sessionId?: SessionId | undefined;
   /**
+   * For a sub-agent's work: the session it runs. Its node is the task's node, so one sub-agent is
+   * one node, and the loop finds the agent of a task by it instead of by the tool call id, which a
+   * provider may repeat. Taken only when that session is an open sub-agent of `sessionId` that no
+   * other task has taken; otherwise the task has a node of its own.
+   */
+  agentSessionId?: SessionId | undefined;
+  /**
    * Where the complete output goes. The registry appends every chunk, shows the log's reference
    * and completeness on the task (`TaskInfo.outputLog`) while it runs, and closes it when the
    * task ends, so the output of a failed or cancelled task stays readable.
@@ -58,6 +65,8 @@ export type Entry = {
   settled: Promise<void>;
   silent: boolean;
   sessionId?: SessionId | undefined;
+  /** The sub-agent session this task runs, when `start` was told which (`StartTask`). */
+  agentSessionId?: SessionId | undefined;
   backgroundKind: TaskKind;
   /** Membership survives delivery until this entry is released. */
   group?: Delivery;
