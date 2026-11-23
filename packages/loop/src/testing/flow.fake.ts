@@ -24,8 +24,8 @@ export async function cancelOpenFlows(): Promise<void> {
  * is what the loop needs to run it; the caller adds the provider and the messages.
  */
 export function startFlow(kind: WorkKind) {
-  const tasks = new TaskRegistry();
   const sessions = new SessionRegistry();
+  const tasks = new TaskRegistry(sessions.nodeOwners);
   const ref = sessions.startMain({ title: 'Chat' });
   const tools = [...kind.tools({ tasks, sessions }), ...createTaskTools(tasks)];
 

@@ -10,6 +10,7 @@ import { ReleasedSessions } from './released-sessions.service.js';
 import { SessionNodes } from './session-nodes.service.js';
 import type { NodeRegistry } from '../nodes/node-registry.service.js';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
+import type { NodeOwners } from '../tasks/tasks.types.js';
 import { lineageIds, lineageOf } from './lineage-ids.helper.js';
 import { missingSession } from './missing-session.helper.js';
 import { readStoredLog } from './stored-log.helper.js';
@@ -113,6 +114,11 @@ export class SessionRegistry {
   /** The node a session is, or none for an unknown or released session. */
   nodeIdOf(id: SessionId): NodeId | undefined {
     return this.#sessions.nodeIdOf(id);
+  }
+
+  /** What a `TaskRegistry` needs to share these nodes: `new TaskRegistry(sessions.nodeOwners)`. */
+  get nodeOwners(): NodeOwners {
+    return { nodes: this.nodes, nodeIdOf: (id) => this.nodeIdOf(id) };
   }
 
   /** The first failed write to the store, if any: the conversation should stop, not go on unrecorded. */
@@ -420,7 +426,8 @@ export class SessionRegistry {
    * goes under the same session as its request, so a session's filter sees both.
    */
   publishApproval(update: ApprovalUpdate): void {
-    const sessionId = this.#approvalSessions.keepSession({ update, main: () => this.#mainId() });
+    const main = () => this.#sessions.firstMainId();
+    const sessionId = this.#approvalSessions.keepSession({ update, main });
 
     this.#require(sessionId);
     this.#addEntry((seq) => ({ seq, sessionId, kind: 'approval', update }));
@@ -432,7 +439,7 @@ export class SessionRegistry {
    */
   publishTask(params: { update: TaskUpdate; sessionId?: SessionId | undefined }): void {
     const { update } = params;
-    const sessionId = params.sessionId ?? this.#mainId();
+    const sessionId = params.sessionId ?? this.#sessions.firstMainId();
 
     this.#require(sessionId);
     this.#addEntry((seq) => ({ seq, sessionId, kind: 'task', update }));
@@ -475,11 +482,6 @@ export class SessionRegistry {
    */
   stream(params: { signal?: AbortSignal } = {}): ReadableStream<Uint8Array> {
     return updateStream({ sessions: this, ...params });
-  }
-
-  /** The first main session started: where an approval asked outside the loop goes. */
-  #mainId(): SessionId {
-    return this.#sessions.firstMainId();
   }
 
   #add(params: SessionRef & { title: string }): SessionRef {

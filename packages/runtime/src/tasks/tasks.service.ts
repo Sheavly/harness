@@ -1,9 +1,11 @@
 /** Background work and completion notices shared by tools and session-scoped loops. */
-import { MAX_TASK_OUTPUT_CHARS } from './tasks.constants.js';
 import { now } from '@sheavly/core/clock/clock.helper';
+import { NodeRegistry } from '../nodes/node-registry.service.js';
+import { endTaskNode, openTaskNode, releaseTaskNode } from './task-nodes.helper.js';
 import type {
   Delivery,
   Entry,
+  NodeOwners,
   StartTask,
   TaskDelivery,
   TaskObserver,
@@ -15,13 +17,20 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId, TaskInfo, TaskStatus, TaskUpdate } from '@sheavly/protocol/task/task.types';
 import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { TaskError } from '../errors/tasks.errors.js';
-import { OutputBuffer } from '../output/output.service.js';
 import { abortableWait } from '../wait/abortable-wait.helper.js';
-import { closeTaskCapture } from './capture.helper.js';
 import { groupMemberError, unknownTaskError } from './group-member.helper.js';
+import { runTask } from './task-run.helper.js';
 import { isIssued, newEntry, runningInfo, runningTaskOf, settledStatus } from './tasks.utils.js';
 import { isFiniteKind } from './work.utils.js';
 
+/**
+ * Background work, each task a node of the conversation's node registry: a command, a service, or
+ * a sub-agent (the agent node its session already is). The registry owns the task's own
+ * bookkeeping (output, groups, deliveries); the node owns its lifecycle, so a task ends through the
+ * node machine. With `owners` (a `SessionRegistry`'s `nodes` and `nodeIdOf`) its nodes sit under the
+ * node of the session that started them; with none it has a registry of its own and they sit at
+ * the root.
+ */
 export class TaskRegistry {
   #tasks = new Map<TaskId, Entry>();
   #nextId = 1;
@@ -29,6 +38,16 @@ export class TaskRegistry {
   #ready: Delivery[] = [];
   #waiters: (() => void)[] = [];
   #observers = new Set<TaskObserver>();
+  readonly #owners: NodeOwners;
+
+  constructor(owners?: NodeOwners) {
+    this.#owners = owners ?? { nodes: new NodeRegistry(), nodeIdOf: () => undefined };
+  }
+
+  /** The registry every node of this conversation is in. */
+  get nodes(): NodeRegistry {
+    return this.#owners.nodes;
+  }
 
   start({
     command,
@@ -42,39 +61,18 @@ export class TaskRegistry {
     const id = taskIdSchema.parse(`t${this.#nextId++}`);
     const controller = new AbortController();
     const info = runningInfo({ id, callId, command, description, kind, startedAt: now() });
-    const entry = newEntry({ info, controller, sessionId, backgroundKind: kind });
-    const output = new OutputBuffer({ maxChars: MAX_TASK_OUTPUT_CHARS });
-    const onOutput = (chunk: string) => {
-      output.push(chunk);
-      info.output = output.text;
-      capture?.append(chunk);
-      if (capture) info.outputLog = capture.log;
-    };
+    const node = openTaskNode({ owners: this.#owners, sessionId, callId, description, kind });
+    const entry = newEntry({ info, controller, sessionId, backgroundKind: kind, ...node });
 
-    if (capture) info.outputLog = capture.log;
-
-    // The log is closed before the task settles, so its final state is what a notice reports. That
-    // waits for queued writes, which are bounded in bytes, so a stalled disk delays settling.
-    const closeCapture = async () => {
-      if (capture) info.outputLog = await closeTaskCapture(capture);
-    };
-
-    entry.settled = run({ signal: controller.signal, onOutput }).then(
-      async ({ exitCode, report }) => {
-        await closeCapture();
-        this.#settle({
-          entry,
-          status: exitCode === 0 ? 'completed' : 'failed',
-          result: { exitCode, ...(report !== undefined && { report }) },
-        });
+    entry.settled = runTask({
+      info,
+      signal: controller.signal,
+      capture,
+      run,
+      settle: (ended) => {
+        this.#settle({ entry, ...ended });
       },
-      async (caughtError: unknown) => {
-        const error = caughtError instanceof Error ? caughtError.message : String(caughtError);
-
-        await closeCapture();
-        this.#settle({ entry, status: 'failed', result: { error } });
-      },
-    );
+    });
     this.#tasks.set(id, entry);
     this.#notify({ entry, type: 'task_started' });
 
@@ -260,6 +258,8 @@ export class TaskRegistry {
 
     if (this.#ready.some((delivery) => delivery.ids.includes(id))) return false;
 
+    releaseTaskNode({ nodes: this.nodes, entry });
+
     return this.#tasks.delete(id);
   }
 
@@ -398,6 +398,7 @@ export class TaskRegistry {
     if ('exitCode' in result) info.exitCode = result.exitCode;
     if (result.error) info.error = result.error;
     entry.report = result.report;
+    endTaskNode({ nodes: this.nodes, entry });
 
     if (entry.group) this.#enqueueSettledGroup(entry.group);
 

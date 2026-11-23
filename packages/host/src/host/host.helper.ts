@@ -37,7 +37,7 @@ export function createHarness(options: HarnessOptions): Harness {
   });
   const mainSession = sessions.restoredMain() ?? sessions.startMain({ title: title.slice(0, 60) });
   const approvals = options.approvals ?? new ApprovalRegistry();
-  const tasks = options.tasks ?? new TaskRegistry();
+  const tasks = options.tasks ?? new TaskRegistry(sessions.nodeOwners);
 
   // Approvals and background tasks join the combined stream, in order with the events of the
   // call that asked or started them.

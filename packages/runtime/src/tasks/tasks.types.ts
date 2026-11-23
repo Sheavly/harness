@@ -1,6 +1,8 @@
 import type { OutputWriter } from '@sheavly/core/output/output.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
+import type { NodeRegistry } from '../nodes/node-registry.service.js';
 import type { TaskId, TaskInfo, TaskKind, TaskUpdate } from '@sheavly/protocol/task/task.types';
 
 /** What to run in the background. */
@@ -35,9 +37,23 @@ export type StartTask = {
 /** One notice the registry holds until it is delivered: a single task or a group's members. */
 export type Delivery = { ids: TaskId[]; reason?: string; delivered: boolean };
 
+/**
+ * What a task registry needs to put its tasks in the nodes of a conversation: the node registry
+ * the sessions are in (`SessionRegistry.nodes`) and the node a session is. With none, a task
+ * registry has a node registry of its own and its tasks have no parent node.
+ */
+export type NodeOwners = {
+  nodes: NodeRegistry;
+  nodeIdOf: (id: SessionId) => NodeId | undefined;
+};
+
 /** What the registry keeps for one task. */
 export type Entry = {
   info: TaskInfo;
+  /** The node this task is: its own, or the agent node of the session that runs the sub-agent. */
+  nodeId: NodeId;
+  /** Whether the node is the session's, so its release belongs to the session, not the task. */
+  sharesNode: boolean;
   controller: AbortController;
   settled: Promise<void>;
   silent: boolean;
