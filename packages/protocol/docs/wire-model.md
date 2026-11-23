@@ -56,8 +56,8 @@ carrying the node id in that entry is a change the schema work (#422) makes.
 
 - **Kinds.** `agent`, `command` and `service` are built in. An extension can contribute kinds named
   `<extension>.<name>`. A front end that does not know a kind renders it from the common fields and
-  a plain-text `text` fallback. How a kind is declared and registered is a separate
-  specification (#433).
+  a plain-text `text` fallback. How a kind is declared, registered and rendered is
+  [its own specification](../../extension/docs/node-kinds.md) (built in #433).
 - **States.** `running`, `idle` (agents only: between prompts, open for the next), and the terminal
   states `completed`, `failed`, `cancelled` and `lost`. The set is the same for every kind: an
   extension cannot add a state, because every front end has to understand state. It can add
