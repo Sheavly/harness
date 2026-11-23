@@ -1,7 +1,4 @@
-import { existsSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import type { RecordingServer } from '@sheavly/backend/testing/recording-server.types';
 import { setUpTestProfile } from '@sheavly/client/testing/test-profile.fake';
 import { PROTOCOL_VERSION } from '@sheavly/protocol/version/protocol-version.constants';
 import { PROTOCOL_MISMATCH_MESSAGES } from '@sheavly/protocol/version/version.constants';
@@ -9,8 +6,7 @@ import { useFinderScenarios } from '../../testing/finder-scenarios.fake.js';
 
 // No input: a chat with no terminal reads its end at once, so one prompt runs and the chat ends.
 const scenarios = useFinderScenarios();
-const { cli, listeners } = scenarios;
-const REPLY = 'pong from the fake model';
+const { cli } = scenarios;
 
 /** What `sheavly chat` ended with: its exit, and what it printed on each stream. */
 async function chat(args: readonly string[] = []) {
@@ -19,28 +15,10 @@ async function chat(args: readonly string[] = []) {
   return { exit: await made.exited, out: made.stdout(), err: made.stderr() };
 }
 
-/**
- * A model endpoint the test owns, on the OpenAI Responses route: every prompt is answered with
- * one line of streamed text, and the listener records what each prompt sent.
- */
-async function fakeModel(): Promise<{ baseUrl: string; listener: RecordingServer }> {
-  const stream = [
-    { type: 'response.output_text.delta', delta: REPLY },
-    { type: 'response.completed', response: {} },
-  ];
-  const listener = await listeners.start(() => ({
-    status: 200,
-    contentType: 'text/event-stream',
-    body: stream.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
-  }));
-
-  return { baseUrl: `${listener.url}/v1`, listener };
-}
-
 describe.skipIf(process.platform === 'win32')('sheavly chat finds the running server', () => {
   it('connects to the always-on server with no URL or token, and a prompt gets its reply', async () => {
     const server = await cli.start({}, ['serve']);
-    const model = await fakeModel();
+    const model = await scenarios.fakeModel();
 
     await setUpTestProfile({
       backend: { url: server.url, token: cli.folders().token },
@@ -50,7 +28,7 @@ describe.skipIf(process.platform === 'win32')('sheavly chat finds the running se
     const result = await chat(['say', 'hello']);
 
     expect(result.exit.code).toBe(0);
-    expect(result.out).toContain(REPLY);
+    expect(result.out).toContain(model.reply);
     expect(model.listener.everything()).toContain('say hello');
     expect(`${result.out}${result.err}`).not.toContain(cli.folders().token);
     // The chat only connected: the server it found is still running.
@@ -64,8 +42,7 @@ describe.skipIf(process.platform === 'win32')('sheavly chat finds the running se
     expect(result.err).toContain('No running Sheavly server was found');
     expect(result.err).toContain('sheavly serve');
     expect(result.out).toBe('');
-    expect(await readdir(cli.folders().xdg)).toEqual([]);
-    expect(existsSync(cli.folders().home)).toBe(false);
+    await scenarios.expectNothingCreated();
   }, 60_000);
 
   it('treats the file a killed server left as no server, and contacts nothing', async () => {

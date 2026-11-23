@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { expect } from 'vitest';
 import { expectOnlyHandshake } from '@sheavly/backend/testing/handshake-only.fake';
 import { useHeldServer } from '@sheavly/backend/testing/held-server.fake';
 import { useRecordingServers } from '@sheavly/backend/testing/recording-server.fake';
@@ -26,6 +29,13 @@ export function useFinderScenarios() {
   return {
     cli,
     listeners,
+    /** Fails unless the run left the runtime folder empty and made no home: it created nothing. */
+    expectNothingCreated: async () => {
+      const { home, xdg } = cli.folders();
+
+      expect(await readdir(xdg)).toEqual([]);
+      expect(existsSync(home)).toBe(false);
+    },
     /** The runtime folder the finder reads, made private, for a test that plants its own file. */
     runtimeFolder: (): Promise<string> => held.folder(),
     /** A file in the runtime folder whose lock is free: left over, so nothing may contact it. */
@@ -63,6 +73,29 @@ export function useFinderScenarios() {
       await held.publish({ directory: await held.hold(), url: server.url, instanceId });
 
       return server;
+    },
+    /**
+     * A model endpoint the test owns, on the OpenAI Responses route: every prompt is answered with
+     * `reply` as one line of streamed text, and the listener records what each prompt sent (the key
+     * included: a model's host is meant to receive it).
+     */
+    fakeModel: async (): Promise<{
+      baseUrl: string;
+      listener: RecordingServer;
+      reply: string;
+    }> => {
+      const reply = 'pong from the fake model';
+      const stream = [
+        { type: 'response.output_text.delta', delta: reply },
+        { type: 'response.completed', response: {} },
+      ];
+      const listener = await listeners.start(() => ({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: stream.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+      }));
+
+      return { baseUrl: `${listener.url}/v1`, listener, reply };
     },
     /** Fails unless `listener` saw nothing but the handshake: the token was never sent to it. */
     expectNothingSecretSent: (listener: RecordingServer) => {

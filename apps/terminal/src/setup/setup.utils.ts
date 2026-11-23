@@ -14,7 +14,7 @@ export function modelActions(params: { usable: boolean; hasSecrets: boolean }) {
 
   if (params.usable) {
     items.unshift(
-      { value: 'start', label: 'Save and start chatting' },
+      { value: 'start', label: 'Save and finish' },
       { value: 'check', label: 'Test connection (makes a small API call)' },
     );
   }

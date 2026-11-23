@@ -2,9 +2,12 @@ export const CHAT_NAME = 'chat';
 
 export const CHAT_SUMMARY = 'Talk to the harness in the terminal';
 
-/** The last line when no server was found: nothing starts one for the user, so the user does. */
+/**
+ * The last line when no server was found (`chat` and `setup` share it): nothing starts one for the
+ * user, so the user does.
+ */
 export const START_SERVER_HINT =
-  'Start one with `sheavly serve` in another terminal, then run `sheavly chat` again.';
+  'Start one with `sheavly serve` in another terminal, then run this command again.';
 
 export const CHAT_HELP = `Usage: sheavly chat [options] [first message]
 

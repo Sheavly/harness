@@ -5,19 +5,21 @@
  *   npm run sheavly -- <command>       from the checkout, from source
  *   node apps/sheavly/dist/cli.js      after `npm run build`
  *
- * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly chat` and `sheavly doctor`: see
- * apps/sheavly/docs/design.md. An uncaught error is one line and a non-zero exit code; the stack
+ * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly chat`, `sheavly setup` and
+ * `sheavly doctor`: see apps/sheavly/docs/design.md. An uncaught error is one line and a non-zero exit code; the stack
  * only with SHEAVLY_DEBUG set. This file wires the commands to the process; the table, the help
  * and the exit codes are `dispatch`.
  */
 import { runServer } from '@sheavly/backend/run-server/run-server.helper';
 import { reportChatFailure } from '@sheavly/terminal/chat/chat-failure.helper';
 import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
+import { runTerminalSetup } from '@sheavly/terminal/setup/run-setup.helper';
 import { createChatCommand } from './chat/chat.helper.js';
 import { findChatServer } from './chat/find-server.helper.js';
 import { dispatch } from './dispatch/dispatch.helper.js';
 import { createDoctorCommand } from './doctor/doctor.helper.js';
 import { createServeCommand } from './serve/serve.helper.js';
+import { createSetupCommand } from './setup/setup.helper.js';
 import { readCliVersion } from './version/version.helper.js';
 
 // npm runs a script inside its workspace's folder; work from the folder it was started in (npm's
@@ -45,6 +47,12 @@ const code = await dispatch({
       streams,
     }),
     createServeCommand({ runServer }),
+    createSetupCommand({
+      runSetup: runTerminalSetup,
+      findServer: findChatServer,
+      reportFailure: reportChatFailure,
+      streams,
+    }),
   ],
   streams,
   readVersion: () => readCliVersion(),

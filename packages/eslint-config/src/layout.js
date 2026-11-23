@@ -35,5 +35,5 @@ export const LAUNCHER_ENTRIES = {
     'testing/serve-process.fake',
     'testing/serve-process.types',
   ],
-  '@sheavly/terminal': ['chat/start.helper', 'chat/chat-failure.helper'],
+  '@sheavly/terminal': ['chat/start.helper', 'chat/chat-failure.helper', 'setup/run-setup.helper'],
 };

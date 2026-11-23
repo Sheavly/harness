@@ -11,8 +11,9 @@ exception, marked `sheavly.launcher: true` in its `package.json` (set with `npm 
 launcher is itself an app, so nothing depends on it. It may depend only on the apps
 `LAUNCHER_ENTRIES` (in `@sheavly/eslint-config`'s `layout.js`) lists, and they export the entry
 files that list names and no others (`@sheavly/backend/run-server/run-server.helper`,
-`@sheavly/terminal/chat/start.helper` and `@sheavly/terminal/chat/chat-failure.helper`, plus the
-backend's server-process fake and its types for the tests): the layout check fails any other edge
+`@sheavly/terminal/chat/start.helper`, `@sheavly/terminal/chat/chat-failure.helper` and
+`@sheavly/terminal/setup/run-setup.helper`, plus the backend's server-process fake and its types
+for the tests): the layout check fails any other edge
 or export, and a `main`, `module` or `browser` on an app, and lint fails an import of anything
 else of theirs, their bare names included.
 
@@ -73,6 +74,29 @@ several (a settings error lists its issues).
   else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
   user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
 
+- **`setup`** runs the terminal's setup wizard on the running server and ends, with no
+  conversation: the first profile, a model and its key, or another of each later. It is the
+  wizard `chat --setup` opens (`runTerminalSetup` of the terminal, `setup/run-setup.helper`), not
+  a second prompt flow: the same questions, the same setup routes, the key typed without echo and
+  sent to the server's credential route only. The server is found as `chat` finds it (the finder
+  and its handshake), and it never starts one: with none it exits 1, saying why and to run
+  `sheavly serve`, and without a terminal to ask in it exits 1 saying so. Unlike `chat` it ignores
+  `BACKEND_URL`: setup sends a provider key, and that goes only to a server that proved it holds
+  the token, never to an address named in the environment (`chat --setup` still serves a
+  `BACKEND_URL` server).
+  Esc or Ctrl+C cancels with exit 130 and what was saved stays. Run again, it opens the same
+  wizard on what exists, and nothing changes without a choice. It binds this folder
+  (`WORKSPACE_ROOT`, else the current one) to the profile, as `--setup` does, and ends by saying to
+  run `sheavly chat`. `setup.processes.test.ts` answers the wizard in process, by question title
+  (`testing/setup-answers.fake.ts`), against a real `serve` child, then runs a real `chat` that
+  gets a reply from a fake model; it searches every output for the key, and the home for the one
+  file that holds it (the credential store's, not the profile, a model's settings or a
+  conversation), checks the model's address is the fake one before any prompt, so the key is
+  never sent to a real provider, and points `BACKEND_URL` at a recording listener to show that
+  setup sends it nothing. What the scripted answers cannot show, the masking of the real
+  setup screen, was checked by hand in a terminal and rests on `setup-screen.service.test.ts`.
+  An error message from the server's setup routes goes to the terminal as the server wrote it;
+  from reading the routes it holds field names, not values, and no test pins that.
 - **`doctor`** prints one line per check and exits 1 when any is wrong (the report on stdout,
   then `sheavly: N check(s) failed` through `DoctorFailedError`, which prints a stack too with
   `SHEAVLY_DEBUG` set, like any failure). It takes no argument and only reads and probes: it

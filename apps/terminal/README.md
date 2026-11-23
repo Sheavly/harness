@@ -75,12 +75,16 @@ by default and validated by the backend; when connecting to an existing backend,
 | `replay.ts`     | The replay CLI: a stored conversation or run, rendered or summarized                                                                                                                                                                   |
 
 The `sheavly` command (`apps/sheavly`, the launcher) runs the chat in its own process, so the
-terminal exports exactly two entry files: `@sheavly/terminal/chat/start.helper`
+terminal exports exactly three entry files: `@sheavly/terminal/chat/start.helper`
 (`runTerminalChat({ env, args, server })`, the process's own by default, which works in the
 current folder; `server` is a backend the command found and verified, connected to as
 `BACKEND_URL` is and never started or stopped) and `@sheavly/terminal/chat/chat-failure.helper`
 (`reportChatFailure(error)`, the message and exit code a chat that could not run ends with; a URL in the message loses its user name and
-password, so a `BACKEND_URL` that holds them is not echoed). `chat.ts` is only the call, with the
+password, so a `BACKEND_URL` that holds them is not echoed) and
+`@sheavly/terminal/setup/run-setup.helper` (`runTerminalSetup({ env, server })`, the setup wizard
+on a running backend and no conversation, which `sheavly setup` runs; `server` is required, a
+backend the command found and verified: it never starts or stops one and does not read
+`BACKEND_URL`, since setup sends a provider key). `chat.ts` is only the call, with the
 folder change npm needs. Nothing else is public: the layout check refuses an export
 `LAUNCHER_ENTRIES` doesn't list (`packages/eslint-config/docs/layout.md`).
 

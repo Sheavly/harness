@@ -44,6 +44,10 @@
     "./chat/chat-failure.helper": {
       "@sheavly/source": "./src/chat/chat-failure.helper.ts",
       "default": "./dist/chat/chat-failure.helper.js"
+    },
+    "./setup/run-setup.helper": {
+      "@sheavly/source": "./src/setup/run-setup.helper.ts",
+      "default": "./dist/setup/run-setup.helper.js"
     }
   }
 }

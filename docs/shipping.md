@@ -73,17 +73,19 @@ wait with it.
   reported, naming the folder and never the token, as one line of at most 200 characters; a
   backend that does not answer in 10 s fails the start.
 - **The `sheavly` command exists and runs from the checkout** (`apps/sheavly`, the one workspace
-  named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve` and `chat`, or
-  `node apps/sheavly/dist/cli.js` after `npm run build`. It imports the backend's `runServer`
-  and the terminal's `runTerminalChat` in its own process, through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
+  named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve`, `chat`, `setup` and
+  `doctor`, or `node apps/sheavly/dist/cli.js` after `npm run build`. It imports the backend's
+  `runServer` and the terminal's `runTerminalChat` and `runTerminalSetup` in its own process, through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
   apps and entry files `LAUNCHER_ENTRIES` lists; see the layout doc in `@sheavly/eslint-config`). `serve`
   starts the server exactly as `npm run serve` does (the same settings, lock, discovery file,
   output and stop), and `chat` runs the terminal on the user's running server, found through the
   discovery file and proven by its handshake before the token is used; with none it says so, says
   to run `sheavly serve` in another terminal and starts nothing, and `BACKEND_URL` and
-  `BACKEND_TOKEN` still name a server instead.
+  `BACKEND_TOKEN` still name a server instead. `setup` runs the terminal's setup wizard on that
+  same verified server and ends (it ignores `BACKEND_URL`, since it sends a provider key), and
+  `doctor` reports what is installed, what runs and what is wrong.
   The package is not packed or installed yet ([#450](https://github.com/Sheavly/harness/issues/450)),
-  and `update`, `doctor` and `setup` are not built.
+  and `update` is not built.
 - **Every package is private at version `0.0.0`** and is consumed from source inside this repository.
 
 ## Decisions
@@ -152,7 +154,7 @@ in the command composes them (today the backend does, and an unused dependency f
 check). It holds the command line and nothing else, so that the backend and the terminal stay
 usable on their own. It is built as the workspace `apps/sheavly`, the one launcher: the layout
 lets exactly that workspace depend on apps, and the backend and the terminal export only the entry
-files it runs (`runServer`, `runTerminalChat`). This is a decision of this page, and
+files it runs (`runServer`, `runTerminalChat`, `runTerminalSetup`). This is a decision of this page, and
 [#392](https://github.com/Sheavly/harness/issues/392) must be updated to match.
 
 ### One backend per user

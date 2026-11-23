@@ -458,6 +458,30 @@ describe('the launcher', () => {
     ]);
   });
 
+  it('lets the terminal export the entry that runs setup without a chat, and nothing next to it', () => {
+    const entry = (file) => ({
+      '@sheavly/source': `./src/setup/${file}.ts`,
+      default: `./dist/setup/${file}.js`,
+    });
+    const terminal = (exports) =>
+      app({
+        name: 'terminal',
+        exports,
+        modules: [{ name: 'setup', files: ['run-setup.helper', 'setup.helper'] }],
+      });
+    const layout = (exports) => ({
+      '@sheavly/terminal': terminal(exports),
+      sheavly: launcher({ dependsOn: ['@sheavly/terminal'] }),
+    });
+
+    expect(
+      layoutProblems(layout({ './setup/run-setup.helper': entry('run-setup.helper') })),
+    ).toEqual([]);
+    expect(layoutProblems(layout({ './setup/setup.helper': entry('setup.helper') }))).toEqual([
+      "@sheavly/terminal exports ./setup/setup.helper, which the launcher isn't listed to import: an app exports only its entries in LAUNCHER_ENTRIES (packages/eslint-config/src/layout.js), a reviewed edit. Remove it, or add it there if the launcher runs it",
+    ]);
+  });
+
   it('refuses an export of a file that is not there', () => {
     const layout = {
       '@sheavly/backend': backend({

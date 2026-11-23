@@ -8,6 +8,6 @@ export class SetupCancelledError extends SetupError {
   override name = 'SetupCancelledError';
 
   constructor() {
-    super('Setup cancelled. Run npm run dev:terminal to continue.');
+    super('Setup cancelled. Run `sheavly setup` to continue.');
   }
 }
