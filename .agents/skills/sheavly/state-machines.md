@@ -198,7 +198,10 @@ session and task rows describe what those views report.
   blank and capped, on the wire. The registry makes them so as it makes or changes a node, because
   a command's description or an agent's status report can be anything: newlines and escape
   sequences become spaces, a title left empty becomes `untitled`, and a status with nothing in it
-  changes nothing. A session reads its title back from its node, so it reads as the node holds it.
+  changes nothing; a tool call's id is cut to the wire's cap. A session is not rewritten by this:
+  `SessionRegistry` keeps the title, status and call id it was given and reads them back as given
+  (a newline, a zero-width joiner in an emoji or in Persian text, a blank status), and only its node
+  holds the copy made fit for the wire.
 
 ## The status table
 

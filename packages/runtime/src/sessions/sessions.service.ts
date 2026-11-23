@@ -201,8 +201,9 @@ export class SessionRegistry {
   report(params: { id: SessionId; status: string }): void {
     const session = this.#require(params.id);
 
-    if (session.state !== 'running' || !this.#sessions.report(params)) return;
+    if (session.state !== 'running') return;
 
+    this.#sessions.report(params);
     this.#emit({ type: 'session_status', session: this.#require(params.id) });
   }
 

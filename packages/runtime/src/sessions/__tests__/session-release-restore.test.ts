@@ -1,4 +1,6 @@
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import { MAX_NODE_CALL_ID_CHARS } from '@sheavly/protocol/node/node.constants';
+import { nodeInfoSchema } from '@sheavly/protocol/node/node.validator';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
@@ -181,18 +183,55 @@ describe('a session started by an empty tool call id', () => {
   });
 });
 
+describe('what a session reads back', () => {
+  it('is the title, status and call id it was given, while its node holds a copy fit for the wire', () => {
+    const sessions = new SessionRegistry();
+    const family = '👨\u200D👩\u200D👧 fix\nthe bug';
+    const longCall = callIdSchema.parse('c'.repeat(300));
+    const main = sessions.startMain({ title: family });
+    const child = sessions.startChild({ parentId: main.id, startedByCall: longCall, title: 'sub' });
+
+    sessions.report({ id: main.id, status: 'two\nlines' });
+
+    // The session is what it was told: a joiner is part of an emoji, a newline is the caller's.
+    expect(sessions.get(main.id)).toMatchObject({ title: family, status: 'two\nlines' });
+    expect(sessions.get(child.id)).toMatchObject({ startedByCall: longCall });
+
+    // The node is what the wire accepts.
+    const nodes = sessions.nodes.list();
+
+    expect(nodes.map((node) => node.title)).toEqual(['👨 👩 👧 fix the bug', 'sub']);
+    expect(nodes[0]?.status).toBe('two lines');
+    expect(nodes[1]?.spawnedBy).toHaveLength(MAX_NODE_CALL_ID_CHARS);
+    expect(nodes.every((node) => nodeInfoSchema.safeParse(node).success)).toBe(true);
+  });
+
+  it('is the same after a reopen: what was given is what the stored session holds', async () => {
+    const store = new MemoryConversationStore();
+    const sessions = new SessionRegistry({ store: store.entries(id) });
+    const main = sessions.startMain({ title: 'a\nb' });
+
+    sessions.idle({ id: main.id, outcome: 'completed' });
+    await sessions.flushStore();
+
+    expect((await reopened(store)).get(main.id)?.title).toBe('a\nb');
+  });
+});
+
 describe('a status report', () => {
-  it('with nothing in it is not announced: nothing changed', () => {
+  it('with nothing in it is kept and announced as it always was: the node ignores it, the session does not', () => {
     const sessions = new SessionRegistry();
     const main = sessions.startMain({ title: 'main' });
     const heard: string[] = [];
 
     sessions.subscribe((update) => heard.push(update.type));
     sessions.report({ id: main.id, status: 'editing' });
-    sessions.report({ id: main.id, status: ' \n ' });
+    sessions.report({ id: main.id, status: '' });
 
-    expect(heard).toEqual(['session_status']);
-    expect(sessions.get(main.id)?.status).toBe('editing');
+    expect(heard).toEqual(['session_status', 'session_status']);
+    expect(sessions.get(main.id)?.status).toBe('');
+    // The node has nothing it could show: its last status stands.
+    expect(sessions.nodes.list()[0]?.status).toBe('editing');
   });
 });
 

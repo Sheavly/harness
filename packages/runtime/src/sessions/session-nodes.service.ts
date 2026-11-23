@@ -1,3 +1,4 @@
+import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type {
@@ -13,6 +14,9 @@ import { NodeRegistry } from '../nodes/node-registry.service.js';
 import type { NodeRecord } from '../nodes/nodes.types.js';
 import { restoredFieldsOf, sessionOutcomeOf, sessionStateOf } from './session-nodes.utils.js';
 
+/** What a session was given that its node keeps only a wire-safe copy of. */
+type Given = { title: string; status?: string; startedByCall?: CallId };
+
 /**
  * The sessions of a conversation, as `SessionInfo` views of the agent nodes of a `NodeRegistry`.
  * A session's state, parent, title, model, times and outcome live in its node, so the node
@@ -23,6 +27,12 @@ export class SessionNodes {
   readonly registry: NodeRegistry;
   readonly #nodeOf = new Map<SessionId, NodeId>();
   readonly #sessionOf = new Map<NodeId, SessionId>();
+  /**
+   * What a session was given, as given: its node holds a copy made fit for the wire (one line, capped),
+   * which would change a title with a newline or a zero-width joiner, a blank status, or a long
+   * call id for every caller of a session. The session reads back what it was given.
+   */
+  readonly #given = new Map<SessionId, Given>();
 
   constructor(registry: NodeRegistry = new NodeRegistry()) {
     this.registry = registry;
@@ -95,7 +105,14 @@ export class SessionNodes {
       }),
     });
 
-    this.#link({ session: params.id, node: node.id });
+    this.#link({
+      session: params.id,
+      node: node.id,
+      given: {
+        title: params.title,
+        ...('startedByCall' in params && { startedByCall: params.startedByCall }),
+      },
+    });
 
     return this.#viewOf(node);
   }
@@ -122,14 +139,30 @@ export class SessionNodes {
       ...restoredFieldsOf(session),
     });
 
-    this.#link({ session: session.id, node: node.id });
+    this.#link({
+      session: session.id,
+      node: node.id,
+      given: {
+        title: session.title,
+        ...(session.status !== undefined && { status: session.status }),
+        ...('startedByCall' in session && { startedByCall: session.startedByCall }),
+      },
+    });
 
     return this.#viewOf(node);
   }
 
-  /** Returns whether the status changed: one with nothing in it does not. */
-  report(params: { id: SessionId; status: string }): boolean {
-    return this.registry.setStatus({ id: this.#require(params.id), status: params.status });
+  /**
+   * A session's own status report, kept as given. The node keeps a copy fit for the wire, and
+   * ignores one with nothing in it, so the session still reads back what it was told.
+   */
+  report(params: { id: SessionId; status: string }): void {
+    const nodeId = this.#require(params.id);
+    const given = this.#given.get(params.id);
+
+    if (given) given.status = params.status;
+
+    this.registry.setStatus({ id: nodeId, status: params.status });
   }
 
   /**
@@ -178,15 +211,17 @@ export class SessionNodes {
       const nodeId = this.#nodeOf.get(session.id);
 
       this.#nodeOf.delete(session.id);
+      this.#given.delete(session.id);
       if (nodeId !== undefined) this.#sessionOf.delete(nodeId);
     }
 
     return subtree;
   }
 
-  #link(params: { session: SessionId; node: NodeId }): void {
+  #link(params: { session: SessionId; node: NodeId; given: Given }): void {
     this.#nodeOf.set(params.session, params.node);
     this.#sessionOf.set(params.node, params.session);
+    this.#given.set(params.session, params.given);
   }
 
   #require(id: SessionId): NodeId {
@@ -221,13 +256,16 @@ export class SessionNodes {
     const lineage = this.registry.lineage(node.id);
     const root = lineage.at(-1);
     const outcome = sessionOutcomeOf(node);
+    const id = this.#sessionIdOf(node.id);
+    const given = this.#given.get(id);
+    const status = given?.status ?? node.status;
     const details = {
-      id: this.#sessionIdOf(node.id),
+      id,
       rootId: this.#sessionIdOf(root?.id ?? node.id),
-      title: node.title,
+      title: given?.title ?? node.title,
       state: sessionStateOf(node),
       startedAt: node.startedAt,
-      ...(node.status !== undefined && { status: node.status }),
+      ...(status !== undefined && { status }),
       ...(outcome && { lastOutcome: outcome }),
       ...(node.endedAt !== undefined && { endedAt: node.endedAt }),
       ...(node.modelId && { modelId: node.modelId }),
@@ -237,7 +275,9 @@ export class SessionNodes {
     // A sub-agent is a node with a parent; the call that started it is any string, an empty one too.
     if (node.parent === undefined) return { ...details, depth: 1 };
 
-    if (node.spawnedBy === undefined) {
+    const startedByCall = given?.startedByCall ?? node.spawnedBy;
+
+    if (startedByCall === undefined) {
       throw new SessionError({
         reason: 'unknown_session',
         sessionId: details.id,
@@ -249,7 +289,7 @@ export class SessionNodes {
       ...details,
       depth: lineage.length,
       parentId: this.#sessionIdOf(node.parent),
-      startedByCall: node.spawnedBy,
+      startedByCall,
     };
   }
 }

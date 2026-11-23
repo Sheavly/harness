@@ -23,7 +23,14 @@ import type {
   ReadableChannel,
   RestoredNode,
 } from './nodes.types.js';
-import { depthOf, isOpenState, isVisibleTo, oneLineOf, subtreeOf } from './nodes.utils.js';
+import {
+  callIdOnNode,
+  depthOf,
+  isOpenState,
+  isVisibleTo,
+  oneLineOf,
+  subtreeOf,
+} from './nodes.utils.js';
 
 /** How a node of any kind other than an agent ends; an agent ends with how its last run did. */
 type WorkEnd = Extract<NodeState, 'completed' | 'failed' | 'cancelled'>;
@@ -274,7 +281,7 @@ export class NodeRegistry {
       ...(parent && { parent }),
       ...(status !== undefined && { status }),
       ...(params.endedAt !== undefined && { endedAt: params.endedAt }),
-      ...(params.spawnedBy !== undefined && { spawnedBy: params.spawnedBy }),
+      ...(params.spawnedBy !== undefined && { spawnedBy: callIdOnNode(params.spawnedBy) }),
       ...(params.modelId && { modelId: params.modelId }),
       ...(params.effort && { effort: params.effort }),
       ...(params.lastOutcome && { lastOutcome: params.lastOutcome }),

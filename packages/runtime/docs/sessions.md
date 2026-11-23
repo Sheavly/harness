@@ -37,7 +37,9 @@ one a UI reads.
 Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
 command's node sits under the node of the session that started it. A node's title and status are
 made one line of plain text, capped and non-blank as it is made, because a tool call's description
-or an agent's report can be anything and the protocol refuses what is not a line.
+or an agent's report can be anything and the protocol refuses what is not a line. That is the
+node's copy: a session reads back the title, status and tool call id it was given, unchanged, so
+nothing that reads sessions sees a different text than before nodes existed.
 
 ## Sessions
 

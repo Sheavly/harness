@@ -1,4 +1,6 @@
-import { BLANK_PATTERN } from '@sheavly/protocol/node/node.constants';
+import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import type { CallId } from '@sheavly/protocol/message/message.types';
+import { BLANK_PATTERN, MAX_NODE_CALL_ID_CHARS } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { HEAD_FACTOR, NOT_ONE_LINE } from './nodes.constants.js';
 import type { NodeRecord, NodeState } from './nodes.types.js';
@@ -18,6 +20,15 @@ export function oneLineOf(params: { text: string; max: number }): string | undef
   const cut = Array.from(line).slice(0, params.max).join('').trim();
 
   return BLANK_PATTERN.test(cut) ? undefined : cut;
+}
+
+/**
+ * A tool call's id as a node holds it: cut to the wire's cap. A provider's ids are far shorter, but
+ * a local server may send any string, and one node over the cap would fail every snapshot of the
+ * tree. A session keeps the id it was given (`SessionNodes`); the node's is for display.
+ */
+export function callIdOnNode(callId: CallId): CallId {
+  return callIdSchema.parse(callId.slice(0, MAX_NODE_CALL_ID_CHARS));
 }
 
 /** Whether a node in `state` is still open: running, or idle between prompts (an agent's). */

@@ -11,7 +11,8 @@ machine (a move the table does not list is refused, and a terminal state is reac
 ownership scoping and the release rules of finished nodes, and an in-memory log per node channel
 and for the tree. `SessionRegistry` and `TaskRegistry` keep their APIs. `createHarness` builds the
 tasks on the sessions' nodes (`new TaskRegistry(sessions.nodeOwners)`) and returns the registry as
-`Harness.nodes`; an extension never holds it. A node's title and status are made one line, capped
+`Harness.nodes`; an extension never holds it. A node's title and status (not a session's: it reads
+back what it was given) are made one line, capped
 and non-blank as the node is made, since the wire refuses anything else.
 
 Background work starts through `startWork({ tasks, work })` with a `WorkDefinition` built by a
