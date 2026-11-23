@@ -28,7 +28,7 @@ const repoFiles = (folder) =>
   ].map((file) => fileOf(folder, file));
 
 function repo(params = {}) {
-  const { workspaces = ['packages/*', 'apps/*'] } = params;
+  const { workspaces = ['packages/*', 'apps/*'], versions = {} } = params;
 
   const pkg = (folder, domain) => ({
     [fileOf(folder, 'package.json')]: json({
@@ -38,7 +38,7 @@ function repo(params = {}) {
         scripts: { prepack: 'npm run build' },
       }),
       name: `@sheavly/${folder}`,
-      version: '0.0.0',
+      version: versions[folder] ?? '0.0.0',
       sheavly: { domain },
     }),
     [fileOf(folder, 'eslint.config.js')]: ESLINT,
@@ -107,6 +107,16 @@ describe('planning a workspace', () => {
 
     expect(planned.problems).toEqual([]);
     expect(installCommands(planned)).toEqual(['npm install @sheavly/core@0.0.0 -w packages/kit']);
+  });
+
+  it('names the version a dependency has now, not the first one: a pinned one stops matching when it moves', () => {
+    const planned = plan(repo({ versions: { core: '0.3.1' } }), {
+      kind: 'package',
+      name: 'kit',
+      dependsOn: ['core'],
+    });
+
+    expect(installCommands(planned)).toEqual(['npm install @sheavly/core@0.3.1 -w packages/kit']);
   });
 });
 

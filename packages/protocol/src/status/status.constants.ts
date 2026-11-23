@@ -26,6 +26,32 @@ export const RUN_OUTCOMES = [
 
 export const TASK_STATUSES = ['running', 'completed', 'failed', 'cancelled'] as const;
 
+/**
+ * Where a node is: the one lifecycle of every kind of node (the root agent, a sub-agent, a command,
+ * a service, a kind an extension adds). `running`; `idle` for an agent between prompts, open for
+ * the next; and the terminal `completed`, `failed`, `cancelled` and `lost`. `lost` is written only
+ * when a conversation is reopened, for a node the server stopped under, never to a live one.
+ */
+export const NODE_STATES = ['running', 'idle', 'completed', 'failed', 'cancelled', 'lost'] as const;
+
+/** The states a node ends in: every node state but the two that are still open. */
+export const NODE_END_STATES = ['completed', 'failed', 'cancelled', 'lost'] as const;
+
+/**
+ * The terminal node state an agent's run outcome becomes. `interrupted` is `cancelled`, and the
+ * three limits are `failed`, with the limit kept as the outcome: the work did not finish, and a
+ * parent reading the state must not mistake it for success. A command's end needs no table: its
+ * exit code is the detail, and its state is `completed`, `failed` or `cancelled` as a task's is.
+ */
+export const NODE_STATE_OF_OUTCOME = {
+  completed: 'completed',
+  interrupted: 'cancelled',
+  max_turns: 'failed',
+  max_tokens: 'failed',
+  context_window_exceeded: 'failed',
+  failed: 'failed',
+} as const satisfies Record<(typeof RUN_OUTCOMES)[number], 'completed' | 'failed' | 'cancelled'>;
+
 /** Why one turn ended: the model's reason, or `interrupted` when the run's signal aborted. */
 export const TURN_STOP_REASONS = [
   'end_turn',
@@ -43,7 +69,9 @@ export const INCONSISTENT_SESSION_MESSAGE =
  * The one table of what may follow what, for each machine that has states. A key is a state and
  * its value the states it may move to; a state with none is final. A running session moves to
  * `idle` (kept for the conversation's next prompt) or to an ended state; an idle one runs again or
- * ends. Restoring a stored conversation is not a move: it builds a session from what was stored.
+ * ends. A node is the one lifecycle that replaces both the session and the task (the wire model:
+ * `packages/protocol/docs/wire-model.md`); until the node registry exists the other two stand.
+ * Restoring a stored conversation is not a move: it builds a session from what was stored.
  * `status.utils.test.ts` checks the keys against the lists above and every pair against this
  * table, and the state-machines guide prints it (`npm run schema -w @sheavly/protocol`).
  */
@@ -79,5 +107,19 @@ export const STATUS_TABLE = {
     completed: [],
     failed: [],
     cancelled: [],
+  },
+  /**
+   * A node moves to a terminal state once, and a terminal state is final. `idle` is for agents
+   * only, which the node schema holds (a table of states cannot say it). `lost` is listed as a
+   * move from an open state because the repair at a reopen goes through the table, but a live
+   * node never takes it: only a reopen writes it.
+   */
+  node: {
+    running: ['idle', 'completed', 'failed', 'cancelled', 'lost'],
+    idle: ['running', 'completed', 'failed', 'cancelled', 'lost'],
+    completed: [],
+    failed: [],
+    cancelled: [],
+    lost: [],
   },
 } as const;

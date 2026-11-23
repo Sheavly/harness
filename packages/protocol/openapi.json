@@ -1,6 +1,6 @@
 {
   "openapi": "3.2.0",
-  "info": { "title": "Sheavly harness", "version": "0.0.0" },
+  "info": { "title": "Sheavly harness", "version": "0.1.0" },
   "paths": {
     "/conversations": {
       "get": {
@@ -2515,6 +2515,562 @@
           }
         ]
       },
+      "NodeId": { "type": "string", "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+      "NodeState": {
+        "type": "string",
+        "enum": ["running", "idle", "completed", "failed", "cancelled", "lost"]
+      },
+      "NodeInfo": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
+                  "kind": { "type": "string", "const": "agent" },
+                  "modelId": { "$ref": "#/components/schemas/ModelId" },
+                  "effort": { "$ref": "#/components/schemas/ModelEffort" },
+                  "lastOutcome": { "$ref": "#/components/schemas/RunOutcome" }
+                },
+                "required": ["id", "title", "state", "startedAt", "kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
+                  "command": { "type": "string", "maxLength": 131072 },
+                  "description": { "type": "string", "maxLength": 2000 },
+                  "reason": { "type": "string", "maxLength": 1000 },
+                  "output": { "type": "string", "maxLength": 30000 },
+                  "outputLog": {
+                    "type": "object",
+                    "properties": {
+                      "ref": { "$ref": "#/components/schemas/ModelId" },
+                      "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": {
+                        "type": "string",
+                        "enum": ["capturing", "complete", "incomplete"]
+                      },
+                      "reason": { "type": "string" }
+                    },
+                    "required": ["ref", "bytes", "status"]
+                  },
+                  "exitCode": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "error": { "type": "string", "maxLength": 2000 },
+                  "kind": { "type": "string", "const": "command" }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "state",
+                  "startedAt",
+                  "command",
+                  "description",
+                  "output",
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "type": "string", "maxLength": 200 },
+                  "command": { "type": "string", "maxLength": 131072 },
+                  "description": { "type": "string", "maxLength": 2000 },
+                  "reason": { "type": "string", "maxLength": 1000 },
+                  "output": { "type": "string", "maxLength": 30000 },
+                  "outputLog": {
+                    "type": "object",
+                    "properties": {
+                      "ref": { "$ref": "#/components/schemas/ModelId" },
+                      "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": {
+                        "type": "string",
+                        "enum": ["capturing", "complete", "incomplete"]
+                      },
+                      "reason": { "type": "string" }
+                    },
+                    "required": ["ref", "bytes", "status"]
+                  },
+                  "exitCode": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "error": { "type": "string", "maxLength": 2000 },
+                  "kind": { "type": "string", "const": "service" }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "state",
+                  "startedAt",
+                  "command",
+                  "description",
+                  "output",
+                  "kind"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": { "$ref": "#/components/schemas/NodeId" },
+              "parent": { "$ref": "#/components/schemas/NodeId" },
+              "title": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+              },
+              "state": { "$ref": "#/components/schemas/NodeState" },
+              "status": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\p{Cs}\\p{Co}]+$"
+              },
+              "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "spawnedBy": { "type": "string", "maxLength": 200 },
+              "kind": {
+                "type": "string",
+                "maxLength": 257,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "data": { "$ref": "#/components/schemas/JsonValue" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+            },
+            "required": ["id", "title", "state", "startedAt", "kind", "version", "data", "text"]
+          }
+        ]
+      },
+      "SequenceCursor": { "type": "string", "pattern": "^s(?:0|[1-9]\\d{0,14})$" },
+      "ByteCursor": { "type": "string", "pattern": "^b(?:0|[1-9]\\d{0,14})$" },
+      "Cursor": {
+        "anyOf": [
+          { "$ref": "#/components/schemas/SequenceCursor" },
+          { "$ref": "#/components/schemas/ByteCursor" }
+        ]
+      },
+      "ChannelName": {
+        "anyOf": [{ "type": "string", "const": "tree" }, { "$ref": "#/components/schemas/NodeId" }]
+      },
+      "ChannelBoundary": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "opened" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" },
+              "spawnedAt": {
+                "type": "object",
+                "properties": {
+                  "channel": { "$ref": "#/components/schemas/ChannelName" },
+                  "cursor": { "$ref": "#/components/schemas/Cursor" }
+                },
+                "required": ["channel", "cursor"]
+              }
+            },
+            "required": ["cursor", "at", "channel", "type", "node"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "closed" },
+              "state": { "type": "string", "enum": ["completed", "failed", "cancelled", "lost"] },
+              "outcome": { "$ref": "#/components/schemas/RunOutcome" },
+              "exitCode": {
+                "anyOf": [
+                  { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+                  { "type": "null" }
+                ]
+              },
+              "error": { "type": "string", "maxLength": 2000 }
+            },
+            "required": ["cursor", "at", "channel", "type", "state"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "opened" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "closed" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          }
+        ]
+      },
+      "ChannelLog": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "cursor": { "$ref": "#/components/schemas/Cursor" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "channel": { "$ref": "#/components/schemas/ChannelName" },
+            "type": { "type": "string", "minLength": 1, "maxLength": 128 }
+          },
+          "required": ["cursor", "at", "channel", "type"],
+          "additionalProperties": {}
+        }
+      },
+      "TreeChannelEntry": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "opened" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "closed" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "node_opened" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "node_updated" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "node_closed" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "approval_requested" },
+              "node": { "$ref": "#/components/schemas/NodeId" },
+              "request": { "$ref": "#/components/schemas/ApprovalRequest" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node", "request"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "approval_resolved" },
+              "node": { "$ref": "#/components/schemas/NodeId" },
+              "id": { "$ref": "#/components/schemas/ApprovalId" },
+              "response": { "$ref": "#/components/schemas/ApprovalResponse" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node", "id", "response"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "approval_cancelled" },
+              "node": { "$ref": "#/components/schemas/NodeId" },
+              "id": { "$ref": "#/components/schemas/ApprovalId" }
+            },
+            "required": ["channel", "cursor", "at", "type", "node", "id"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "queue_changed" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["channel", "cursor", "at", "type", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "prompt_started" },
+              "text": { "type": "string", "maxLength": 20000 },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["channel", "cursor", "at", "type", "text", "messageId", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "prompt_refused" },
+              "text": { "type": "string", "maxLength": 20000 },
+              "error": { "type": "string", "maxLength": 2000 },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["channel", "cursor", "at", "type", "text", "error", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "storage_failed" },
+              "error": { "type": "string", "maxLength": 2000 }
+            },
+            "required": ["channel", "cursor", "at", "type", "error"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "tree" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "extension_event" },
+              "extension": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "data": { "$ref": "#/components/schemas/JsonValue" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+              "kind": {
+                "type": "string",
+                "maxLength": 257,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-z0-9]+(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "channel",
+              "cursor",
+              "at",
+              "type",
+              "extension",
+              "version",
+              "data",
+              "text",
+              "kind"
+            ]
+          }
+        ]
+      },
+      "TreeSnapshot": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "const": "tree" },
+          "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+          "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "type": { "type": "string", "const": "snapshot" },
+          "nodes": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/NodeInfo" }
+          },
+          "approvals": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "node": { "$ref": "#/components/schemas/NodeId" },
+                "request": { "$ref": "#/components/schemas/ApprovalRequest" }
+              },
+              "required": ["node", "request"]
+            }
+          }
+        },
+        "required": ["channel", "cursor", "at", "type", "nodes", "approvals"]
+      },
+      "SubscribeFrom": {
+        "anyOf": [
+          { "type": "string", "const": "start" },
+          { "type": "string", "const": "now" },
+          { "type": "string", "const": "snapshot" },
+          { "type": "string", "pattern": "^tail:[1-9]\\d{0,14}$" },
+          { "$ref": "#/components/schemas/Cursor" }
+        ]
+      },
+      "SubscribeRequest": {
+        "type": "object",
+        "properties": {
+          "subscriptions": {
+            "minItems": 1,
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": { "$ref": "#/components/schemas/ChannelName" },
+                "from": { "$ref": "#/components/schemas/SubscribeFrom" }
+              },
+              "required": ["channel", "from"]
+            }
+          },
+          "approvals": { "type": "boolean" }
+        },
+        "required": ["subscriptions"]
+      },
+      "MessageNodeRequest": {
+        "type": "object",
+        "properties": { "text": { "type": "string", "minLength": 1, "maxLength": 20000 } },
+        "required": ["text"]
+      },
+      "PromptSent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "started" },
+              "node": { "$ref": "#/components/schemas/NodeId" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["status", "node", "messageId", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "const": "queued" },
+              "node": { "$ref": "#/components/schemas/NodeId" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["status", "node", "queued"],
+            "additionalProperties": false
+          }
+        ]
+      },
       "ApprovalConcern": {
         "type": "object",
         "properties": { "argument": { "type": "string" }, "reason": { "type": "string" } },
@@ -2988,6 +3544,8 @@
           "cannot_queue",
           "unknown_skill",
           "unknown_approval",
+          "cursor_out_of_range",
+          "node_ended",
           "unknown_model",
           "storage_failed",
           "not_set_up",

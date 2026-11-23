@@ -6,7 +6,7 @@
   "private": true,
   "license": "Apache-2.0",
   "dependencies": {
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "luxon": "^3.7.2",
     "zod": "^4.6.7"
   },

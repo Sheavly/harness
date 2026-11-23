@@ -104,6 +104,24 @@ import {
 } from '../permission/permission.validator.js';
 import { streamEntrySchema } from '../stream/stream.validator.js';
 import { queueUpdateSchema } from '../queue/queue.validator.js';
+import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.validator.js';
+import {
+  byteCursorSchema,
+  channelBoundarySchema,
+  channelLogSchema,
+  channelNameSchema,
+  cursorSchema,
+  sequenceCursorSchema,
+} from '../channel/channel.validator.js';
+import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
+import {
+  messageNodeRequestSchema,
+  promptSentSchema,
+} from '../node-command/node-command.validator.js';
+import {
+  subscribeFromSchema,
+  subscribeRequestSchema,
+} from '../subscription/subscription.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -179,6 +197,21 @@ function contractSchemas(): Record<string, z.ZodType> {
     TaskStatus: taskStatusSchema,
     TaskInfo: taskInfoSchema,
     TaskUpdate: taskUpdateSchema,
+    NodeId: nodeIdSchema,
+    NodeState: nodeStateSchema,
+    NodeInfo: nodeInfoSchema,
+    SequenceCursor: sequenceCursorSchema,
+    ByteCursor: byteCursorSchema,
+    Cursor: cursorSchema,
+    ChannelName: channelNameSchema,
+    ChannelBoundary: channelBoundarySchema,
+    ChannelLog: channelLogSchema,
+    TreeChannelEntry: treeChannelEntrySchema,
+    TreeSnapshot: treeSnapshotSchema,
+    SubscribeFrom: subscribeFromSchema,
+    SubscribeRequest: subscribeRequestSchema,
+    MessageNodeRequest: messageNodeRequestSchema,
+    PromptSent: promptSentSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,

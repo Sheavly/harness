@@ -1,3 +1,4 @@
+import { SINGLE_LINE_PATTERN } from '@sheavly/protocol/node/node.constants';
 import { describe, expect, it } from 'vitest';
 import { describeFailure, plainTerminalText } from '../terminal-text.utils.js';
 
@@ -44,6 +45,39 @@ describe('describeFailure', () => {
     expect(describeFailure(new Error('a\u001b]52', { cause: new Error('b\u0007') }))).toBe(
       'a\\u001b]52 (b\\u0007)',
     );
+  });
+});
+
+describe('the title rule of the wire model', () => {
+  // The protocol refuses a node title the characters this file escapes, newline and tab too (a
+  // title is one line), and lone surrogates and private-use characters, which are not text. The
+  // protocol cannot import this file, so the two classes are held together here.
+  const codePoints = [
+    ...Array.from({ length: 0x10000 }, (_unused, code) => code),
+    0xe0001, // a tag character, a format character outside the basic plane
+    0xe0020,
+  ];
+  const notText = /[\p{Cs}\p{Co}]/u;
+
+  it('refuses every character the terminal escapes, and escapes every one it refuses', () => {
+    const disagreements = codePoints
+      .map((code) => String.fromCodePoint(code))
+      .filter((character) => !notText.test(character) && !'\n\t'.includes(character))
+      .filter((character) => {
+        const refused = !SINGLE_LINE_PATTERN.test(character);
+        const escaped = plainTerminalText(character) !== character;
+
+        return refused !== escaped;
+      })
+      .map((character) => `U+${character.codePointAt(0)?.toString(16) ?? '?'}`);
+
+    expect(disagreements).toEqual([]);
+  });
+
+  it('refuses newline and tab, which the terminal keeps for Markdown, since a title is one line', () => {
+    expect(SINGLE_LINE_PATTERN.test('\n')).toBe(false);
+    expect(SINGLE_LINE_PATTERN.test('\t')).toBe(false);
+    expect(plainTerminalText('\n\t')).toBe('\n\t');
   });
 });
 

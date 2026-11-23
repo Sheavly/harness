@@ -25,7 +25,7 @@
     "@sheavly/host": "^0.0.0",
     "@sheavly/logger": "^0.0.0",
     "@sheavly/loop": "^0.0.0",
-    "@sheavly/protocol": "^0.0.0",
+    "@sheavly/protocol": "^0.1.0",
     "@sheavly/providers": "^0.0.0",
     "@sheavly/runtime": "^0.0.0",
     "@sheavly/storage": "^0.0.0",

@@ -76,9 +76,18 @@ export function planWorkspace(params) {
     .map((dependency) => edgeProblem({ name: fullName, entry, dependency, layout }))
     .filter(Boolean);
 
-  return edges.length > 0
-    ? { problems: edges }
-    : { problems: [], dir, fullName, entry, description: description.trim() };
+  if (edges.length > 0) return { problems: edges };
+
+  // The version each dependency has now, which its install names: a pinned `@0.0.0` would stop
+  // matching the day one of them moves.
+  const versions = Object.fromEntries(
+    entry.dependsOn.map((dep) => [
+      dep,
+      JSON.parse(readFileSync(path.join(root, layout[dep].dir, 'package.json'), 'utf8')).version,
+    ]),
+  );
+
+  return { problems: [], dir, fullName, entry, versions, description: description.trim() };
 }
 
 /**
@@ -241,7 +250,9 @@ function steps(params) {
  * dependency nothing imports yet fails knip, and `harness/imports` names the same command.
  */
 export function installCommands(plan) {
-  return plan.entry.dependsOn.map((dep) => `npm install ${dep}@0.0.0${workspaceFlag(plan.dir)}`);
+  return plan.entry.dependsOn.map(
+    (dep) => `npm install ${dep}@${plan.versions[dep]}${workspaceFlag(plan.dir)}`,
+  );
 }
 
 function runNpm(params) {

@@ -4,7 +4,8 @@ What is in the contract, what stays out, and how it is kept honest.
 
 The stream, session and task shapes below are the wire as it is built today. The model that
 replaces them (nodes, channels and one subscribe endpoint) is decided and written in
-[the wire model](wire-model.md), and not built yet.
+[the wire model](wire-model.md). Its schemas are in the contract and described in
+[The wire model's schemas](#the-wire-models-schemas); nothing serves them yet.
 
 ## What is in it
 
@@ -32,6 +33,65 @@ workspace package, and the layout check holds it to that.
 - Only the wire contract lives there. What a provider streams (`StreamEvent`, `StopReason`) and
   the code contracts (`Tool`, `Hook`, `Adapter`) stay in `@sheavly/core`, and the queue's generic
   `Sequenced<T>` in the loop.
+
+## The wire model's schemas
+
+The schemas of [the wire model](wire-model.md) are in the contract beside the stream's, and
+nothing reads them yet: no route serves them, no registry produces them and no store keeps them.
+They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`, `ChannelLog`,
+`TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`, `MessageNodeRequest`, `PromptSent`).
+JSON Schema cannot say what a refinement says, so a client that is not TypeScript reads the
+shapes, patterns and caps from it and takes the rest from the zod schemas and this page: the
+state, end and outcome of a node agreeing; a snapshot's links; a request's duplicates, `snapshot`
+and `approvals` rules and its caps by channel; and the reserved extension names.
+
+- **A node** (`node/`, `NodeInfo`): one unit of work, a union by `kind`. `agent`, `command` and
+  `service` are built in; a kind an extension adds is `<extension>.<name>` and carries a versioned
+  `data` (at most `MAX_EXTENSION_DATA_BYTES`) and a plain-text `text` fallback, so a reader that
+  does not know the kind still shows it; a node kind cannot name `agent`, `command`, `service`
+  or `tree` as its extension (the manifest does not refuse those names yet). The common fields are
+  an id (lowercase, and never `tree`), a parent, a title, a state, a status text, times and the
+  tool call that spawned it. A title and a status text are one line of plain text with a cap,
+  refusing what the terminal escapes, newline and tab included, and text that draws as nothing;
+  a look-alike title is accepted, so a title is never an identity. A command's or service's
+  `command`, `description`, reason, `output` (the runtime's preview size, held equal by a test
+  there) and error each have a cap, as `data` and `text` do, and the node registry shortens a
+  longer one as it makes the node. Its state is one of the `node` machine in `STATUS_TABLE`:
+  `running`, `idle` (an agent only), `completed`, `failed`, `cancelled` and `lost`. The node is not
+  its own parent, and its state, end time and an agent's last outcome agree; an outcome becomes a
+  state by `NODE_STATE_OF_OUTCOME`: `interrupted` is `cancelled`, and the three limits are
+  `failed`.
+- **A channel** (`channel/`): the entries of one node's channel, and the conversation's `tree`
+  channel, in one envelope of `channel`, `cursor`, `at` and `type`. A cursor is opaque text: `s`
+  and a position for a channel that numbers its entries, `b` and a byte offset for the output of
+  a command or a service, at most fifteen digits. A channel starts with an `opened` entry and ends
+  with a `closed` one; `channelLogSchema` checks that the entries of one channel have that shape
+  (opened first, closed once and last, one cursor kind, no gap in a sequence, no step back in
+  bytes). The log is not bounded: it has no length cap, its entries keep any extra field, and only
+  a type name is capped, so whoever feeds it bounds the input. What an entry of another type holds
+  is the schema of the issue that serves it.
+- **The tree channel** (`tree/`): its entries are numbered. `node_opened`, `node_updated` and
+  `node_closed` carry a node; `approval_requested`, `approval_resolved` and `approval_cancelled`
+  carry the node that asked; the queue's changes, a storage failure and an extension's event are
+  the conversation's own. `prompt_started` carries the user message it became. A snapshot is
+  every node (an ended one included) and every waiting approval, with the cursor to continue
+  from, and refuses a node twice, a parent that is not in it, parents in a circle, an approval
+  twice or from a node that is not in it, and more than `MAX_TREE_NODES` nodes or as many
+  approvals (the node registry enforces the first bound as it spawns, and #423 the second). A
+  snapshot at its bounds is still a large document, which the route that serves it bounds.
+- **A subscription** (`subscription/`, `SubscribeRequest`): `{ subscriptions: [{ channel, from }],
+approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `tail:<n>` or a
+  cursor. The request holds at most `MAX_SUBSCRIPTIONS` channels, none twice, a `tail` of at most
+  `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries on the tree
+  channel, and `approvals` only with the tree channel. A cursor the log cannot start at is
+  `cursor_out_of_range`, which only the server can tell.
+- **A command** (`node-command/`): `MessageNodeRequest` is the text sent to an agent node, whose
+  sender is the caller. `PromptSent` is the answer to a prompt sent: the node that carries the run
+  and, for a prompt that started, the id of its user message. A command to a node that ended is
+  `node_ended`. Cancelling a node has no body and no answer.
+
+The agent channel's entries and a command's output entries are not here: the issues that serve
+them define them.
 
 ## Version
 
@@ -71,13 +131,17 @@ being optional drops the data that lacks it, with no compatibility reader;
 It replaces the combined stream, the session and task updates, `QUERY .../stream` with
 `Last-Event-ID`, and how a task is addressed, so a client or server of the previous version cannot
 read it and a stored conversation's stream does not parse under it. It lands over many pull
-requests (#422 to #437), so it is marked here once, not in each. The version bump that carries it
-is taken by #422, where the schemas change (a minor bump while the protocol is below 1.0.0), and
-not by this page, which only says that the change is breaking. The protocol is not frozen until
-the model is built (decision 9 of #438), and nothing is published. There is no compatibility
-reader, as above: a one-time migration of a stored conversation, when it is first opened (#437),
-is not one. The old shapes are removed last (#436). This repository has no `.changeset` yet; when
-it has, the change is written in its changeset.
+requests (#422 to #437), so it is marked here once, not in each. The schemas came with #422,
+which took the version bump: `0.0.0` to `0.1.0`, a minor bump because the protocol is below
+1.0.0. A server and a client from before it are not compatible (the minor differs), so each
+refuses the other until the older side is updated and restarted. Nothing the harness runs reads
+the new schemas yet and the old shapes stay until the cleanup (#436): the bump marks the break
+the model makes, which the issues that follow complete. The protocol is not frozen until the
+model is built (decision 9 of #438), and nothing is published. There is no compatibility reader,
+as above: a one-time migration of a stored conversation, when it is first opened (#437), is not
+one. This repository has no `.changeset` yet; when it has, the change is written in its
+changeset. Every workspace that depends on the protocol names the new version (`^0.1.0`), since a
+caret range on `0.0.x` matches only that one version.
 
 ## The handshake proof
 

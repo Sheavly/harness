@@ -1,12 +1,12 @@
 # The wire model: nodes, channels and subscriptions
 
 How a front end follows a conversation's agents, commands and services. The decision is
-[#438](https://github.com/Sheavly/harness/issues/438); this page is its specification. **None of
-it is built yet**: the schemas come with
-[#422](https://github.com/Sheavly/harness/issues/422), and the rest of the work is split into the
-issues in "What this changes" below. Until then the single combined stream in
-[the contract](contract.md) is the wire. The field names here are the decision; the zod schemas
-that make them checkable are #422's.
+[#438](https://github.com/Sheavly/harness/issues/438); this page is its specification. **The
+schemas are built** and described in [the contract](contract.md#the-wire-models-schemas). **The
+rest is not**: no route serves the model, no registry produces it and no store keeps it. That
+work is split into the issues in "What this changes" below, and until it lands the single
+combined stream in the contract is the wire. Where this page and a schema differ, implement
+against the schema and treat the difference as a defect in one of the two, to fix.
 
 ## What exists today
 
@@ -51,8 +51,10 @@ Every node, of any kind, has the same common fields: an `id`, a `parent` (none f
 `kind`, a `title`, a `state`, its times, and a link to the tool call that spawned it. The parent's
 result entry for that call carries the child's node id, since the child does not exist yet when
 the call starts, so the two are joined from both sides. Today `task_running` carries a `TaskInfo`
-whose task id is a counter, and a sub-agent's session id appears only in the tool's result text, so
-carrying the node id in that entry is a change the schema work (#422) makes.
+whose task id is a counter, and a sub-agent's session id appears only in the tool's result text.
+Carrying the node id in that entry changes an agent-channel event, whose entries the issues that
+serve agent channels define and whose id the loop supplies, so it is #424's, not the schema
+work's.
 
 - **Kinds.** `agent`, `command` and `service` are built in. An extension can contribute kinds named
   `<extension>.<name>`. A front end that does not know a kind renders it from the common fields and
@@ -77,13 +79,19 @@ Each node has one channel. Every entry has the same envelope:
 
 - `channel` names the node's channel; `at` is when the entry was written (epoch milliseconds,
   like `timestampSchema`); `type` says what the rest of the entry holds.
-- **The cursor is defined by the channel**, and a client never builds one. Two kinds exist:
-  a gapless sequence (0, 1, 2, …) for agent channels and the tree channel, and a **byte offset**
-  into the output for command and service channels, so a client that asks for "from here" gets the
-  bytes after it and no re-framing.
+- **The cursor is defined by the channel**, and a client never builds one. It is opaque text with
+  its kind in the first letter, so a client keeps it whole and sends it back, and a cursor of the
+  wrong kind for its channel can be told apart. Two kinds exist: `s` and a gapless position
+  (`s0`, `s1`, `s2`, …) for agent channels and the tree channel, and `b` and a **byte offset**
+  (`b0`, `b4096`) into the output for command and service channels, so a client that asks for
+  "from here" gets the bytes after it and no re-framing. A kind an extension adds chooses one of
+  the two. At most fifteen digits, so the number is exact when it is read back.
 - **Every channel starts with `opened` and ends with `closed`.** `closed` carries the node's final
   state, its outcome and, for a command, its exit code. A channel with no `closed` entry belongs to
-  a node that is still running, or, in a conversation that is not live, to one that was lost.
+  a node that is still running, or, in a conversation that is not live, to one that was lost. The
+  schema cannot know a node's kind from its channel's entries, so the registry holds what it
+  cannot: an outcome only on an agent's `closed`, an exit code only on a command's or service's,
+  none on `lost`, and a cancelled idle agent closed with the outcome `interrupted`.
 - **The causal link.** A child's `opened` entry records the parent's cursor at the moment the
   child was spawned, so a front end can place the child's channel in the parent's without a shared
   clock or a shared counter.
@@ -99,10 +107,10 @@ It carries three things, each with the node's id:
 - the conversation's own notices: its queue, a storage failure and an extension's own events.
 
 A subscriber can ask for a **snapshot**: the nodes and pending approvals as they stand, with the
-cursor to continue from, then the entries after it. A sidebar needs no more than this. The
-snapshot is in #438's design, but how a client asks for it is **proposed** here (`from: snapshot`,
-below), since #422 lists only `start`, `now`, `tail:<n>` and a cursor.
-The tree channel is as sensitive as today's stream: an approval request carries the full command
+cursor to continue from, then the entries after it. A sidebar needs no more than this. A client
+asks for it with `from: snapshot` (below); it is a view, not an entry of the channel's log, and
+it holds together: each node once, each parent among the nodes, each approval once and asked by a
+node in it. The tree channel is as sensitive as today's stream: an approval request carries the full command
 and its concerns, so a read-only subscriber sees them too.
 
 ### Agent channels
@@ -133,9 +141,9 @@ start in each:
 { subscriptions: [ { channel, from }, ... ], approvals?: boolean }
 ```
 
-`from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, **proposed**, for the tree
-channel only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and
-the last `n` bytes of a byte-offset channel. The response is a stream of server-sent events, and
+`from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, for the tree channel
+only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and the
+last `n` bytes of a byte-offset channel. The response is a stream of server-sent events, and
 each frame is one envelope: it carries its **channel and its cursor**. A closed channel delivers
 what remains and then completes. A slow consumer is cut off per channel and resumes from its
 cursor.
@@ -151,8 +159,8 @@ none connected an approval is refused at once. It is not implied by subscribing 
 channel, which a read-only sidebar or a notification also does: only a client that sets it
 counts. It is a claim, not a check: any holder of the token may set it and may answer any
 approval of the conversation, as today, and a client that sets it and never answers holds every
-approval until it disconnects. **Proposed:** a request that sets it without the tree channel is
-refused, since it could not see an approval to answer.
+approval until it disconnects. A request that sets it without the tree channel is refused, since it
+could not see an approval to answer.
 
 A client subscribes to the tree channel to know what exists, and to a node's channel only when it
 shows that node. Following one sub-agent is one subscription, not a filter over everything.
@@ -165,16 +173,29 @@ the same `not_found`, so a client learns nothing about conversations or nodes it
 cursor never selects a conversation. Each entry of the list is checked, and the request is refused
 on the first that fails, before anything is sent: the refusal is an HTTP status decided before the
 event stream opens, since a stream cannot change its status once it has begun. `snapshot` and
-`tail` go through the same per-channel check and the same bounds as a cursor.
+`tail` go through the same per-channel check and the same bounds as a cursor. Whether a channel
+exists in this conversation is checked first, so a position is never judged against a channel the
+client may not know of: only a channel that exists can answer `cursor_out_of_range`.
 
-A request is bounded. Each of these limits must exist, as a number in the schema, and a request
-past one is refused with a typed error: the number of subscriptions in one request, the `n` of
-`tail:<n>`, and the size of a byte-offset replay in one read (the output store's own read bound,
-`MAX_READ_BYTES`, is the natural one). A cursor out of range (negative, not a whole number, past
-the end, or before what the log still holds) is the same kind of error and never a silent clamp. A consumer that
-does not keep up is cut off per channel, as above, and a subscription at `from: now` on a channel
-nothing writes to is a held connection, so the number of connections a conversation serves is
-bounded too. The numbers are #422's and #426's to set; this page says each must exist.
+A request is bounded, and a request past a limit is refused, never cut or clamped. The schema
+holds these: at least one channel and at most 32 (`MAX_SUBSCRIPTIONS`), none twice, and a `tail`
+of at most 65,536 (`MAX_TAIL_BYTES`, which a test pins equal to the output store's read bound
+`MAX_READ_BYTES`, so a tail is one read) and at most 1,000 entries (`MAX_TAIL`) on the tree
+channel, which is numbered. Those are `bad_request`, as is a cursor that is not one.
+
+The schema cannot see which kind a node's channel is, so **the server must apply the rest per
+resolved channel, before it reads anything**: a `tail` is read as entries on a channel that numbers
+them and as bytes on an output channel, and its `n` is at most `tailLimit` of that kind (`MAX_TAIL`
+on an agent's channel, which the schema lets through at the byte bound); a cursor of the wrong kind
+for its channel (an `s` cursor on an output channel, a `b` cursor on an agent's) is `bad_request`,
+and so is a cursor of a kind a node kind that "chooses" did not choose. What only the server can
+tell is `cursor_out_of_range`, a code of its own: a cursor past the end of a channel or before what
+its log still holds, so a client asks again from `start` or a snapshot. A consumer that does not
+keep up is cut off per channel, as above, and a subscription at `from: now` on a channel nothing
+writes to is a held connection, so the number of connections a conversation serves is bounded too.
+The schema bounds each subscription, not the sum: 32 channels of 65,536 bytes or 1,000 entries are
+all in bounds, so **#426 sets the total one request may read**, that connection bound, and a
+timeout or a limit on connections that claim `approvals` and never answer.
 
 Every route the model adds is private: it needs the bearer token like every route that does not
 say `public` (the route table in [the contract](contract.md#what-a-server-accepts-and-answers)
@@ -183,14 +204,23 @@ marks the two that are).
 ## Commands
 
 A command returns at once; what it did arrives on a subscription, never in its own answer. That
-is already so for `POST .../prompts`, which answers `{ status, queued }` (see "What exists
-today"); #429 adds the ids. A command is addressed **by node**, and the effects arrive on the
-channels.
+is already so for `POST .../prompts`, which answers `{ status, queued }` today (see "What exists
+today"). The schema of the answer the model has (`PromptSent`) adds the ids of what the prompt
+made: the agent node whose channel carries the run and, for a prompt that started, the id of the
+user message it became. A prompt that waits in the queue has no message yet, so its answer has
+none, and the tree channel's `prompt_started` entry names the message when it starts. A command
+is addressed **by node**, and the effects arrive on the channels.
 
 - **Cancel**: `POST …/nodes/{node}/cancel`, for every kind of node, with today's kill semantics.
-- **Send a message**: `POST …/nodes/{node}/messages`, to an agent node. **Proposed:** a message to
-  a sub-agent and the user's steering are the same command with a different sender; #429 names
-  only the route.
+  It has no body and no answer, so it has no schema.
+- **Send a message**: `POST …/nodes/{node}/messages`, to an agent node. The request
+  (`MessageNodeRequest`) holds only the text: who sent it is the caller, so a message to a
+  sub-agent and the user's steering are one command with a different sender. #429 names only the
+  route; this is a decision of the schema work, open to the owner.
+- **A command to a node that ended** is `node_ended`, apart from a node that is not there
+  (`not_found`). The node is resolved inside the conversation the path names, as a channel is: a
+  node of another conversation is `not_found` too, and existence is decided before `node_ended`,
+  so a client learns nothing about a node it cannot reach.
 - **Stop, yield and the approval answer stay as they are.**
 
 **Answering an approval** stays `POST /conversations/{id}/approvals/{approval}`. It is answered by
@@ -199,9 +229,10 @@ request offered; an id that is not pending there is `unknown_approval`. The node
 channel says who asked, for display, and is never what authorizes an answer. Today an approval id
 is a counter of its conversation's registry (`a1`, `a2`, …) that starts again when the
 conversation is reopened, so ids are not unique across conversations, and a stale client can
-answer a newer approval that has the same id. **Required of the schema work (#422):** an approval
-id is unique within a conversation for as long as the server keeps it, reopening included, so an
-answer can only ever mean the approval it was made for.
+answer a newer approval that has the same id. **Required of the node registry (#423), which
+makes the ids:** an approval id is unique within a conversation for as long as the server keeps
+it, reopening included, so an answer can only ever mean the approval it was made for. A schema
+cannot say "unique", so the protocol does not pin it.
 
 Reading a command's or service's complete output, listing nodes and cancelling one are new: no
 route does them today.
@@ -239,6 +270,40 @@ this design. The server's missing `Origin` and `Host` check is added regardless 
 it lands before or with the subscribe endpoint (#426) and the complete output (#428), which expose
 more through the same bearer token, so that output with secrets is never newly readable on a
 server without the check. The issues do not say so: #435 is independent in #438's list.
+
+## Free text in the schemas
+
+Every free-text field of a node and of the tree channel is untrusted text, whatever the schema
+checked: a command's `command`, `description`, `output` and `error`, an extension's `text`, a
+queued line, an approval's command and message. A front end escapes each as the terminal's
+`plainTerminalText` does and never passes it to the screen as it is, since `text` and the others
+accept escape sequences. Only a node's `title` and status text are refused them, as one line of
+plain text (the terminal test in `apps/terminal` holds that rule to the terminal's class).
+
+The schemas bound these: a node's `command` is at most 131,072 characters, its `description` 2,000,
+an `await_tasks` reason 1,000, its `output` 30,000 (the most the runtime keeps, pinned equal by a
+test there), an error text 2,000, a tool call's id 200, a queued line 20,000 and an entry's `type` 128. A cap is a bound for the wire and not a limit the system puts on a producer: `run_command`
+takes a line of any length, `await_tasks` a reason of any length and a failed task's error is its
+message as it is, so **the node registry shortens each when it makes the node** (#423), or a
+long one would have no valid node. A snapshot holds at most 1,000 nodes and as many approvals;
+the registry enforces the node bound as it spawns, and #423 the approval bound, since it holds
+the pending approvals, so a snapshot never has to be refused instead. A node id is lowercase, so
+two cannot differ by case on a disk that ignores it.
+
+What they do not bound, so a front end and a server must: an approval's own fields (`id`, `tool`,
+`command`, `concerns`, `options`, the answer's message) are the approval schema's, unchanged;
+an output log's `reason`; the `data` of an extension kind is capped in bytes but not in depth, and
+a value nested a few thousand levels deep makes `safeParse` throw a `RangeError` before the byte
+cap is checked, so a client wraps parsing of a frame in a `try` and drops the frame; the array of
+`channelLogSchema` and any extra field of its entries, which are loose on purpose, so whoever feeds
+it bounds the input; and a snapshot as a whole, since 1,000 nodes at their caps are a large
+document, so #427 bounds the bytes it serves. A title is one line but not an identity: look-alike
+letters, combining marks and a title like another's are accepted, and only text that draws as
+nothing is blank.
+
+An extension's name is not reserved by the manifest: a node kind and a tree event cannot use
+`agent`, `command`, `service` or `tree` as their extension, but a manifest can still be named so,
+and its kinds and events are then refused (#433 adds the check at the manifest).
 
 ## Who may read what
 

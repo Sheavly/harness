@@ -244,6 +244,17 @@ export const serverErrorCodeSchema = z.enum([
   'cannot_queue',
   'unknown_skill',
   'unknown_approval',
+  /**
+   * A subscribe position the log cannot start at: a cursor past the end of the channel, or before
+   * what it still holds. Never clamped to the nearest: the client asks again from `start` or a
+   * snapshot. (A cursor that is not a cursor, or a tail over its bound, is `bad_request`.)
+   */
+  'cursor_out_of_range',
+  /**
+   * A command addressed to a node that has ended: cancelling or messaging one that is already
+   * `completed`, `failed`, `cancelled` or `lost`. A node that does not exist is `not_found`.
+   */
+  'node_ended',
   'unknown_model',
   'storage_failed',
   /** No profile with a usable model yet: a UI onboards the user (profiles, models, keys) first. */
