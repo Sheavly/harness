@@ -6,7 +6,8 @@ export const SERVE_HELP = `Usage: sheavly serve [options]
 
 Runs the harness server in the foreground, exactly as \`npm run serve -w @sheavly/backend\` does:
 it takes the home's one-server lock, publishes its discovery file, prints its address (and a
-token, unless SERVER_TOKEN is set), and stops on Ctrl+C or SIGTERM.
+token it made, when its output is a terminal and SERVER_TOKEN is not set), and stops on Ctrl+C or
+SIGTERM.
 
 Options:
   --trust   Trust the workspace's .sheavly/ folder (its hooks and settings)

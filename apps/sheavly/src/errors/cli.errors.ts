@@ -19,6 +19,15 @@ export class DoctorFailedError extends Error {
   override name = 'DoctorFailedError';
 }
 
+/**
+ * `sheavly service` refused or could not do what it was asked: where it is not supported, what is
+ * missing, or a systemd command that failed. One line saying why and what to do; it never holds
+ * the token.
+ */
+export class ServiceError extends Error {
+  override name = 'ServiceError';
+}
+
 /** The command line's own `package.json` could not be read or has no version. */
 export class VersionError extends Error {
   override name = 'VersionError';
