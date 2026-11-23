@@ -18,6 +18,18 @@ export class RefusedError extends Error {
   }
 }
 
+/**
+ * A prompt waited in the conversation's queue and could not start when its turn came (its skill
+ * is gone, the conversation can no longer be stored): the backend's reason is the message.
+ */
+export class PromptRefusedError extends Error {
+  override name = 'PromptRefusedError';
+
+  constructor(params: { message: string }) {
+    super(params.message);
+  }
+}
+
 /** A stream that should never end ended: the backend or a proxy cut it. The cause of a reconnect. */
 export class StreamEndedError extends Error {
   override name = 'StreamEndedError';
