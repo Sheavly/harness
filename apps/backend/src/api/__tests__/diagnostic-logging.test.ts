@@ -33,13 +33,11 @@ describe('correlated chat diagnostics through the API', () => {
 
       for (const text of ['first', 'fail']) {
         if (text === 'fail') await api.conversations.useModel({ id, modelId: DEEP_ID });
-        const response = await api.request(`/conversations/${id}/prompts`, {
-          method: 'POST',
-          body: { text },
-        });
-        const frames = await response.text();
+        const entries = [];
 
-        if (text === 'fail') expect(frames).toContain('"type":"run_failed"');
+        for await (const { entry } of api.runOf({ id, text })) entries.push(entry);
+
+        if (text === 'fail') expect(JSON.stringify(entries)).toContain('"type":"run_failed"');
       }
 
       await api.conversations.close(id);

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { fakeFetchSequence } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { useTempWorkspace } from '@sheavly/workspace/testing/temp-workspace.fake';
@@ -263,9 +264,10 @@ describe.each(protocols)('served $adapter tool definitions', ({ adapter, definit
         const { id } = await backend.client.call('startConversation', { body: {} });
         const entries = [];
 
-        for await (const entry of backend.client.stream('sendPrompt', {
+        for await (const entry of promptEntries({
+          client: backend.client,
           id,
-          body: { text: 'main' },
+          prompt: { text: 'main' },
         })) {
           entries.push(entry);
         }

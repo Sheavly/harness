@@ -17,6 +17,8 @@ const CONVERSATION_FAILURES: Record<ConversationsError['reason'], (message: stri
     storage_failed: (message) => ({ status: 507, code: 'storage_failed', message }),
     // Not a server fault and not a bad request: the user has not set the backend up yet.
     not_set_up: (message) => ({ status: 409, code: 'not_set_up', message }),
+    // The prompt cannot wait in the queue (skills picked as parts, too long, a full queue).
+    cannot_queue: (message) => ({ status: 409, code: 'cannot_queue', message }),
   };
 
 /**

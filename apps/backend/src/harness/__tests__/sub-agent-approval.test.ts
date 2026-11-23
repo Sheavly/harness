@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { watchApprovals } from '@sheavly/client/approvals/approvals.helper';
 import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { until } from '@sheavly/testing/wait/until.fake';
 import type { ApprovalId } from '@sheavly/protocol/approval/approval.types';
@@ -76,9 +77,10 @@ async function runPrompt(params: {
 }): Promise<StreamEntry[]> {
   const entries: StreamEntry[] = [];
 
-  for await (const entry of params.client.stream('sendPrompt', {
+  for await (const entry of promptEntries({
+    client: params.client,
     id: params.id,
-    body: { text: 'Run the helper' },
+    prompt: { text: 'Run the helper' },
   })) {
     entries.push(entry);
   }

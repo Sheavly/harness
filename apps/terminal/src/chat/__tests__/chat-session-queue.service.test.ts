@@ -1,286 +1,223 @@
 import { describe, expect, it } from 'vitest';
-import { until } from '@sheavly/testing/wait/until.fake';
+import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import { Renderer } from '../../render/render.service.js';
-import { ChatSession } from '../chat-session.service.js';
-import type { ChatConversation } from '../chat.types.js';
+import { statusOfRun } from '../../tui/screen-chat.helper.js';
+import {
+  backendStream,
+  fakeChatConversation,
+  hearAll,
+  recordingChat,
+  settle,
+} from '../testing/chat-session.fake.js';
 
-const MAIN = sessionIdSchema.parse('main');
+const CHILD = sessionIdSchema.parse('child');
 
-const done: StreamEntry = {
-  seq: 1,
-  at: 0,
-  sessionId: MAIN,
-  kind: 'event',
-  event: {
-    seq: 1,
-    type: 'done',
-    reason: 'completed',
-    session: { id: MAIN, rootId: MAIN, depth: 1 },
-  },
-};
+/** A conversation that queues every line behind what runs, as a busy backend does. */
+const queueing = () =>
+  fakeChatConversation({ answer: (text) => Promise.resolve({ status: 'queued', queued: [text] }) });
 
-/** The parts of a conversation these tests never use. */
-const unused = {
-  skills: async () => [],
-  details: async () => {
-    throw new Error('not used');
-  },
-  useModel: async () => false,
-};
+describe('ChatSession: the queue shown is the backend’s', () => {
+  it('shows the lines its queue entries say wait, and none of what was typed until then', async () => {
+    const stream = backendStream();
+    const { session, queues } = recordingChat({ fake: queueing() });
 
-function sessionFor(params: {
-  conversation: ChatConversation;
-  onQueue?: (queue: readonly string[]) => void;
-}) {
-  return new ChatSession({
-    conversation: params.conversation,
-    renderer: new Renderer(() => undefined),
-    mainSession: MAIN,
-    write: () => undefined,
-    ...(params.onQueue && { onQueue: params.onQueue }),
-    onExit: () => undefined,
+    session.hear(stream.started('first'));
+    session.submit('second');
+    await settle();
+    expect(queues).toEqual([[]]);
+
+    session.hear(stream.changed(['second']));
+    expect(session.queued).toEqual(['second']);
+
+    hearAll({ session, entries: [stream.done(), stream.started('second')] });
+    expect(session.queued).toEqual([]);
+    expect(queues.at(-1)).toEqual([]);
   });
-}
 
-/** A conversation whose prompts stay open until released, recording what it was asked. */
-function holdingChat(params: { yieldReply?: Promise<boolean> } = {}) {
-  const sent: string[] = [];
-  const opened: string[] = [];
-  const signals: (AbortSignal | undefined)[] = [];
-  const yields: number[] = [];
-  const releases: (() => void)[] = [];
-  const queues: (readonly string[])[] = [];
-  const conversation: ChatConversation = {
-    ...unused,
-    yieldPrompt: async (signal) => {
-      // The prompt each request found running, by how many prompts had started.
-      yields.push(sent.length);
-      signals.push(signal);
-
-      return params.yieldReply ?? true;
-    },
-    async *send({ text }) {
-      sent.push(text);
-      yield { ...done, event: { seq: 0, type: 'text_delta' as const, text: 'working' } };
-      // Resumed only once the session handled that entry, so its stream counts as open.
-      opened.push(text);
-      await new Promise<void>((resolve) => releases.push(resolve));
-      yield done;
-    },
-  };
-  const session = sessionFor({ conversation, onQueue: (queue) => queues.push(queue) });
-
-  return { session, sent, opened, signals, yields, releases, queues };
-}
-
-describe('ChatSession: lines kept from an earlier run', () => {
-  it('shows restored lines as waiting and runs none of them by itself', async () => {
-    const { session, sent, queues } = holdingChat();
+  it('shows restored lines as waiting and sends none of them by itself', async () => {
+    const { session, fake, queues } = recordingChat();
 
     session.restoreQueued(['left over', 'also left']);
+    await session.idle();
 
     expect(session.queued).toEqual(['left over', 'also left']);
     expect(queues.at(-1)).toEqual(['left over', 'also left']);
-    // Nothing was submitted, so nothing runs: reopening never dispatches pending input.
-    await session.idle();
-    expect(sent).toEqual([]);
+    expect(fake.submitted).toEqual([]);
   });
 
-  it('runs restored lines ahead of a new one once the user submits something', async () => {
-    const { session, sent, releases } = holdingChat();
+  it('drops the backend’s queue once, however many times the user leaves', async () => {
+    const { session, fake } = recordingChat();
 
-    session.restoreQueued(['left over']);
-    session.submit('new');
-    await until(() => sent.length === 1);
-    releases[0]?.();
-    await until(() => sent.length === 2);
-    releases[1]?.();
-    await session.idle();
+    await Promise.all([session.dropQueued(), session.dropQueued()]);
 
-    expect(sent).toEqual(['left over', 'new']);
+    expect(fake.queuesSet).toEqual([[]]);
   });
 });
 
-describe('ChatSession: queued messages', () => {
-  it('keeps ordinary messages pending in order, never starting another prompt while one runs', async () => {
-    const { session, sent, releases } = holdingChat();
+describe('ChatSession: idle', () => {
+  it('is idle only once every line the backend accepted has run', async () => {
+    const stream = backendStream();
+    const { session } = recordingChat({ fake: queueing() });
+    let idle = false;
 
-    session.submit('first');
-    await until(() => sent.length === 1);
+    session.hear(stream.started('first'));
     session.submit('second');
-    session.submit('third');
+    void session.idle().then(() => (idle = true));
+    hearAll({ session, entries: [stream.changed(['second']), stream.done()] });
+    await settle();
+    // The first run ended, but the backend still owes the line queued behind it.
+    expect(idle).toBe(false);
 
-    expect(session.queued).toEqual(['second', 'third']);
-    expect(sent).toEqual(['first']);
-    releases[0]?.();
-    await until(() => sent.length === 2);
-    expect(session.queued).toEqual(['third']);
-    releases[1]?.();
-    await until(() => sent.length === 3);
-    releases[2]?.();
-    await session.idle();
-
-    expect(sent).toEqual(['first', 'second', 'third']);
-    expect(session.queued).toEqual([]);
+    hearAll({ session, entries: [stream.resumed(), stream.started('second'), stream.done()] });
+    await settle();
+    expect(idle).toBe(true);
   });
 
-  it('only asks the running prompt to yield, once per submitted message, and never stops it', async () => {
-    const { session, sent, opened, yields, releases } = holdingChat();
+  it('is idle once a line the backend started at once has run, even if its answer came first', async () => {
+    const stream = backendStream();
+    const { session } = recordingChat();
+    let idle = false;
 
-    session.submit('first');
-    await until(() => opened.length === 1);
-    expect(yields).toEqual([]);
-    session.submit('second');
-    session.submit('third');
-    expect(yields).toHaveLength(2);
+    session.submit('hi');
+    void session.idle().then(() => (idle = true));
+    await settle();
+    // Answered `started`, but its run has not been heard yet.
+    expect(idle).toBe(false);
 
-    expect(session.stop()).toBe('stopped');
-    releases[0]?.();
-    await until(() => sent.length === 2);
-    session.dropQueued();
-    releases[1]?.();
-    await session.idle();
+    hearAll({ session, entries: [stream.started('hi'), stream.done()] });
+    await settle();
+    expect(idle).toBe(true);
   });
 
-  it('asks again once the stream opens when a line arrived before the backend ran the prompt', async () => {
-    const { session, sent, opened, yields, releases } = holdingChat();
+  it('is idle once the lines it sent were taken out of the queue, as /exit does', async () => {
+    const stream = backendStream();
+    const { session } = recordingChat({ fake: queueing() });
 
-    session.submit('first');
+    session.hear(stream.started('first'));
     session.submit('second');
-    expect(yields).toEqual([]);
-    await until(() => opened.length === 1);
-    await until(() => yields.length === 1);
+    await settle();
+    // The queue emptied by a client (this chat leaving, or another UI): no line is owed any more.
+    hearAll({ session, entries: [stream.changed(['second']), stream.changed([]), stream.done()] });
 
-    expect(yields).toEqual([1]);
-    expect(sent).toEqual(['first']);
-    releases[0]?.();
-    await until(() => opened.length === 2);
-    releases[1]?.();
     await session.idle();
   });
 
-  it('lets a slow yield answer land before the next prompt starts, so it cannot end that one', async () => {
-    const reply = Promise.withResolvers<boolean>();
-    const { session, sent, opened, yields, releases } = holdingChat({ yieldReply: reply.promise });
+  it('is idle once a queued line the backend refused is gone', async () => {
+    const stream = backendStream();
+    const { session } = recordingChat({ fake: queueing() });
 
-    session.submit('first');
-    await until(() => opened.length === 1);
-    session.submit('second');
-    await until(() => yields.length === 1);
-    releases[0]?.();
-    await Promise.resolve();
-    expect(sent).toEqual(['first']);
+    session.hear(stream.started('first'));
+    session.submit('/nope');
+    await settle();
+    hearAll({ session, entries: [stream.done(), stream.refused('/nope', 'No skill /nope')] });
 
-    reply.resolve(true);
-    await until(() => sent.length === 2);
-    expect(yields).toEqual([1]);
-    releases[1]?.();
     await session.idle();
   });
+});
 
-  it('bounds each yield request with a timeout signal', async () => {
-    const { session, opened, signals, releases } = holdingChat();
+describe('ChatSession: run state', () => {
+  it('tells the UI each run_state of the main session, in order, and none of a sub-agent', () => {
+    const stream = backendStream();
+    const { session, runStates } = recordingChat();
 
-    session.submit('first');
-    await until(() => opened.length === 1);
-    session.submit('second');
-    await until(() => signals.length === 1);
-
-    expect(signals[0]).toBeInstanceOf(AbortSignal);
-    releases[0]?.();
-    await until(() => opened.length === 2);
-    releases[1]?.();
-    await session.idle();
-  });
-
-  it('lets Ctrl+C stop the next prompt while it waits for a yield answer that never comes', async () => {
-    const never = new Promise<boolean>(() => undefined);
-    const { session, sent, opened, releases } = holdingChat({ yieldReply: never });
-
-    session.submit('first');
-    await until(() => opened.length === 1);
-    session.submit('second');
-    releases[0]?.();
-    await until(() => session.busy && session.queued.length === 0);
-
-    expect(session.stop()).toBe('stopped');
-    // The stop ends the wait and the stopped prompt is never sent, instead of hanging.
-    await session.idle();
-
-    expect(sent).toEqual(['first']);
-    expect(session.busy).toBe(false);
-  });
-
-  it('runs a queued line after a prompt that failed before streaming', async () => {
-    const sent: string[] = [];
-    const session = sessionFor({
-      conversation: {
-        ...unused,
-        yieldPrompt: async () => true,
-        async *send({ text }) {
-          sent.push(text);
-          if (sent.length === 1) throw new Error('backend down');
-          yield done;
-        },
-      },
+    hearAll({
+      session,
+      entries: [
+        stream.started('go'),
+        stream.runState('waiting', 2),
+        stream.runState('waiting', 1, CHILD),
+        stream.runState('waiting', 0),
+        stream.runState('working', 0),
+      ],
     });
 
-    session.submit('first');
-    session.submit('second');
-    await session.idle();
-
-    expect(sent).toEqual(['first', 'second']);
-    expect(session.queued).toEqual([]);
+    expect(runStates).toEqual([
+      { state: 'waiting', groupedTasks: 2 },
+      { state: 'waiting', groupedTasks: 0 },
+      { state: 'working', groupedTasks: 0 },
+    ]);
   });
 
-  it('keeps a pending line out of everything the conversation sees until it is dispatched', async () => {
-    const seen: string[] = [];
-    const releases: (() => void)[] = [];
-    const session = sessionFor({
-      conversation: {
-        ...unused,
-        // Nothing but a prompt's own text may cross: history, model input and summaries are built
-        // from what the conversation receives, so a pending line must not be in any call.
-        yieldPrompt: async (...args) => {
-          seen.push(JSON.stringify(args));
+  it('shows working, awaiting grouped tasks, or ready when none are grouped', () => {
+    expect(statusOfRun({ state: 'working', groupedTasks: 0 })).toEqual({ state: 'working' });
+    expect(statusOfRun({ state: 'waiting', groupedTasks: 2 })).toEqual({
+      state: 'awaiting_tasks',
+      awaitedTasks: 2,
+      thinking: false,
+    });
+    expect(statusOfRun({ state: 'waiting', groupedTasks: 0 })).toEqual({
+      state: 'ready',
+      thinking: false,
+    });
+  });
+});
 
-          return true;
-        },
-        async *send(params) {
-          seen.push(JSON.stringify({ text: params.text }));
-          yield { ...done, event: { seq: 0, type: 'text_delta' as const, text: 'working' } };
-          await new Promise<void>((resolve) => releases.push(resolve));
-          yield done;
-        },
-      },
+describe('ChatSession: thinking and tools', () => {
+  it('tells the UI each change of the main session’s thinking once, and none of a sub-agent’s', () => {
+    const stream = backendStream();
+    const { session, thinking } = recordingChat();
+
+    hearAll({
+      session,
+      entries: [
+        stream.thinking(true, CHILD),
+        stream.thinking(true),
+        stream.thinking(true),
+        stream.thinking(false),
+      ],
     });
 
-    session.submit('first');
-    await until(() => releases.length === 1);
-    session.submit('PENDING-SECRET');
-    await until(() => seen.length >= 2);
-
-    expect(session.queued).toEqual(['PENDING-SECRET']);
-    expect(seen.join('')).not.toContain('PENDING-SECRET');
-
-    releases[0]?.();
-    await until(() => releases.length === 2);
-    expect(seen.join('')).toContain('PENDING-SECRET');
-    expect(session.queued).toEqual([]);
-    releases[1]?.();
-    await session.idle();
+    expect(thinking).toEqual([true, false]);
   });
 
-  it('does not ask for a yield when nothing runs', async () => {
-    const { session, sent, yields, releases } = holdingChat();
+  it('clears thinking when the stream is lost while the model was thinking', () => {
+    const stream = backendStream();
+    const { session, thinking } = recordingChat();
 
-    session.submit('only');
-    await until(() => sent.length === 1);
-    releases[0]?.();
-    await session.idle();
+    hearAll({ session, entries: [stream.started('go'), stream.thinking(true)] });
+    session.lostStream(new Error('gone'));
 
-    expect(yields).toEqual([]);
+    expect(thinking).toEqual([true, false]);
+  });
+
+  const call = { id: callIdSchema.parse('1'), name: 'run_command', input: {} };
+
+  it('tells the UI when a call starts and when it returns, and nothing in between', () => {
+    const stream = backendStream();
+    const { session, tools } = recordingChat();
+
+    hearAll({
+      session,
+      entries: [
+        stream.event({ seq: 0, type: 'tool_call_started', call, description: 'Build' }),
+        stream.text('hi'),
+        stream.event({
+          seq: 0,
+          type: 'tool_result',
+          call,
+          description: 'Build',
+          message: { role: 'tool', toolCallId: call.id, content: 'ok', isError: false },
+          durationMs: 1,
+        }),
+      ],
+    });
+
+    expect(tools).toEqual([['Build'], []]);
+  });
+
+  it('clears the running tools when the run ends before the call returned', () => {
+    const stream = backendStream();
+    const { session, tools } = recordingChat();
+
+    hearAll({
+      session,
+      entries: [
+        stream.started('go'),
+        stream.event({ seq: 0, type: 'tool_call_started', call, description: 'Build' }),
+        stream.done('failed'),
+      ],
+    });
+
+    expect(tools).toEqual([['Build'], []]);
   });
 });

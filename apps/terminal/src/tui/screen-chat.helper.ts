@@ -116,12 +116,7 @@ export async function startScreenChat(params: {
     },
     onQueue: (queue) => {
       screen.setQueue(queue);
-      // Kept with the conversation so a restart does not lose it; a failure is shown, not fatal.
-      void conversation
-        .setQueue(queue)
-        .catch((caughtError: unknown) =>
-          screen.notice(`Could not keep the queue: ${String(caughtError)}`),
-        );
+      screen.setStatus({ queued: queue.length });
     },
     onTools: (tools) => {
       bell.watchTools(tools);
@@ -149,7 +144,7 @@ export async function startScreenChat(params: {
             });
           })
           .catch((caughtError: unknown) =>
-            screen.notice(`Could not refresh model: ${String(caughtError)}`),
+            screen.notice(`Could not refresh model: ${describeFailure(caughtError)}`),
           );
       }
     },
@@ -163,18 +158,16 @@ export async function startScreenChat(params: {
   });
 
   void ended.catch((caughtError: unknown) => {
-    screen.notice(`✗ lost the approval stream: ${String(caughtError)}`);
+    screen.notice(`✗ lost the approval stream: ${describeFailure(caughtError)}`);
   });
 
-  // Runs the backend starts itself (a finished background task wakes the idle conversation).
+  // Every run's output comes here: the user's lines, and the runs the backend starts itself.
   const followed = await conversation.follow({
     onEntry: (entry) => session.hear(entry),
     signal: watching.signal,
   });
 
-  void followed.ended.catch((caughtError: unknown) => {
-    screen.notice(`✗ lost the live stream: ${describeFailure(caughtError)}`);
-  });
+  void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
 
   conversation.watchBackground((background) => screen.setStatus(background));
   screen.start();
@@ -187,7 +180,8 @@ export async function startScreenChat(params: {
     stop: async () => {
       bell.stop();
       watching.abort();
-      session.dropQueued();
+      // Leaving drops the lines waiting, however the user left (`/exit`, Ctrl+D, Ctrl+C).
+      await session.dropQueued();
       session.stop();
       screen.stop();
     },
@@ -196,7 +190,7 @@ export async function startScreenChat(params: {
 
 /**
  * What the status line says for a held run: waiting on grouped tasks, `ready` when none are
- * grouped (a follow-up is queued and releases the run), `working` once it runs again.
+ * grouped (a line sent now starts once the model has finished), `working` once it runs again.
  */
 export function statusOfRun(
   run: RunState,
@@ -250,6 +244,6 @@ async function answerApproval(params: {
       conversation.answerApproval({ approval: answer.id, response: answer.response }),
     );
   } catch (caughtError) {
-    screen.notice(`✗ could not send your answer: ${String(caughtError)}`);
+    screen.notice(`✗ could not send your answer: ${describeFailure(caughtError)}`);
   }
 }

@@ -271,11 +271,19 @@ describe('statusText', () => {
   it('says how many grouped tasks a held run waits on, apart from waiting for you', () => {
     const base = { state: 'awaiting_tasks', model: 'Fast', mode: 'ask', tasks: 0 } as const;
 
-    expect(plain(statusOf({ ...base, awaitedTasks: 2 }))).toContain(
-      '● waiting on 2 tasks · follow-ups are queued',
-    );
+    expect(plain(statusOf({ ...base, awaitedTasks: 2 }))).toContain('● waiting on 2 tasks ·');
     expect(plain(statusOf({ ...base, awaitedTasks: 1 }))).toContain('● waiting on 1 task ·');
     expect(plain(statusOf({ ...base, awaitedTasks: 1 }))).not.toContain('waiting for you');
+  });
+
+  it('says follow-ups are queued behind a held run only while the backend’s queue holds one', () => {
+    const base = { state: 'awaiting_tasks', model: 'Fast', mode: 'ask', tasks: 0 } as const;
+
+    expect(plain(statusOf({ ...base, awaitedTasks: 2 }))).not.toContain('follow-ups');
+    expect(plain(statusOf({ ...base, awaitedTasks: 2, queued: 0 }))).not.toContain('follow-ups');
+    expect(plain(statusOf({ ...base, awaitedTasks: 2, queued: 1 }))).toContain(
+      '● waiting on 2 tasks · follow-ups are queued',
+    );
   });
 
   it('names the model and the permission mode', () => {

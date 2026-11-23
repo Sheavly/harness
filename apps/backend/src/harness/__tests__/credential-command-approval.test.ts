@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { filesHolding } from '@sheavly/testing/files/files-holding.fake';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
@@ -57,9 +58,10 @@ describe('credential-reading commands', () => {
       const { id } = await client.call('startConversation', { body: {} });
       const entries: StreamEntry[] = [];
 
-      for await (const entry of client.stream('sendPrompt', {
+      for await (const entry of promptEntries({
+        client,
         id,
-        body: { text: 'Try the command once.' },
+        prompt: { text: 'Try the command once.' },
       })) {
         entries.push(entry);
       }

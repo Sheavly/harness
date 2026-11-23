@@ -5,10 +5,10 @@ import { queuedPromptsSchema } from '@sheavly/protocol/server/server.validator';
 import { ConversationsError } from '../errors/conversations.errors.js';
 
 /**
- * The lines queued behind each conversation's running prompt: pending input outside history,
- * model input and summaries. With a store they survive a restart (`queue.json`); without one they
- * last as long as the process. Reading sends nothing, and reopening a conversation never runs
- * them: a UI decides when a line becomes a prompt.
+ * Where each conversation's waiting lines are kept: pending input outside history, model input and
+ * summaries. With a store they survive a restart (`queue.json`); without one they last as long as
+ * the process. Reading starts nothing: the conversation's `PromptQueue` decides when a line becomes
+ * a prompt, and a reopen parks what it reads.
  */
 export class ConversationQueues {
   readonly #store: ConversationStore | undefined;

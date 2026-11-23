@@ -6,6 +6,7 @@ import { watchApprovals } from '@sheavly/client/approvals/approvals.helper';
 import { createClient } from '@sheavly/client/client/client.helper';
 import { readEntries } from '@sheavly/client/client/entries.helper';
 import { reconnectingEntries } from '@sheavly/client/client/reconnect.helper';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { toolCall } from '@sheavly/testing/provider/routed-provider.fake';
@@ -174,7 +175,7 @@ describe('a client over a connection that drops', () => {
 
     /** Runs the prompt to its end, then waits until the watcher has heard the answer. */
     const run = async () => {
-      for await (const _entry of direct.stream('sendPrompt', { id, body: { text: 'go' } }));
+      for await (const _entry of promptEntries({ client: direct, id, prompt: { text: 'go' } }));
 
       await vi.waitFor(() => {
         expect(heard).toContain('approval_resolved:a1');
@@ -339,7 +340,7 @@ describe('a client over a connection that drops', () => {
     expect(texts().indexOf('while down')).toBeLessThan(texts().indexOf('after'));
   }, 30_000);
 
-  it('ends a prompt’s response without its done when the consumer is cut, and the rest is on the conversation stream', async () => {
+  it('cuts a stream whose reader falls behind before the run’s done, and the rest is there on resume', async () => {
     const huge = Array.from({ length: SSE_QUEUE_LIMIT + 200 }, () => ({
       type: 'text_delta' as const,
       text: 'x'.repeat(32_000),
@@ -349,8 +350,10 @@ describe('a client over a connection that drops', () => {
     const client = createClient({ url: api.url, token: TEST_TOKEN });
     const { id } = await client.call('startConversation', { body: {} });
 
-    // The response is opened and left unread while the run makes about 40 MB of entries.
-    const response = await client.open('sendPrompt', { id, body: { text: 'big' } });
+    // The stream is opened and left unread while the run makes about 40 MB of entries.
+    const response = await client.open('streamConversation', { id, body: {} });
+
+    await client.call('sendPrompt', { id, body: { text: 'big' } });
 
     await vi.waitFor(
       async () => {
@@ -369,7 +372,7 @@ describe('a client over a connection that drops', () => {
       sawDone ||= entry.kind === 'event' && entry.event.type === 'done';
     }
 
-    // The prompt ran to its end, but this response was cut before it: no done in it.
+    // The prompt ran to its end, but this stream was cut before it: no done in it.
     expect(sawDone).toBe(false);
 
     // The rest of the conversation is on its stream, after the last entry the response gave.

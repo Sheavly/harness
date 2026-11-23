@@ -20,20 +20,30 @@ const kindOf = (entry: StreamEntry) =>
   `${entry.kind}:${entry.kind === 'event' ? entry.event.type : entry.update.type}`;
 
 describe('a conversation over HTTP', () => {
-  it('answers each prompt with its entries, in order with no gaps, the second on the first one’s history', async () => {
-    const { request, start } = testApi({ hi: [reply('hello'), reply('again')] });
+  it('answers a prompt at once with JSON: started when idle, queued behind a run that goes', async () => {
+    const { request, start } = testApi({ wait: [calls('block')], next: [reply('ok')] });
+    const id = await start();
+    const send = (text: string) =>
+      request(`/conversations/${id}/prompts`, { method: 'POST', body: { text } });
+    const first = await send('wait');
+
+    expect(first.headers.get('content-type')).toMatch(/application\/json/);
+    expect(await first.json()).toEqual({ status: 'started', queued: [] });
+    expect(await (await send('next')).json()).toEqual({ status: 'queued', queued: ['next'] });
+    expect(await (await request(`/conversations/${id}/queue`)).json()).toEqual({
+      queued: ['next'],
+    });
+    await request(`/conversations/${id}/queue`, { method: 'PUT', body: { queued: [] } });
+    await request(`/conversations/${id}/stop`, { method: 'POST' });
+  });
+
+  it('streams each prompt’s run in order with no gaps, the second on the first one’s history', async () => {
+    const { request, start, runOf } = testApi({ hi: [reply('hello'), reply('again')] });
     const id = await start();
     const prompt = async (text: string) => {
-      const response = await request(`/conversations/${id}/prompts`, {
-        method: 'POST',
-        body: { text },
-      });
-
-      expect(response.headers.get('content-type')).toMatch(/text\/event-stream/);
-
       const frames = [];
 
-      for await (const frame of readEntries(response.body)) frames.push(frame);
+      for await (const frame of runOf({ id, text })) frames.push(frame);
 
       return frames;
     };
@@ -46,12 +56,11 @@ describe('a conversation over HTTP', () => {
 
       expect(frames.map(({ cursor }) => cursor)).toEqual(seqs.map(String));
       expect(seqs).toEqual(seqs.map((_, index) => (seqs[0] ?? 0) + index));
+      expect(kindOf(frames[0]!.entry)).toBe('queue:prompt_started');
       expect(frames.at(-1)?.entry).toMatchObject({ kind: 'event', event: { type: 'done' } });
     }
 
-    expect(kindOf(second[0]!.entry)).toBe('update:session_resumed');
-    // The session went idle before the first's done, so the second follows that done at once.
-    expect(second[0]!.entry.seq).toBe(first.at(-1)!.entry.seq + 1);
+    expect(second[0]!.entry.seq).toBeGreaterThan(first.at(-1)!.entry.seq);
 
     const messages = (await (await request(`/conversations/${id}/messages`)).json()) as {
       messages: { role: string; content: string }[];
@@ -61,13 +70,10 @@ describe('a conversation over HTTP', () => {
   });
 
   it('streams the whole conversation to a client that joins late, from the start with replay', async () => {
-    const { request, start } = testApi({ hi: [reply('hello')] });
+    const { request, start, runOf } = testApi({ hi: [reply('hello')] });
     const id = await start();
 
-    for await (const _frame of readEntries(
-      (await request(`/conversations/${id}/prompts`, { method: 'POST', body: { text: 'hi' } }))
-        .body,
-    ));
+    for await (const _frame of runOf({ id, text: 'hi' }));
 
     const stream = await request(`/conversations/${id}/stream`, {
       method: 'QUERY',
@@ -85,6 +91,8 @@ describe('a conversation over HTTP', () => {
       'update:session_started',
       // The model the conversation began on is part of its history.
       'update:session_model',
+      // The prompt says it started, before the model's events.
+      'queue:prompt_started',
       'event:text_delta',
       'event:usage',
       'event:turn_end',
@@ -94,15 +102,11 @@ describe('a conversation over HTTP', () => {
   });
 
   it('resumes right after the last entry a client got (Last-Event-ID)', async () => {
-    const { request, start } = testApi({ hi: [reply('hello')] });
+    const { request, start, runOf } = testApi({ hi: [reply('hello')] });
     const id = await start();
-    const prompted = await request(`/conversations/${id}/prompts`, {
-      method: 'POST',
-      body: { text: 'hi' },
-    });
     const seqs: number[] = [];
 
-    for await (const { entry } of readEntries(prompted.body)) seqs.push(entry.seq);
+    for await (const { entry } of runOf({ id, text: 'hi' })) seqs.push(entry.seq);
 
     const resumed = await request(`/conversations/${id}/stream`, {
       method: 'QUERY',
@@ -116,16 +120,12 @@ describe('a conversation over HTTP', () => {
     }
   });
 
-  it('stops a running prompt, keeping history valid, and refuses another while one runs', async () => {
-    const { request, start } = testApi({ wait: [calls('block')] });
+  it('stops a running prompt, keeping history valid, and queues another sent while it runs', async () => {
+    const { request, start, runOf } = testApi({ wait: [calls('block')] });
     const id = await start();
-    const prompted = await request(`/conversations/${id}/prompts`, {
-      method: 'POST',
-      body: { text: 'wait' },
-    });
     const kinds: string[] = [];
 
-    for await (const { entry } of readEntries(prompted.body)) {
+    for await (const { entry } of runOf({ id, text: 'wait' })) {
       kinds.push(kindOf(entry));
 
       if (entry.kind === 'event' && entry.event.type === 'tool_call_started') {
@@ -134,8 +134,9 @@ describe('a conversation over HTTP', () => {
           body: { text: 'too soon' },
         });
 
-        expect(second.status).toBe(409);
-        expect(await second.json()).toMatchObject({ error: { code: 'session_running' } });
+        expect(await second.json()).toEqual({ status: 'queued', queued: ['too soon'] });
+        // Taken back out, so only the stopped prompt is in the history below.
+        await request(`/conversations/${id}/queue`, { method: 'PUT', body: { queued: [] } });
         expect((await request(`/conversations/${id}/stop`, { method: 'POST' })).status).toBe(204);
       }
     }
@@ -180,16 +181,12 @@ describe('a conversation over HTTP', () => {
     expect(result).toMatchObject({ role: 'tool', content: 'skip' });
   });
 
-  it('refuses an approval at once when only a prompt’s own response listens', async () => {
-    const { request, start } = testApi({ go: [calls('ask'), reply('done')] });
+  it('refuses an approval at once when only a stream that answers none listens', async () => {
+    const { start, runOf } = testApi({ go: [calls('ask'), reply('done')] });
     const id = await start();
-    const prompted = await request(`/conversations/${id}/prompts`, {
-      method: 'POST',
-      body: { text: 'go' },
-    });
     const results: string[] = [];
 
-    for await (const { entry } of readEntries(prompted.body)) {
+    for await (const { entry } of runOf({ id, text: 'go' })) {
       if (entry.kind === 'event' && entry.event.type === 'tool_result') {
         results.push(entry.event.message.content);
       }
@@ -302,12 +299,8 @@ describe('kept conversations over HTTP', () => {
   /** Starts a conversation that has a prompt in it, so it has a title and a history, then closes it. */
   async function kept(api: ReturnType<typeof testApi>) {
     const id = await api.start();
-    const response = await api.request(`/conversations/${id}/prompts`, {
-      method: 'POST',
-      body: { text: 'hi' },
-    });
 
-    for await (const _frame of readEntries(response.body));
+    for await (const _frame of api.runOf({ id, text: 'hi' }));
     await api.conversations.close(conversationIdSchema.parse(id));
 
     return id;

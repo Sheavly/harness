@@ -14,8 +14,12 @@ import { blockTool } from '@sheavly/runtime/testing/block-tool.fake';
 import { routedProvider } from '@sheavly/testing/provider/routed-provider.fake';
 import type { Script } from '@sheavly/testing/provider/provider.types';
 import { z } from 'zod';
+import { readEntries } from '@sheavly/client/client/entries.helper';
+import { runEnd } from '@sheavly/protocol/status/run-end.utils';
+import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { createDefaultRegistry } from '@sheavly/providers/registry/default-registry.helper';
 import { createApiApp } from '../api/api.helper.js';
+import { logPromptFailure } from '../api/prompt-failure.helper.js';
 import { parseRequestEnv } from '../harness/settings.validator.js';
 import { permissionStoreFor } from '../profiles/home.helper.js';
 import { PermissionSetup } from '../profiles/permission-setup.service.js';
@@ -116,6 +120,7 @@ export function testApi(
   });
   const conversations = new Conversations({
     ...(store && { store }),
+    onPromptFailure: logPromptFailure,
     create: async ({ messages, storage }) => {
       const harness = createHarness({
         provider: routedProvider(scripts),
@@ -160,7 +165,51 @@ export function testApi(
       ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
     });
 
-  return { app, conversations, request, start: () => startConversation(request) };
+  return {
+    app,
+    conversations,
+    request,
+    start: () => startConversation(request),
+    runOf: (params: { id: string; text: string }) => runOf({ request, ...params }),
+  };
+}
+
+/**
+ * Test-only: sends `text` to conversation `id` through the API, as a client does, and yields the
+ * frames of its run from the conversation's stream, opened before the send: from its
+ * `prompt_started` to the main session's `done`. The send is answered at once; a refusal throws.
+ */
+async function* runOf(params: {
+  request: (path: string, init?: TestRequest) => Promise<Response>;
+  id: string;
+  text: string;
+}): AsyncGenerator<{ cursor: string; entry: StreamEntry }> {
+  const { request, id, text } = params;
+  const stream = await request(`/conversations/${id}/stream`, { method: 'QUERY', body: {} });
+  const sent = await request(`/conversations/${id}/prompts`, { method: 'POST', body: { text } });
+
+  if (!sent.ok) {
+    await stream.body?.cancel();
+    throw new Error(`sending failed: ${String(sent.status)} ${await sent.text()}`);
+  }
+
+  let started = false;
+
+  try {
+    for await (const frame of readEntries(stream.body)) {
+      const { entry } = frame;
+
+      started ||=
+        entry.kind === 'queue' &&
+        entry.update.type === 'prompt_started' &&
+        entry.update.text === text;
+      if (!started) continue;
+      yield frame;
+      if (runEnd(entry) !== undefined) return;
+    }
+  } finally {
+    await stream.body?.cancel();
+  }
 }
 
 /** Test-only: starts a conversation through the API, as a client does, and returns its id. */

@@ -3,7 +3,6 @@ import { streamSSE } from 'hono/streaming';
 import type { LiveConversation } from '@sheavly/host/conversations/conversations.types';
 import { ENTRY_EVENT } from '@sheavly/protocol/api/api.constants';
 import type { EntryFilter } from '@sheavly/runtime/sessions/sessions.types';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { HEARTBEAT_MS, SSE_QUEUE_LIMIT } from './api.constants.js';
 import { EntryQueue } from './entry-queue.service.js';
 import { isAfter } from './api.utils.js';
@@ -13,10 +12,9 @@ import { isAfter } from './api.utils.js';
  * `lastEventId` when a client resumes, as one `entry` frame whose `id` is its `seq`. With
  * `answersApprovals`, the client counts as someone who can answer them while it is open, so a
  * request waits for its answer; a client that didn't say so never makes one wait. It ends when the
- * client leaves, or once `isLast` says an entry was the stream's last (a prompt's response ends
- * with its `done`). A stream that starts from now first sends a head frame (see below). A
- * heartbeat comment keeps a quiet stream open through proxies. Disconnecting
- * only ends this subscription: the prompt runs on.
+ * client leaves. A stream that starts from now first sends a head frame (see below). A heartbeat
+ * comment keeps a quiet stream open through proxies. Disconnecting only ends this subscription:
+ * what runs goes on.
  */
 export function streamEntries(params: {
   c: Context;
@@ -24,12 +22,8 @@ export function streamEntries(params: {
   filter: EntryFilter;
   lastEventId?: number | undefined;
   answersApprovals?: boolean;
-  isLast?: (entry: StreamEntry) => boolean;
-  /** Called once the subscription is set up, before any entry is sent (a prompt starts here). */
-  onOpen?: () => void;
 }) {
   const { c, live, filter, lastEventId, answersApprovals = false } = params;
-  const { isLast = () => false, onOpen } = params;
 
   c.header('X-Accel-Buffering', 'no'); // a buffering proxy (nginx) would hold events back
 
@@ -59,12 +53,9 @@ export function streamEntries(params: {
     stream.onAbort(end);
 
     try {
-      onOpen?.();
-
       // A live stream that starts from now says where "now" is, as a frame with an `id` and nothing
       // else (SSE sets the last event id from it), so a client that gets no entry before the
-      // connection drops can still resume after it and not miss what is made meanwhile. It is
-      // written before the loop, so it comes first whatever `onOpen` started.
+      // connection drops can still resume after it and not miss what is made meanwhile.
       if (!filter.replay && lastEventId === undefined && liveFrom > 0) {
         await stream.write(`id: ${String(liveFrom - 1)}\n\n`);
       }
@@ -82,7 +73,6 @@ export function streamEntries(params: {
           id: String(entry.seq),
           data: JSON.stringify(entry),
         });
-        if (isLast(entry)) end();
       }
     } finally {
       clearInterval(heartbeat);

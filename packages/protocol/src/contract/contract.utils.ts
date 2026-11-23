@@ -45,6 +45,7 @@ import {
   queuedPromptsSchema,
   yieldPromptResponseSchema,
   sendPromptRequestSchema,
+  sendPromptResponseSchema,
   serverErrorCodeSchema,
   serverErrorSchema,
   skillsResponseSchema,
@@ -102,6 +103,7 @@ import {
   workspacePermissionsSchema,
 } from '../permission/permission.validator.js';
 import { streamEntrySchema } from '../stream/stream.validator.js';
+import { queueUpdateSchema } from '../queue/queue.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -193,8 +195,10 @@ function contractSchemas(): Record<string, z.ZodType> {
     ConversationDetails: conversationDetailsSchema,
     SwitchModelRequest: switchModelRequestSchema,
     SendPromptRequest: sendPromptRequestSchema,
+    SendPromptResponse: sendPromptResponseSchema,
     YieldPromptResponse: yieldPromptResponseSchema,
     QueuedPrompts: queuedPromptsSchema,
+    QueueUpdate: queueUpdateSchema,
     StreamQuery: streamQuerySchema,
     AnswerApprovalRequest: answerApprovalRequestSchema,
     MessagesResponse: messagesResponseSchema,

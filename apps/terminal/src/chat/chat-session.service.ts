@@ -5,22 +5,26 @@ import type { Palette } from '../theme/theme.types.js';
 import { unknownPromptCommand } from './chat-prompt.helper.js';
 import type { LinkFile } from '../changes/changes.types.js';
 import { describeChanges, describeFailures, describeLatest } from './chat-describe.helper.js';
-import { CHAT_HELP, LINE_COLUMNS, YIELD_REQUEST_MS } from './chat.constants.js';
-import { ChatQueue } from './chat-queue.service.js';
-import type { ChatConversation, Describer, RunState, TurnOutcome } from './chat.types.js';
-import { mainRunState, parseChatInput } from './chat.utils.js';
+import { CHAT_HELP, LINE_COLUMNS } from './chat.constants.js';
+import type { ChatConversation, ChatRun, Describer, RunState, TurnOutcome } from './chat.types.js';
+import { failedRunMessage, mainRunStart, mainRunState, parseChatInput } from './chat.utils.js';
 import type { StopResult } from '../interrupt/interrupt.types.js';
-import { describeFailure } from '../render/terminal-text.utils.js';
+import { describeFailure, plainTerminalText } from '../render/terminal-text.utils.js';
 import { runEffortCommand, runModelCommand } from './chat-model.helper.js';
+import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 
+/** The main run going, as the stream told it, and whether the user asked to stop it. */
+type HeardRun = ChatRun & { stopAsked: boolean };
+
 /**
  * The chat's logic, apart from how a person types to it or sees it: lines go in (`submit`), the
- * conversation's output comes out through `write`. Input entered during a run waits its turn
- * in `onQueue` and is never delivered to the active run, which is only asked to yield at its
- * completion point rather than wait for background work. A UI decides what a key does (Ctrl+C
- * is `stop`) and what to show; this only does it.
+ * conversation's output comes out through `write`. The backend owns whether the conversation is
+ * busy: a prompt is sent at once and the backend starts it or keeps it in its own queue, and
+ * everything shown (the echo, the run's output, the queue, its end) comes from the conversation's
+ * stream through `hear`. A UI decides what a key does (Ctrl+C is `stop`) and what to show; this
+ * only does it.
  *
  * The chat's commands (`/help`, `/model`, `/exit`) and skills (`/<name>`) are read here, so every
  * UI that has a text box treats them the same.
@@ -30,7 +34,7 @@ export class ChatSession {
   readonly #renderer: Renderer;
   readonly #mainSession: string;
   readonly #write: Write;
-  readonly #queue: ChatQueue;
+  readonly #onQueue: (queue: readonly string[]) => void;
   readonly #onBusy: (busy: boolean) => void;
   readonly #onSend: (text: string) => void;
   readonly #onTurnEnd: (outcome: TurnOutcome) => void;
@@ -43,22 +47,27 @@ export class ChatSession {
   readonly #onRunState: (state: RunState) => void;
   #reportedTools: readonly RunningTool[];
   #reportedThinking = false;
-  #current: AbortController | undefined;
-  /** Whether the running prompt's stream has started, so the backend is running it. */
-  #streamOpen = false;
-  /** Settles when every yield request sent so far has been answered. */
-  #yielding: Promise<void> = Promise.resolve();
-  /** The newest entry shown: a prompt's stream and the live feed overlap, so each shows an entry once. */
-  #shownSeq = -1;
-  /** A run the backend started itself is going, as the live feed tells: Ctrl+C then stops it. */
-  #wakeLive = false;
-  #draining = false;
-  /** The run is held open on grouped tasks (`await_tasks`): a yield would end the wait. */
-  #heldOnTasks = false;
   /** What the UI was last told, so `onBusy` fires on a change only. */
   #reportedBusy = false;
+  /** The newest entry shown: each entry is shown once. */
+  #shownSeq = -1;
+  /** From the main run's start on the stream to its `done`. */
+  #run: HeardRun | undefined;
+  /** The backend's queue, as its newest `queue` entry (or the read at start) said. */
+  #queued: readonly string[] = [];
+  /** The seq of the newest line the backend started or refused from its queue. */
+  #lastQueueStep = -1;
+  /**
+   * The newest seq shown when the backend last accepted a line: that line's run is owed until a
+   * line has started after it and none waits, as the stream and the answer race each other.
+   */
+  #owedAfter: number | undefined;
+  /** Lines typed and not yet handled; they are handled one at a time, in the order typed. */
+  #handling = 0;
+  #work: Promise<void> = Promise.resolve();
+  #idleWaiters: (() => void)[] = [];
   #ended = false;
-  #idle: Promise<void> = Promise.resolve();
+  #dropping: Promise<void> | undefined;
 
   constructor(params: {
     conversation: ChatConversation;
@@ -66,13 +75,13 @@ export class ChatSession {
     /** The id of the conversation's main session: only its events are shown. */
     mainSession: string;
     write: Write;
-    /** Told whenever the lines waiting their turn change. */
+    /** Told whenever the backend's queue of waiting lines changes. */
     onQueue?: (queue: readonly string[]) => void;
-    /** Told when the chat starts running lines, and when it has run them all. */
+    /** Told when a main run starts, the user's or the backend's own, and when it ends. */
     onBusy?: (busy: boolean) => void;
-    /** Told when a message starts running (not when it is queued), so a UI can show it. */
+    /** Told when the backend starts a line the user sent (not when it is queued), to show it. */
     onSend?: (text: string) => void;
-    /** Told when a message has run to its end, after all its output was written. */
+    /** Told when the user's line has run to its end, after all its output was written. */
     onTurnEnd?: (outcome: TurnOutcome) => void;
     /** After all output, only for a backend-confirmed completed prompt, never errors or stops. */
     onReplyComplete?: () => void;
@@ -84,7 +93,7 @@ export class ChatSession {
     onThinking?: (thinking: boolean) => void;
     /**
      * Told when the main run says it works, or is held open waiting on this many grouped tasks
-     * (0 when only ungrouped tasks or services remain, so a follow-up can be sent).
+     * (0 when only ungrouped tasks or services remain).
      */
     onRunState?: (state: RunState) => void;
     /** Usage entries from every session, including sub-agents; seq allows replay deduplication. */
@@ -101,7 +110,7 @@ export class ChatSession {
     this.#reportedTools = params.renderer.running;
     this.#mainSession = params.mainSession;
     this.#write = params.write;
-    this.#queue = new ChatQueue(params.onQueue ?? (() => undefined));
+    this.#onQueue = params.onQueue ?? (() => undefined);
     this.#onBusy = params.onBusy ?? (() => undefined);
     this.#onSend = params.onSend ?? (() => undefined);
     this.#onTurnEnd = params.onTurnEnd ?? (() => undefined);
@@ -119,22 +128,26 @@ export class ChatSession {
     };
   }
 
-  /** Whether a line is being run now. */
-  get busy(): boolean {
-    return this.#draining;
-  }
-
-  /** Pending input, oldest first, outside the conversation's history until it runs. */
+  /** The lines waiting in the backend's queue, oldest first, as its stream last said. */
   get queued(): readonly string[] {
-    return this.#queue.queued;
+    return this.#queued;
   }
 
-  /** Queues input to run after the active prompt, which is asked to yield, not interrupted. */
+  /**
+   * Handles a line after the ones typed before it: a chat command runs here at once, even while a
+   * run goes; a prompt is sent to the backend, which starts it or queues it.
+   */
   submit(line: string): void {
     if (this.#ended) return;
-    this.#queue.push(line);
-    if (this.#draining) this.#requestYield();
-    else this.#idle = this.#drain();
+    this.#handling += 1;
+    this.#work = this.#work.then(async () => {
+      try {
+        await this.#handle(line);
+      } finally {
+        this.#handling -= 1;
+        this.#settle();
+      }
+    });
   }
 
   /** What `/changes <target>` says: the files changed in this chat, or the diffs `target` names. */
@@ -152,79 +165,107 @@ export class ChatSession {
     return describeLatest(this.#describer);
   }
 
-  /** Resolves when nothing runs and nothing waits. */
+  /**
+   * Resolves when no line typed is still being handled, no main run goes, and every line the
+   * backend accepted from this chat has run or been refused.
+   */
   idle(): Promise<void> {
-    return this.#idle;
+    return new Promise((resolve) => {
+      this.#idleWaiters.push(resolve);
+      this.#settle();
+    });
   }
 
   /**
-   * Stops the running prompt; its history stays valid and the next line continues from it. Lines
-   * waiting still run after it: stopping a prompt is not leaving.
+   * Stops the main run going, the user's or the backend's own; its history stays valid. Lines
+   * waiting stay in the backend's queue and run after it: stopping a prompt is not leaving.
    */
   stop(): StopResult {
-    if (!this.#current && this.#wakeLive) {
-      void this.#conversation.stop?.();
+    const run = this.#run;
 
-      return 'stopped';
-    }
-
-    if (!this.#current) return 'idle';
-    if (this.#current.signal.aborted) return 'stopping';
-    this.#current.abort();
+    if (!run) return 'idle';
+    if (run.stopAsked) return 'stopping';
+    run.stopAsked = true;
+    this.#conversation
+      .stop()
+      .catch((caughtError: unknown) =>
+        this.#print(`✗ Could not stop the run: ${describeFailure(caughtError)}`),
+      );
 
     return 'stopped';
   }
 
   /**
-   * Shows lines kept from an earlier run as waiting, without running them: reopening a
-   * conversation never sends pending input by itself. They run when the user next submits a line.
+   * Shows the lines the backend kept from an earlier run, read at start: they wait without
+   * running until the user sends the next line, as reopening never sends pending input.
    */
   restoreQueued(lines: readonly string[]): void {
-    this.#queue.restore(lines);
+    this.#showQueue(lines);
   }
 
-  /** Drops the lines waiting, which a user who is leaving does not want sent. */
-  dropQueued(): void {
-    this.#queue.drop();
+  /** Drops the backend's waiting lines, which a user who is leaving does not want sent; once. */
+  dropQueued(): Promise<void> {
+    this.#dropping ??= this.#conversation
+      .setQueue([])
+      .catch((caughtError: unknown) =>
+        this.#print(`✗ Could not drop the queued lines: ${describeFailure(caughtError)}`),
+      );
+
+    return this.#dropping;
   }
 
-  async #drain(): Promise<void> {
-    this.#draining = true;
-    this.#reportBusy();
+  /**
+   * Shows one entry of the conversation's stream, once by seq, and follows the main run's start
+   * and end, the backend's queue and the live state (tools, thinking, run state) from it.
+   */
+  hear(entry: StreamEntry): void {
+    if (entry.seq <= this.#shownSeq) return;
+    this.#shownSeq = entry.seq;
 
-    try {
-      while (true) {
-        const line = this.#queue.take();
+    if (entry.kind === 'queue') this.#hearQueue({ update: entry.update, seq: entry.seq });
 
-        if (line === undefined) break;
-        if (!(await this.#handle(line))) break;
-      }
-    } finally {
-      this.#draining = false;
-      this.#reportBusy();
-    }
+    const start = mainRunStart({ entry, mainSession: this.#mainSession });
+
+    if (start) this.#startRun(start);
+    if (entry.kind === 'event' && entry.event.type === 'usage') this.#onUsage(entry);
+
+    const runState = mainRunState({ entry, mainSession: this.#mainSession });
+
+    if (runState) this.#onRunState(runState);
+    this.#renderer.entry(entry, this.#mainSession);
+
+    const message = failedRunMessage({ entry, mainSession: this.#mainSession });
+
+    if (message) this.#print(`  message ${message}`);
+    this.#reportLiveState();
+
+    const outcome = runEnd(entry);
+
+    if (outcome) this.#endRun(outcome);
+    this.#settle();
   }
 
-  /** Busy while lines run or a run the backend started itself goes; told once per change. */
-  #reportBusy(): void {
-    const busy = this.#draining || this.#wakeLive;
-
-    if (busy === this.#reportedBusy) return;
-    this.#reportedBusy = busy;
-    this.#onBusy(busy);
+  /** The stream is lost for good: a run still going ended without its `done`, so it failed. */
+  lostStream(caughtError: unknown): void {
+    this.#print(`✗ lost the live stream: ${describeFailure(caughtError)}`);
+    if (this.#run) this.#endRun('failed');
+    // Nothing more will be heard, so nothing the backend owes can arrive.
+    this.#owedAfter = undefined;
+    this.#settle();
   }
 
-  /** Handles one line; false once the user asked to leave. */
-  async #handle(line: string): Promise<boolean> {
+  async #handle(line: string): Promise<void> {
+    // A line typed after `/exit` is dropped with what waited.
+    if (this.#ended) return;
+
     const parsed = parseChatInput(line);
 
     switch (parsed.kind) {
       case 'exit':
         this.#ended = true;
-        this.dropQueued();
+        void this.dropQueued();
         this.#onExit();
-
-        return false;
+        break;
       case 'help':
         this.#print(CHAT_HELP);
         break;
@@ -248,175 +289,120 @@ export class ChatSession {
         );
         break;
       case 'prompt':
-        await this.#send(parsed.text);
+        await this.#printCommand(() => this.#sendPrompt(parsed.text));
         break;
       case 'empty':
         break;
     }
-
-    return true;
   }
 
   #print(text: string): void {
     this.#write(`${text}\n`);
   }
 
-  async #printCommand(run: () => Promise<string>): Promise<void> {
+  async #printCommand(run: () => Promise<string | undefined>): Promise<void> {
     try {
-      this.#print(await run());
+      const said = await run();
+
+      if (said !== undefined) this.#print(said);
     } catch (caughtError) {
       this.#print(`✗ ${describeFailure(caughtError)}`);
     }
   }
 
   /**
-   * Runs one message to its end, printing its entries; a failure is shown, and the chat goes on.
-   * Skills it mentions (`/<name>` anywhere in it) run with it; one it starts with that no skill
-   * has is an unknown command, reported instead of sent.
+   * Sends a message, which runs any skills it mentions (`/<name>` anywhere in it); one it starts
+   * with that no skill has is an unknown command, reported instead of sent. What it does is heard
+   * on the stream; what is returned is printed.
    */
-  async #send(text: string): Promise<void> {
-    const current = new AbortController();
+  async #sendPrompt(text: string): Promise<string | undefined> {
+    const unknown = await unknownPromptCommand({ text, conversation: this.#conversation });
 
-    let outcome: TurnOutcome = 'completed';
+    if (unknown) return `Unknown command /${unknown}; /help lists them.`;
 
-    // Set first so Ctrl+C works while waiting: a yield still in flight for the previous prompt
-    // must land before this one starts, or it would end this prompt early instead.
-    this.#current = current;
-    // The user's prompt ends any wake (the backend settles it), so Ctrl+C is the prompt's now.
-    this.#wakeLive = false;
-    await Promise.race([
-      this.#yielding,
-      new Promise((resolve) => current.signal.addEventListener('abort', resolve, { once: true })),
-    ]);
+    const sentAfter = this.#shownSeq;
 
-    try {
-      // Stopped while waiting for a yield answer: the prompt never reaches the backend, so it is
-      // not shown as sent either.
-      if (current.signal.aborted) {
-        this.#onTurnEnd('interrupted');
+    await this.#conversation.submit(text);
+    this.#owedAfter = sentAfter;
 
-        return;
-      }
-
-      this.#onSend(text);
-
-      const unknown = await unknownPromptCommand({ text, conversation: this.#conversation });
-
-      if (unknown) {
-        this.#print(`Unknown command /${unknown}; /help lists them.`);
-        this.#onTurnEnd(outcome);
-
-        return;
-      }
-
-      outcome = await this.#showEntries({ text, signal: current.signal });
-    } catch (caughtError) {
-      outcome = 'failed';
-      this.#write(`\n✗ ${describeFailure(caughtError)}\n`);
-    } finally {
-      this.#current = undefined;
-      this.#streamOpen = false;
-      this.#heldOnTasks = false;
-      // A failure or a stop can end the stream without the result of a call that was running.
-      this.#renderer.clearRunning();
-      this.#reportLiveState();
-    }
-
-    this.#write('\n');
-    if (outcome === 'completed' && !current.signal.aborted) this.#onReplyComplete();
-    this.#onTurnEnd(outcome);
+    return undefined;
   }
 
-  /**
-   * Shows an entry the backend sent outside any prompt of this chat: the run it starts itself when
-   * background work finishes while the chat is idle. Entries a prompt's own stream already
-   * showed are skipped.
-   */
-  hear(entry: StreamEntry): void {
-    // An entry a prompt's own stream showed arrives here again from the live feed: it says nothing
-    // new about a run, so it must not start or end a wake.
-    const fresh = this.#show(entry);
+  /** The backend's queue changed: shown as it is now, and a line it could not start is said. */
+  #hearQueue(params: { update: QueueUpdate; seq: number }): void {
+    const { update, seq } = params;
 
-    if (!fresh || entry.sessionId !== this.#mainSession || this.#current) return;
+    this.#showQueue(update.queued);
 
-    const ended = runEnd(entry) !== undefined;
+    if (update.type === 'queue_changed') {
+      // Only a client empties the queue this way (the backend takes lines with `prompt_started`):
+      // the lines this chat sent were taken out, so none of them is owed any more.
+      const emptied = update.queued.length === 0 && seq > (this.#owedAfter ?? seq);
 
-    if (entry.kind === 'event' || ended) this.#wakeLive = !ended;
+      if (emptied) this.#owedAfter = undefined;
 
-    // No prompt of this chat carries a wake run, so its start and end are told here.
+      return;
+    }
+
+    this.#lastQueueStep = seq;
+
+    if (update.type === 'prompt_refused') {
+      this.#print(`✗ ${plainTerminalText(update.text)}: ${plainTerminalText(update.error)}`);
+    }
+  }
+
+  #showQueue(queued: readonly string[]): void {
+    this.#queued = [...queued];
+    this.#onQueue(this.#queued);
+  }
+
+  /** A run's start; a line's `prompt_started` after its resume makes the run going the user's. */
+  #startRun(start: ChatRun): void {
+    const going = this.#run;
+
+    if (going && (going.owner === 'user' || start.owner === 'backend')) return;
+    this.#run = { ...start, stopAsked: going?.stopAsked ?? false };
+    if (start.owner === 'user') this.#onSend(start.text);
     this.#reportBusy();
+  }
 
-    if (!ended) return;
+  /** The main run's end: a user's line ends its turn, and a completed one that was not stopped is a reply. */
+  #endRun(outcome: TurnOutcome): void {
+    const run = this.#run;
 
+    this.#run = undefined;
     // A stopped or failed run can end without the result of a call that was running.
     this.#renderer.clearRunning();
     this.#reportLiveState();
-  }
 
-  /** Shows an entry once by seq; false when it was shown already. */
-  #show(entry: StreamEntry): boolean {
-    if (entry.seq <= this.#shownSeq) return false;
-    this.#shownSeq = entry.seq;
-
-    if (entry.kind === 'event' && entry.event.type === 'usage') this.#onUsage(entry);
-
-    const run = mainRunState({ entry, mainSession: this.#mainSession });
-
-    if (run) this.#followRunState(run);
-
-    this.#renderer.entry(entry, this.#mainSession);
-    this.#reportLiveState();
-
-    return true;
-  }
-
-  /** Prints a message's entries as they stream, telling the UI when the running tools or thinking change. */
-  async #showEntries(params: { text: string; signal: AbortSignal }): Promise<TurnOutcome> {
-    let outcome: TurnOutcome | undefined;
-
-    for await (const entry of this.#conversation.send(params)) {
-      if (!this.#streamOpen) {
-        this.#streamOpen = true;
-        if (this.#queue.queued.length > 0) this.#requestYield();
-      }
-
-      this.#show(entry);
-
-      outcome = runEnd(entry) ?? outcome;
+    if (run?.owner === 'user') {
+      this.#write('\n');
+      if (outcome === 'completed' && !run.stopAsked) this.#onReplyComplete();
+      this.#onTurnEnd(outcome);
     }
 
-    // A stream that closes without the main run's `done` did not finish its run: the user's stop
-    // cut it short, or the connection went.
-    return outcome ?? (params.signal.aborted ? 'interrupted' : 'failed');
+    this.#reportBusy();
   }
 
-  /**
-   * Asks the running prompt to end at its completion point so queued input is not stuck behind
-   * background work. Only an open stream is asked: before it, the backend may not be running the
-   * prompt yet and would refuse, so `#showEntries` asks again at the first entry. A failed
-   * request is shown, not retried: the line still runs when the prompt ends.
-   */
-  #requestYield(): void {
-    // A yield ends the `await_tasks` wait, so a line queued during it waits for the model instead.
-    if (!this.#streamOpen || this.#heldOnTasks) return;
+  /** Resolves the `idle` waiters once nothing is handled, runs, or is owed by the backend. */
+  #settle(): void {
+    if (this.#handling > 0 || this.#run) return;
 
-    const request = this.#conversation.yieldPrompt(AbortSignal.timeout(YIELD_REQUEST_MS)).then(
-      () => undefined,
-      (caughtError: unknown) => {
-        this.#write(`\n✗ Could not ask the agent to yield: ${describeFailure(caughtError)}\n`);
-      },
-    );
+    if (this.#owedAfter !== undefined) {
+      if (this.#lastQueueStep <= this.#owedAfter || this.#queued.length > 0) return;
+      this.#owedAfter = undefined;
+    }
 
-    this.#yielding = Promise.all([this.#yielding, request]).then(() => undefined);
+    for (const resolve of this.#idleWaiters.splice(0)) resolve();
   }
 
-  /** Passes the run state on, and asks for the yield a held run skipped once it works again. */
-  #followRunState(run: RunState): void {
-    const wasHeld = this.#heldOnTasks;
+  /** Tells the UI whether a main run goes, once per change. */
+  #reportBusy(): void {
+    const busy = this.#run !== undefined;
 
-    this.#heldOnTasks = run.state === 'waiting' && run.groupedTasks > 0;
-    this.#onRunState(run);
-    if (wasHeld && !this.#heldOnTasks && this.#queue.queued.length > 0) this.#requestYield();
+    if (busy === this.#reportedBusy) return;
+    this.#reportedBusy = busy;
+    this.#onBusy(busy);
   }
 
   /** Tells the UI the running tools and whether the model thinks, for what changed since. */

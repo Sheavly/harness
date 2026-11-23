@@ -6,6 +6,7 @@ import {
   queuedPromptsSchema,
   yieldPromptResponseSchema,
   sendPromptRequestSchema,
+  sendPromptResponseSchema,
   skillsQuerySchema,
   skillsResponseSchema,
   startConversationRequestSchema,
@@ -122,9 +123,10 @@ export const API_ROUTES = {
     effect: 'change',
     method: 'post',
     path: '/conversations/{id}/prompts',
-    summary: "Send the next prompt; its entries stream back, to the main session's done",
+    summary:
+      "Send the next prompt, answered at once: it starts, or waits in the queue while the conversation is busy; its entries arrive on the conversation's stream",
     body: sendPromptRequestSchema,
-    response: { status: 200, stream: streamEntrySchema },
+    response: { status: 200, schema: sendPromptResponseSchema },
   },
   yieldPrompt: {
     effect: 'change',
@@ -139,7 +141,7 @@ export const API_ROUTES = {
     method: 'get',
     path: '/conversations/{id}/queue',
     summary:
-      'The lines queued behind the running prompt, kept across a restart and never sent by reopening',
+      'The lines waiting to start, kept across a restart; reopening starts none of them until the next line is sent',
     response: { status: 200, schema: queuedPromptsSchema },
   },
   setQueue: {

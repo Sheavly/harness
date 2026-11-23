@@ -14,6 +14,7 @@ import { contextUsageSchema, usageTotalsSchema } from '../usage/usage.validator.
 import {
   MAX_IGNORED_SETTING_FILE_CHARS,
   MAX_IGNORED_SETTINGS,
+  MAX_QUEUED_CHARS,
   MAX_QUEUED_LINE_CHARS,
 } from './server.constants.js';
 
@@ -171,12 +172,28 @@ export const sendPromptRequestSchema = z.xor([
 ]);
 
 /**
- * `GET`/`PUT /conversations/:id/queue`: the lines a person queued while a prompt ran, oldest
- * first. Pending input is kept with the conversation so it survives a restart, but it is outside
- * history, model input and summaries until a UI sends it as a prompt; reopening never sends it.
+ * `GET`/`PUT /conversations/:id/queue`: the lines waiting in a conversation's queue, oldest first.
+ * Pending input is kept with the conversation so it survives a restart, but it is outside history,
+ * model input and summaries until the conversation starts it as a prompt; reopening starts none.
  */
 export const queuedPromptsSchema = z.object({
-  queued: z.array(z.string().min(1).max(MAX_QUEUED_LINE_CHARS)).max(100),
+  queued: z
+    .array(z.string().min(1).max(MAX_QUEUED_LINE_CHARS))
+    .max(100)
+    .refine((lines) => lines.reduce((total, line) => total + line.length, 0) <= MAX_QUEUED_CHARS, {
+      message: `The queued lines may hold ${String(MAX_QUEUED_CHARS)} characters together`,
+    }),
+});
+
+/**
+ * `POST /conversations/:id/prompts`, answered at once: the prompt `started`, or it waits in the
+ * conversation's queue (`queued`) and the conversation starts it when what runs now has ended.
+ * `queued` is the queue after this request. What the prompt does arrives on the conversation's
+ * stream, never in this answer.
+ */
+export const sendPromptResponseSchema = z.object({
+  status: z.enum(['started', 'queued']),
+  queued: queuedPromptsSchema.shape.queued,
 });
 
 /** `POST /conversations/:id/yield`: whether the active, non-stopping run accepted the request. */
@@ -220,6 +237,11 @@ export const serverErrorCodeSchema = z.enum([
   'unauthorized',
   'not_found',
   'session_running',
+  /**
+   * The conversation is busy and this prompt can't wait in its queue: it picks skills as `parts`,
+   * it is longer than a queued line may be, or the queue is full.
+   */
+  'cannot_queue',
   'unknown_skill',
   'unknown_approval',
   'unknown_model',

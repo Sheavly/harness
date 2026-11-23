@@ -291,7 +291,7 @@ operation carries `security: []`:
 | `PUT /conversations/{id}/model`                      | bearer | `SwitchModelRequest`       | nothing (`204`)               |
 | `GET /conversations/{id}/messages`                   | bearer | none                       | `MessagesResponse`            |
 | `QUERY /conversations/{id}/skills`                   | bearer | `SkillsQuery`              | `SkillsResponse`              |
-| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `StreamEntry`s (SSE)          |
+| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `SendPromptResponse`          |
 | `POST /conversations/{id}/yield`                     | bearer | none                       | `YieldPromptResponse`         |
 | `GET /conversations/{id}/queue`                      | bearer | none                       | `QueuedPrompts`               |
 | `PUT /conversations/{id}/queue`                      | bearer | `QueuedPrompts`            | nothing (`204`)               |
@@ -338,6 +338,20 @@ next prompt. Unknown conversation ids use the ordinary `not_found` error.
 
 - A prompt is `text`, as a script types it (`/<name>` mentions in it run those skills), or
   `parts`, as a UI builds it (exactly the skills picked run). Not both.
+- `POST /conversations/:id/prompts` answers at once with `SendPromptResponse`, never with a
+  stream: `{ status: 'started' | 'queued', queued }`. A conversation that is busy (a prompt, or a
+  run it started itself for finished work) keeps the line in its queue and starts it when that
+  run ends, following the flow rules: after the model has finished when the run waits on
+  `await_tasks`, otherwise once the model finishes its turn. What the prompt does arrives on the
+  conversation's stream (`QUERY /conversations/:id/stream`), which a client follows. Only `text`
+  can wait: a `parts` prompt to a busy conversation, a line longer than `MAX_QUEUED_LINE_CHARS`,
+  or one that would take the queue past 100 lines or `MAX_QUEUED_CHARS` (100,000 characters
+  together) is refused with `cannot_queue`; `PUT /queue` takes the same bounds.
+- A `queue` entry on the stream (`QueueUpdate`) carries the whole queue after each change, under
+  the main session: `queue_changed` (a line joined, or a client replaced the lines),
+  `prompt_started` (the line about to run, before its run's entries) and `prompt_refused` (a line
+  that left the queue without starting: its skill is gone, or the conversation can no longer be
+  stored). The newest one says what waits.
 - A normal prompt's user message keeps `content`, what the model saw (with a skill's
   instructions), and may keep `parts`, what the user typed, for a UI to show the skills as chips.
   Providers send only `content`.

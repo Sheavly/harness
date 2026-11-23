@@ -3,7 +3,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { createClient } from '../client/client.helper.js';
 import { RefusedError } from '../errors/client.errors.js';
-import { reconnectingEntries } from '../client/reconnect.helper.js';
+import { followConversation } from '../client/follow.helper.js';
 import type { AgentSession, HeardApproval } from './approvals.types.js';
 
 /**
@@ -79,30 +79,11 @@ export async function watchApprovals(params: {
   signal: AbortSignal;
 }): Promise<{ ended: Promise<void> }> {
   const { client, id, signal, ...handlers } = params;
-  const open = (lastEventId?: number) =>
-    client.open('streamConversation', {
-      id,
-      body: { approvals: true, replay: true },
-      signal,
-      ...(lastEventId !== undefined && { lastEventId }),
-    });
-  // Opened here so the caller knows the backend accepted it; a reconnect opens its own.
-  let first: ReadableStream<Uint8Array> | undefined = await open();
-  const entries = reconnectingEntries({
+  const entries = await followConversation({
+    client,
+    id,
+    body: { approvals: true, replay: true },
     signal,
-    endless: true,
-    ...client.reconnect,
-    open: ({ lastEventId }) => {
-      if (first) {
-        const body = first;
-
-        first = undefined;
-
-        return Promise.resolve(body);
-      }
-
-      return open(lastEventId);
-    },
   });
 
   return { ended: followApprovals({ entries, signal, ...handlers }) };

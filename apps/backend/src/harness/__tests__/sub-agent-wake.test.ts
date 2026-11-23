@@ -2,10 +2,12 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { until } from '@sheavly/testing/wait/until.fake';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { testBackend } from '../../testing/backend.fake.js';
+import { modelRequest } from '../../testing/model-request.fake.js';
 import { seedFakeModel } from '../../testing/seed-model.fake.js';
 import { untilSettled } from '../../testing/settled.fake.js';
 
@@ -18,14 +20,8 @@ describe('sub-agent completion over the terminal prompt stream', () => {
     const requests: string[] = [];
     let parentCalls = 0;
     const fetch: typeof globalThis.fetch = async (input, init) => {
-      const body = JSON.parse(await new Request(input, init).text()) as {
-        input: { role?: string; content?: string | { text: string }[] }[];
-      };
-      const userContent = body.input.find((item) => item.role === 'user')?.content;
-      const task =
-        typeof userContent === 'string'
-          ? userContent
-          : userContent?.map(({ text }) => text).join('');
+      const body = await modelRequest(input, init);
+      const { task } = body;
       const review = [
         { task: 'FIRST_REVIEW_TASK', finish: first, reply: 'First review findings' },
         { task: 'SECOND_REVIEW_TASK', finish: second, reply: 'Second review findings' },
@@ -73,9 +69,10 @@ describe('sub-agent completion over the terminal prompt stream', () => {
       let ended = false;
 
       running = (async () => {
-        for await (const entry of backend.client.stream('sendPrompt', {
+        for await (const entry of promptEntries({
+          client: backend.client,
           id,
-          body: { text: 'Review the branch' },
+          prompt: { text: 'Review the branch' },
         })) {
           entries.push(entry);
         }

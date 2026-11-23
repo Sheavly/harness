@@ -69,7 +69,7 @@ by default and validated by the backend; when connecting to an existing backend,
 | `setup/`        | Guided profile, provider, model and credential setup through the backend's API                                                                                                                                                         |
 | `replay/`       | A stored conversation or workbook run, replayed through the `Renderer` or summarized (`npm run replay`), with no backend or model                                                                                                      |
 | `workbook/`     | The workbook CLI: stored prompts, saved runs, continue, step, diff and checks                                                                                                                                                          |
-| `chat/`         | The chat's logic (`ChatSession`: queue, stop, commands), its line mode, and Tab completion                                                                                                                                             |
+| `chat/`         | The chat's logic (`ChatSession`: what the stream shows, stop, commands), its line mode, and Tab completion                                                                                                                             |
 | `chat.ts`       | The chat CLI: one conversation across prompts                                                                                                                                                                                          |
 | `demo.ts`       | The demo CLI                                                                                                                                                                                                                           |
 | `replay.ts`     | The replay CLI: a stored conversation or run, rendered or summarized                                                                                                                                                                   |
@@ -91,10 +91,13 @@ folder change npm needs. Nothing else is public: the layout check refuses an exp
 The terminal makes no choice about a run: which model, tools and hooks it gets is the backend's
 ([what a run includes](../backend/docs/harness.md)). The terminal decides how to show it.
 
-Messages typed while the agent works wait in a FIFO queue, outside its history and summaries.
-Sending one asks the run to yield at its completion point without cancelling background work,
-except while the agent waits on `await_tasks`, which keeps the line queued until the model has
-finished; queued lines then run in order as ordinary prompts. Plain input reads continuously too.
+The backend owns whether a conversation is busy and its queue. A message is sent at once: the
+backend starts it, or keeps it in the conversation's FIFO queue, outside its history and
+summaries, while a run goes (a prompt, or a run it started itself to deliver finished work). It
+starts the line itself once that run's model has finished (after an `await_tasks` wait too), as
+an ordinary prompt. The chat shows what the conversation's stream says: the queue, the echo of
+a line when it starts, its output and its end. Chat commands run at once. Plain input reads
+continuously too.
 
 Interactive chat uses React and Ink. `SHEAVLY_TUI=classic` selects the previous renderer;
 `SHEAVLY_PLAIN=1` keeps linear input and output. Both interactive renderers share the editor,

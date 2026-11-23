@@ -6,7 +6,6 @@ import { completeChatLine } from './chat.utils.js';
 import type { RemoteConversation } from '../client/conversation.service.js';
 import { interruptOnCtrlC } from '../interrupt/interrupt.helper.js';
 import type { Renderer } from '../render/render.service.js';
-import { describeFailure } from '../render/terminal-text.utils.js';
 
 /**
  * Runs the chat as lines in and lines out, for input that is not a terminal (piped, scripted) and
@@ -90,23 +89,22 @@ export async function runLineChat(params: {
       signal: following.signal,
     });
 
-    void followed.ended.catch((caughtError: unknown) => {
-      write(`✗ lost the live stream: ${describeFailure(caughtError)}\n`);
-    });
+    // Every run's output comes through the feed, so losing it ends what was running.
+    void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
 
     if (firstPrompt) session.submit(firstPrompt);
 
     input.setPrompt('› ');
     if (inputOpen) input.prompt();
 
-    // Keep reading during a run: ChatSession decides which lines to forward and which to queue.
+    // Keep reading during a run: commands run at once and prompts go to the backend's queue.
     for (let next = await lines.next(); !next.done && !quitting; next = await lines.next()) {
       session.submit(next.value);
       if (quitting) break;
       if (inputOpen) input.prompt();
     }
 
-    // EOF ends input, not the conversation work already submitted (including queued commands).
+    // EOF ends input, not the lines already sent: the backend runs them, and the chat waits.
     await session.idle();
   } finally {
     ctrlC.dispose();

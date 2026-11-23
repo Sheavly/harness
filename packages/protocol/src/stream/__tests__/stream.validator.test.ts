@@ -162,4 +162,37 @@ describe('streamEntrySchema', () => {
       streamEntrySchema.safeParse({ ...started, update: { type: 'task_paused', task } }).success,
     ).toBe(false);
   });
+
+  it('carries the queue after each change: a line joining, starting, or refused', () => {
+    const entry = { seq: 8, at: 10, sessionId: 'main', kind: 'queue' };
+    const updates = [
+      { type: 'queue_changed', queued: ['first', 'second'] },
+      { type: 'prompt_started', text: 'first', queued: ['second'] },
+      { type: 'prompt_refused', text: 'second', error: 'No skill is called nope', queued: [] },
+    ];
+
+    for (const update of updates) {
+      expect(streamEntrySchema.parse({ ...entry, update })).toEqual({ ...entry, update });
+    }
+  });
+
+  it('rejects a queue update without the queue it leaves, or with an empty line', () => {
+    const entry = { seq: 8, at: 10, sessionId: 'main', kind: 'queue' };
+
+    expect(
+      streamEntrySchema.safeParse({ ...entry, update: { type: 'prompt_started', text: 'hi' } })
+        .success,
+    ).toBe(false);
+    expect(
+      streamEntrySchema.safeParse({ ...entry, update: { type: 'queue_changed', queued: [''] } })
+        .success,
+    ).toBe(false);
+    // A prompt of skills alone writes as nothing, and every follower must still read its start.
+    expect(
+      streamEntrySchema.safeParse({
+        ...entry,
+        update: { type: 'prompt_started', text: '', queued: [] },
+      }).success,
+    ).toBe(true);
+  });
 });

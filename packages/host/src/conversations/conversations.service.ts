@@ -4,7 +4,7 @@ import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { ConversationKeeper } from './keeper.service.js';
 import { InFlight } from './in-flight.service.js';
-import { ConversationQueues } from './queues.service.js';
+import { ConversationInputs } from './inputs.service.js';
 import { readStoredConversation } from './stored-conversation.helper.js';
 import { ModelChanges } from './model-changes.service.js';
 import type {
@@ -14,17 +14,17 @@ import type {
   StartConversationParams,
 } from './conversations.types.js';
 import { announceStorageFailure, refuseWhenStorageFailed, storageOf } from './storage.helper.js';
+
 import { matchesSearch, matchesStored } from './conversations.utils.js';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
-import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
-import { prepareForSend, refuseOverlappingSend, releaseOnAbort } from './prompt.helper.js';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type {
   ConversationDetails,
   ConversationId,
   ConversationSummary,
   SendPromptRequest,
+  SendPromptResponse,
 } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
@@ -45,16 +45,31 @@ export class Conversations {
   readonly #live = new Map<ConversationId, LiveConversation>();
   /** Each live conversation's keeper, when the host has a store. */
   readonly #keepers = new Map<ConversationId, ConversationKeeper>();
-  /** Each conversation's running prompt's stop switch. */
-  readonly #running = new Map<ConversationId, AbortController>();
   readonly #modelChanges = new ModelChanges();
-  readonly #queues: ConversationQueues;
+  /** The prompt each conversation is preparing, and the lines waiting in its queue. */
+  readonly #inputs: ConversationInputs;
   readonly #reopening = new InFlight<ConversationId, ConversationId>();
 
-  constructor(params: { create: CreateConversation; store?: ConversationStore }) {
+  constructor(params: {
+    create: CreateConversation;
+    store?: ConversationStore;
+    /**
+     * Told when a prompt the conversation runs itself (one `submit` started or queued) fails:
+     * clients see it on the stream (`run_failed`), and nothing awaits it, so the app logs it.
+     */
+    onPromptFailure?: (error: unknown) => void;
+  }) {
     this.#create = params.create;
     this.#store = params.store;
-    this.#queues = new ConversationQueues({ store: params.store });
+    this.#inputs = new ConversationInputs({
+      store: params.store,
+      storage: {
+        failed: (id) => this.#storageFailureOf(id) !== undefined,
+        recover: (id) => this.#recoverStorage(id),
+        assertHealthy: (id) => this.#assertStorageHealthy(id),
+      },
+      onPromptFailure: params.onPromptFailure,
+    });
   }
 
   /**
@@ -75,6 +90,7 @@ export class Conversations {
     });
 
     this.#live.set(id, live);
+    this.#inputs.open({ id, live, restored: [] });
     this.#begin({ id, keeper });
 
     return id;
@@ -106,6 +122,9 @@ export class Conversations {
       store: this.#store,
       id,
     });
+    // Parked by the queue: reopening never runs them. A broken file fails the reopen here, before
+    // anything is live, rather than leave a conversation without its queue.
+    const restored = await this.#inputs.stored(id);
     const keeper = this.#keeperFor(id);
     const storage = storageOf({ store: this.#store, keeper, id }).storage;
     const live = await this.#create({
@@ -120,6 +139,7 @@ export class Conversations {
     });
 
     this.#live.set(id, live);
+    this.#inputs.open({ id, live, restored });
     keeper?.begin({ ...stored, status: 'open' });
     keeper?.resumeWith({ logged, messages });
 
@@ -304,44 +324,21 @@ export class Conversations {
     prompt: SendPromptRequest;
     signal?: AbortSignal | undefined;
   }): Promise<SentPrompt> {
-    const { id, prompt, signal } = params;
-    const { conversation, skills } = this.get(id);
+    return this.#inputs.send({ ...params, live: this.get(params.id) });
+  }
 
-    // Awaited only after a failure: an await on a healthy conversation would open a gap before
-    // the stop switch below is registered, and a stop arriving in it would be missed.
-    if (this.#storageFailureOf(id)) await this.#recoverStorage(id);
-
-    this.#assertStorageHealthy(id);
-
-    // A prompt still preparing is in flight too: a second send must not take over its stop switch.
-    if (this.#running.has(id)) refuseOverlappingSend(this.get(id).harness.mainSession.id);
-
-    // Registered before preparing so a stop that arrives meanwhile reaches this prompt; it then
-    // starts already aborted and ends as interrupted.
-    const stop = new AbortController();
-    const stopSignal = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
-
-    this.#running.set(id, stop);
-    // Cleared on a stop too: a caller that never reads the events would leave it for good.
-    const release = releaseOnAbort({ signal: stopSignal, switches: this.#running, id, stop });
-
-    // Nothing iterates `events` when a step throws, so the switch is released here.
-    const { prepared, events } = await prepareForSend({
-      prompt,
-      skills,
-      signal: stopSignal,
-      assertHealthy: () => this.#assertStorageHealthy(id),
-      settleWake: () => conversation.settleWake(),
-      start: (prepared) =>
-        conversation.send(prepared.text, { signal: stopSignal, parts: prepared.parts }),
-      onFailure: release,
-    });
-
-    return {
-      events: this.#untilDone({ release, events }),
-      text: prepared.text,
-      ...(prepared.parts && { parts: prepared.parts }),
-    };
+  /**
+   * Sends the next prompt and answers at once: it starts when nothing runs and nothing waits, or
+   * waits in the conversation's queue, which starts it when what runs has ended. Either way the
+   * conversation reads its run, so its entries reach clients on the stream whoever follows it.
+   * Throws as `send` does for a prompt that starts, and `cannot_queue` for one that must wait but
+   * cannot: one that picks skills as `parts`, one too long for the queue, or a full queue.
+   */
+  async submit(params: {
+    id: ConversationId;
+    prompt: SendPromptRequest;
+  }): Promise<SendPromptResponse> {
+    return this.#inputs.submit({ ...params, live: this.get(params.id) });
   }
 
   /** Asks conversation `id`'s running prompt to end at its completion point; false if none runs. */
@@ -367,7 +364,7 @@ export class Conversations {
   stop(id: ConversationId): void {
     // Also stops a run the conversation started itself, which no `send` owns.
     this.get(id).conversation.stop();
-    this.#running.get(id)?.abort();
+    this.#inputs.stop(id);
   }
 
   /** Answers a waiting approval of conversation `id`; throws for one that isn't waiting. */
@@ -378,20 +375,20 @@ export class Conversations {
   }
 
   /**
-   * The lines queued behind conversation `id`'s running prompt, oldest first. Pending input is
-   * outside history, model input and summaries; with a store it survives a restart, and reopening
-   * a conversation never sends it. `not_found` when the conversation is not live.
+   * The lines waiting in conversation `id`'s queue, oldest first. Pending input is outside
+   * history, model input and summaries; with a store it survives a restart, and reopening a
+   * conversation never sends it. `not_found` when the conversation is not live.
    */
   async queue(id: ConversationId): Promise<string[]> {
     this.get(id);
 
-    return this.#queues.read(id);
+    return this.#inputs.lines(id);
   }
 
-  /** Replaces conversation `id`'s queued lines, whole. */
+  /** Replaces conversation `id`'s queued lines, whole: they start in their new order. */
   async setQueue(params: { id: ConversationId; queued: readonly string[] }): Promise<void> {
     this.get(params.id);
-    await this.#queues.replace(params);
+    await this.#inputs.replace(params);
   }
 
   /** The history so far, valid to continue from. */
@@ -426,8 +423,9 @@ export class Conversations {
     const live = this.get(id);
     const keeper = this.#keepers.get(id);
 
+    // Gone first, so its queue starts nothing more; its lines stay stored with it.
     this.#live.delete(id);
-    this.#running.get(id)?.abort();
+    this.#inputs.close(id);
     await live.conversation.close();
     await live.dispose?.();
     keeper?.keepIndex({ status: 'closed' });
@@ -439,14 +437,5 @@ export class Conversations {
   /** Closes every conversation: for a host shutting down. */
   async closeAll(): Promise<void> {
     await Promise.all([...this.#live.keys()].map((id) => this.close(id)));
-  }
-
-  /** The prompt's events, forgetting its stop switch once it ends, however it ends. */
-  async *#untilDone(params: { release: () => void; events: AsyncIterable<AgentEvent> }) {
-    try {
-      yield* params.events;
-    } finally {
-      params.release();
-    }
   }
 }

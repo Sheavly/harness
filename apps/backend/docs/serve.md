@@ -110,14 +110,15 @@ ID=$(curl -s -X POST -H "authorization: Bearer $T" -H 'content-type: application
 # What the run is: workspace, models, trust.
 curl -s -H "authorization: Bearer $T" $U/conversations/$ID
 
-# Send a prompt; its entries stream back as server-sent events until its `done`.
-curl -N -X POST -H "authorization: Bearer $T" -H 'content-type: application/json' \
-  -d '{"text":"What is in this folder?"}' $U/conversations/$ID/prompts
-
 # Follow the whole conversation from another terminal (QUERY, with a filter body), answering
 # approvals: without a client that says `approvals: true`, an approval is refused at once.
 curl -N -X QUERY -H "authorization: Bearer $T" -H 'content-type: application/json' \
   -d '{"replay":true,"approvals":true}' $U/conversations/$ID/stream
+
+# Send a prompt. It is answered at once ({"status":"started"}, or "queued" behind what runs);
+# what it does comes on the stream above.
+curl -s -X POST -H "authorization: Bearer $T" -H 'content-type: application/json' \
+  -d '{"text":"What is in this folder?"}' $U/conversations/$ID/prompts
 
 # The history, and the skills a prompt can run (all, or those a search matches).
 curl -s -H "authorization: Bearer $T" $U/conversations/$ID/messages

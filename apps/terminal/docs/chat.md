@@ -129,8 +129,8 @@ you` keeps its own words.
   At narrow widths the trailing statistics may be clipped; activity and the stop hint come first.
 - **A failed model run is not a completed reply.** A failed run ends with the main session's
   `done` carrying reason `failed`, after `run_failed`, and the chat reports the message as failed.
-  A stopped message is reported `interrupted`, and a stream that closes with no `done` is `failed`
-  (or `interrupted` when the user had stopped it). Partial text stays visible and the chat remains
+  A stopped message is reported `interrupted`, and a run still going when the conversation's
+  stream is lost for good is `failed`. Partial text stays visible and the chat remains
   available; the original exception is in the backend log.
 - **A complete approval preview must fit.** If the React footer cannot show the command,
   concerns and permission hints together, confirmation is disabled. Enlarge the terminal to
@@ -262,16 +262,21 @@ you` keeps its own words.
   follows a command grant. Built-in approvals have the same behavior; `always_ask` always asks.
 - **Grants are command-only.** The UI shows the base-command scope a grant gives. Different
   programs, Git/GitHub CLI subcommands and npm scripts still need their own approval.
-- **You can type while it works; messages wait their turn.** Input never reaches the running
-  agent: it stays in a first-in, first-out queue shown as `⏳ N queued`, outside the history and
-  summaries. Sending one asks the running prompt to yield at its completion point, so it does not
-  wait for background tasks or sub-agents (those keep running and their results are kept for the
-  next prompt). While the agent waits on `await_tasks`, the line stays queued ("follow-ups are
-  queued") while the grouped tasks run, then runs once the model has finished. Queued lines then run in order as ordinary prompts, ahead of automatic
-  continuation from background completions. Chat commands (`/model`, `/changes`, `/exit`, etc.)
-  keep their place in the queue. The editor takes several lines (`Shift+Enter`), keeps your
-  history (`↑` at the top), completes `/` commands and skills with `Tab`, and folds a large paste
-  into one marker. Steering a running agent is not supported.
+- **You can type while it works; messages wait their turn in the backend's queue.** A message is
+  sent at once, and the backend decides: it starts it, or, while a run goes (a prompt, or a run
+  it started itself to deliver finished background work), keeps it in the conversation's
+  first-in, first-out queue, outside the history and summaries. The chat keeps no queue of its
+  own: it shows the backend's, from the conversation's stream, as `⏳ N queued`. The backend starts
+  a queued line itself once the model has finished its turn, without waiting for background tasks
+  or sub-agents (those keep running and their results are kept for the next prompt). While the
+  agent waits on `await_tasks`, the line stays queued while the grouped tasks run (the status line
+  says "follow-ups are queued" when a line waits), then runs once the model has finished. A line
+  is shown as sent (`›`) when the backend starts it. One the backend refuses (a queue that is
+  full, a line too long to queue, or a queued line that cannot start, such as an unknown skill) is
+  printed as `✗` with why, and the chat goes on. Chat commands (`/model`, `/changes`, `/exit`,
+  etc.) run at once, even while a run goes. The editor takes several lines (`Shift+Enter`), keeps
+  your history (`↑` at the top), completes `/` commands and skills with `Tab`, and folds a large
+  paste into one marker. Steering a running agent is not supported.
 - Finite background commands and sub-agents keep the prompt active until their results arrive.
   Persistent services can outlive it; their completions are reported at the next prompt.
 - A message has no turn limit: the model keeps working until it is done, so Ctrl+C is how you stop
@@ -295,8 +300,8 @@ you` keeps its own words.
   at the start of the line, the chat's commands); press it twice to list them.
 - `/exit`, `/quit` or Ctrl+D (on an empty line) ends the conversation: it stops what it started
   (background commands, sub-agents) and ends the session. `/help` lists this.
-- Plain and piped input keeps reading lines while a prompt runs, queueing lines in order
-  like the interactive editor. End of input waits for pending work to finish.
+- Plain and piped input keeps reading lines while a prompt runs, sending them in order like the
+  interactive editor. End of input waits until every line the backend accepted has run.
 - Closing the terminal window or `kill` (SIGHUP, SIGTERM) closes the conversation and the
   backend too, so its background commands don't outlive the chat. A `kill -9` can't be caught,
   but the backend still stops: its stdin, a pipe from the chat, closes.

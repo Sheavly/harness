@@ -1321,6 +1321,18 @@
             "update": { "$ref": "#/$defs/TaskUpdate" }
           },
           "required": ["seq", "sessionId", "at", "kind", "update"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "sessionId": { "$ref": "#/$defs/SessionId" },
+            "messageId": { "$ref": "#/$defs/ModelId" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "kind": { "type": "string", "const": "queue" },
+            "update": { "$ref": "#/$defs/QueueUpdate" }
+          },
+          "required": ["seq", "sessionId", "at", "kind", "update"]
         }
       ]
     },
@@ -1704,6 +1716,18 @@
         }
       ]
     },
+    "SendPromptResponse": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["started", "queued"] },
+        "queued": {
+          "maxItems": 100,
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+        }
+      },
+      "required": ["status", "queued"]
+    },
     "YieldPromptResponse": {
       "type": "object",
       "properties": { "accepted": { "type": "boolean" } },
@@ -1719,6 +1743,49 @@
         }
       },
       "required": ["queued"]
+    },
+    "QueueUpdate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "queue_changed" },
+            "queued": {
+              "maxItems": 100,
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          },
+          "required": ["type", "queued"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "prompt_started" },
+            "text": { "type": "string" },
+            "queued": {
+              "maxItems": 100,
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          },
+          "required": ["type", "text", "queued"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "prompt_refused" },
+            "text": { "type": "string" },
+            "error": { "type": "string" },
+            "queued": {
+              "maxItems": 100,
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+            }
+          },
+          "required": ["type", "text", "error", "queued"]
+        }
+      ]
     },
     "StreamQuery": {
       "type": "object",
@@ -1757,6 +1824,7 @@
         "unauthorized",
         "not_found",
         "session_running",
+        "cannot_queue",
         "unknown_skill",
         "unknown_approval",
         "unknown_model",

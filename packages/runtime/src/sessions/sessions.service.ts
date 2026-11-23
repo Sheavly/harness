@@ -7,7 +7,7 @@ import { EntryLog } from './entry-log.service.js';
 import { restoreSessions } from './restore.helper.js';
 import { releaseSubtree, subtreeOf } from './release.helper.js';
 import { ReleasedSessions } from './released-sessions.service.js';
-import { lineageIds } from './lineage-ids.helper.js';
+import { lineageIds, lineageOf } from './lineage-ids.helper.js';
 import { missingSession } from './missing-session.helper.js';
 import { readStoredLog } from './stored-log.helper.js';
 import { Inboxes } from './inboxes.service.js';
@@ -36,6 +36,7 @@ import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TaskUpdate } from '@sheavly/protocol/task/task.types';
+import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
 import type { TokenUsage } from '@sheavly/protocol/usage/usage.types';
 import type { EntryFilter, QueuedNotice, SessionMessage, StoredLog } from './sessions.types.js';
 
@@ -355,15 +356,7 @@ export class SessionRegistry {
 
   /** `id` and every ancestor, up to the main session (last). */
   lineage(id: SessionId): SessionInfo[] {
-    const chain: SessionInfo[] = [];
-    let current = this.get(id);
-
-    while (current) {
-      chain.push(current);
-      current = 'parentId' in current ? this.get(current.parentId) : undefined;
-    }
-
-    return chain;
+    return lineageOf({ id, sessions: this.#sessions });
   }
 
   /** Calls `listener` for every update from now on. Returns a function that stops it. */
@@ -430,6 +423,17 @@ export class SessionRegistry {
 
     this.#require(sessionId);
     this.#addEntry((seq) => ({ seq, sessionId, kind: 'task', update }));
+  }
+
+  /**
+   * Adds a change to a conversation's queued lines to the combined stream, under its main session
+   * `sessionId`: in order with the runs, so a line that starts comes before its run's entries.
+   */
+  publishQueue(params: { sessionId: SessionId; update: QueueUpdate }): void {
+    const { sessionId, update } = params;
+
+    this.#require(sessionId);
+    this.#addEntry((seq) => ({ seq, sessionId, kind: 'queue', update }));
   }
 
   /**

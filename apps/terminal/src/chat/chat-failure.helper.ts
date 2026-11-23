@@ -1,4 +1,5 @@
 import { SetupCancelledError } from '../errors/setup.errors.js';
+import { describeFailure } from '../render/terminal-text.utils.js';
 
 /**
  * The message without the user name and password of any URL in it: fetch echoes a BACKEND_URL
@@ -23,12 +24,11 @@ function withoutUrlCredentials(message: string): string {
 }
 
 /**
- * Ends a chat that could not run: the message on stderr, and the exit code (130 for a setup the
+ * Ends a chat that could not run: the failure on stderr, as `describeFailure` says it (its causes
+ * too, so an unreachable backend says why), and the exit code (130 for a setup the
  * user cancelled, 1 for anything else) as the process's exit code, so the process ends by itself.
  */
 export function reportChatFailure(caughtError: unknown): void {
-  const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-
-  console.error(withoutUrlCredentials(message));
+  console.error(withoutUrlCredentials(describeFailure(caughtError)));
   process.exitCode = caughtError instanceof SetupCancelledError ? 130 : 1;
 }

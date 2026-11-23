@@ -1,13 +1,18 @@
 import { watchApprovals } from '@sheavly/client/approvals/approvals.helper';
 import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
 import { createClient } from '@sheavly/client/client/client.helper';
-import { reconnectingEntries } from '@sheavly/client/client/reconnect.helper';
+import { followConversation } from '@sheavly/client/client/follow.helper';
 import { RefusedError } from '@sheavly/client/errors/client.errors';
+import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { ClientHistoryMessage, HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
-import type { ConversationDetails, ConversationId } from '@sheavly/protocol/server/server.types';
+import type {
+  ConversationDetails,
+  ConversationId,
+  SendPromptResponse,
+} from '@sheavly/protocol/server/server.types';
 import { isMainSession } from '@sheavly/protocol/session/session.utils';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
@@ -162,19 +167,21 @@ export class RemoteConversation {
   }
 
   /**
-   * Asks the active prompt to end at its completion point instead of waiting for background
-   * work, so the caller can send the next prompt. Nothing is interrupted or delivered to it.
-   * False means no prompt is running or it is already stopping. Aborting `signal` gives up
-   * waiting for the answer, not the request's effect if the backend already got it.
+   * Sends `text` to the conversation, which starts it at once or keeps it in its own queue behind
+   * what runs (a prompt, or a run it started itself); the answer says which, with the lines
+   * waiting. The run's entries come only on the conversation's stream (`follow`). Throws
+   * `RefusedError` for a send the backend refused (`cannot_queue`, `unknown_skill`, ...).
    */
-  async yieldPrompt(signal?: AbortSignal): Promise<boolean> {
-    return (await this.#client.call('yieldPrompt', { id: this.id, ...(signal && { signal }) }))
-      .accepted;
+  submit(text: string): Promise<SendPromptResponse> {
+    return this.#client.call('sendPrompt', { id: this.id, body: { text } });
   }
 
   /**
-   * Sends `text` and yields its entries, every session's, to the main session's `done`. Aborting
-   * `signal` stops the prompt on the backend; its entries still come, ending with that `done`.
+   * Sends `text` and yields its run's entries, every session's, from its start to the main
+   * session's `done`, whether it started at once or waited in the conversation's queue. Aborting
+   * `signal` stops what the conversation runs on the backend; the entries still come, ending
+   * with that `done`. Throws `BackendError` for a failed main run, `PromptRefusedError` for a
+   * queued line that could not start, and `RefusedError` for a refused send.
    */
   async *send(params: { text: string; signal?: AbortSignal }): AsyncGenerator<StreamEntry> {
     const { text, signal } = params;
@@ -183,9 +190,10 @@ export class RemoteConversation {
     signal?.addEventListener('abort', stop, { once: true });
 
     try {
-      for await (const entry of this.#client.stream('sendPrompt', {
+      for await (const entry of promptEntries({
+        client: this.#client,
         id: this.id,
-        body: { text },
+        prompt: { text },
       })) {
         if (
           entry.kind === 'event' &&
@@ -229,8 +237,9 @@ export class RemoteConversation {
 
   /**
    * Follows the conversation's live stream, every session's entries from now on, so a UI shows
-   * what a run the backend starts itself does (it wakes the idle conversation when background work
-   * finishes). Entries a prompt's own stream carries arrive here too: the caller shows each once.
+   * what every run does: the prompts sent, the lines the backend starts from its queue, and the
+   * runs it starts itself (it wakes the idle conversation when background work finishes). Entries
+   * `send` yields arrive here too: a caller that reads both shows each once, by seq.
    * Resolves once the backend accepted the stream; `ended` resolves when `signal` aborts and
    * rejects when the stream is lost: a dropped or cut stream is reopened after the last entry
    * heard, and `StreamLostError` says when it gave up.
@@ -240,25 +249,11 @@ export class RemoteConversation {
     signal: AbortSignal;
   }): Promise<{ ended: Promise<void> }> {
     const { onEntry, signal } = params;
-    const open = (lastEventId?: number) =>
-      this.#client.open('streamConversation', {
-        id: this.id,
-        body: {},
-        signal,
-        ...(lastEventId !== undefined && { lastEventId }),
-      });
-    let first: ReadableStream<Uint8Array> | undefined = await open();
-    const entries = reconnectingEntries({
+    const entries = await followConversation({
+      client: this.#client,
+      id: this.id,
+      body: {},
       signal,
-      endless: true,
-      ...this.#client.reconnect,
-      open: ({ lastEventId }) => {
-        const body = first;
-
-        first = undefined;
-
-        return body ? Promise.resolve(body) : open(lastEventId);
-      },
     });
     const ended = (async () => {
       for await (const entry of entries) {

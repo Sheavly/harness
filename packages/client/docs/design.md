@@ -14,9 +14,15 @@ const client = createClient({ url, token });
 const { id } = await client.call('startConversation', { body: {} });
 const { skills } = await client.call('querySkills', { id, body: { search: 'review' } });
 
-for await (const entry of client.stream('sendPrompt', { id, body: { text: 'hi' } })) render(entry);
+for await (const entry of promptEntries({ client, id, prompt: { text: 'hi' } })) render(entry);
 ```
 
+- `promptEntries` (`prompt/`): `POST /conversations/:id/prompts` is answered at once, the prompt
+  started or queued, and its run's entries arrive on the conversation's stream. This follows that
+  stream from before the send (`followConversation`) and yields from the prompt's
+  `prompt_started` to its run's end, or throws `PromptRefusedError` for a queued prompt that could
+  not start. A UI that shows every run, its own and the conversation's, follows the stream itself
+  and sends with `call('sendPrompt')`.
 - `call`: a route that answers JSON. The answer is parsed with the route's schema, so ids keep
   their brands, and one off the contract throws `AnswerError`.
 - `send`: a route that answers nothing (`204`).
@@ -110,9 +116,10 @@ first entry misses nothing made meanwhile, once the head has arrived (a drop bef
 reopens with no id). A conversation with no entry yet sends none, which a started conversation
 never is (it has its `session_started`).
 
-What it does not cover: a prompt's response (`sendPrompt`) is not `endless`, so one the backend cut
-for a slow consumer ends without its `done` (the terminal reports that as a failed run). The
-prompt itself keeps running: read the rest from the conversation's stream with `Last-Event-ID`.
+A prompt's run is read from the conversation's stream too (`promptEntries`), so a cut stream is
+reopened after the last entry heard and the run's `done` still arrives. A line a client takes out
+of the queue (`PUT /queue`) gets no `prompt_refused`: `promptEntries` for it waits until its signal
+aborts.
 
 `answerWhileWaiting` (`approvals/`) wraps a call to `answerApproval` and treats `unknown_approval`
 (answered elsewhere, or its call was interrupted) as done: the one place that rule lives.

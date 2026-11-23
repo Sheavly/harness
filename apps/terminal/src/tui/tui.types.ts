@@ -38,6 +38,8 @@ export type StatusInfo = {
   state: 'ready' | 'working' | 'waiting' | 'awaiting_tasks';
   /** Grouped tasks the held run still waits on; only read in `awaiting_tasks`. */
   awaitedTasks?: number;
+  /** Lines waiting in the backend's queue; none when absent. */
+  queued?: number;
   model: string;
   modelEffort?: ModelEffort;
   mode: PermissionMode;

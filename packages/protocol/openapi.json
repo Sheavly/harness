@@ -180,7 +180,7 @@
     "/conversations/{id}/prompts": {
       "post": {
         "operationId": "sendPrompt",
-        "summary": "Send the next prompt; its entries stream back, to the main session's done",
+        "summary": "Send the next prompt, answered at once: it starts, or waits in the queue while the conversation is busy; its entries arrive on the conversation's stream",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -192,9 +192,11 @@
         },
         "responses": {
           "200": {
-            "description": "Server-sent events, one `entry` per stream entry",
+            "description": "Success",
             "content": {
-              "text/event-stream": { "itemSchema": { "$ref": "#/components/schemas/StreamEntry" } }
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SendPromptResponse" }
+              }
             }
           },
           "default": {
@@ -234,7 +236,7 @@
     "/conversations/{id}/queue": {
       "get": {
         "operationId": "getQueue",
-        "summary": "The lines queued behind the running prompt, kept across a restart and never sent by reopening",
+        "summary": "The lines waiting to start, kept across a restart; reopening starts none of them until the next line is sent",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -2444,6 +2446,18 @@
               "update": { "$ref": "#/components/schemas/TaskUpdate" }
             },
             "required": ["seq", "sessionId", "at", "kind", "update"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "sessionId": { "$ref": "#/components/schemas/SessionId" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "kind": { "type": "string", "const": "queue" },
+              "update": { "$ref": "#/components/schemas/QueueUpdate" }
+            },
+            "required": ["seq", "sessionId", "at", "kind", "update"]
           }
         ]
       },
@@ -2858,6 +2872,18 @@
           }
         ]
       },
+      "SendPromptResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["started", "queued"] },
+          "queued": {
+            "maxItems": 100,
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+          }
+        },
+        "required": ["status", "queued"]
+      },
       "YieldPromptResponse": {
         "type": "object",
         "properties": { "accepted": { "type": "boolean" } },
@@ -2873,6 +2899,49 @@
           }
         },
         "required": ["queued"]
+      },
+      "QueueUpdate": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "queue_changed" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["type", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "prompt_started" },
+              "text": { "type": "string" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["type", "text", "queued"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "prompt_refused" },
+              "text": { "type": "string" },
+              "error": { "type": "string" },
+              "queued": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              }
+            },
+            "required": ["type", "text", "error", "queued"]
+          }
+        ]
       },
       "StreamQuery": {
         "type": "object",
@@ -2916,6 +2985,7 @@
           "unauthorized",
           "not_found",
           "session_running",
+          "cannot_queue",
           "unknown_skill",
           "unknown_approval",
           "unknown_model",
