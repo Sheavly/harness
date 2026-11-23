@@ -104,6 +104,7 @@ import {
 } from '../permission/permission.validator.js';
 import { streamEntrySchema } from '../stream/stream.validator.js';
 import { queueUpdateSchema } from '../queue/queue.validator.js';
+import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -179,6 +180,9 @@ function contractSchemas(): Record<string, z.ZodType> {
     TaskStatus: taskStatusSchema,
     TaskInfo: taskInfoSchema,
     TaskUpdate: taskUpdateSchema,
+    NodeId: nodeIdSchema,
+    NodeState: nodeStateSchema,
+    NodeInfo: nodeInfoSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,

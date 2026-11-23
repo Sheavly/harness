@@ -2515,6 +2515,195 @@
           }
         ]
       },
+      "NodeId": { "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+      "NodeState": {
+        "type": "string",
+        "enum": ["running", "idle", "completed", "failed", "cancelled", "lost"]
+      },
+      "NodeInfo": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+                  "kind": { "type": "string", "const": "agent" },
+                  "modelId": { "$ref": "#/components/schemas/ModelId" },
+                  "effort": { "$ref": "#/components/schemas/ModelEffort" },
+                  "lastOutcome": { "$ref": "#/components/schemas/RunOutcome" }
+                },
+                "required": ["id", "title", "state", "startedAt", "kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+                  "command": { "type": "string" },
+                  "description": { "type": "string" },
+                  "reason": { "type": "string" },
+                  "output": { "type": "string" },
+                  "outputLog": {
+                    "type": "object",
+                    "properties": {
+                      "ref": { "$ref": "#/components/schemas/ModelId" },
+                      "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": {
+                        "type": "string",
+                        "enum": ["capturing", "complete", "incomplete"]
+                      },
+                      "reason": { "type": "string" }
+                    },
+                    "required": ["ref", "bytes", "status"]
+                  },
+                  "exitCode": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "error": { "type": "string" },
+                  "kind": { "type": "string", "const": "command" }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "state",
+                  "startedAt",
+                  "command",
+                  "description",
+                  "output",
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/NodeId" },
+                  "parent": { "$ref": "#/components/schemas/NodeId" },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "state": { "$ref": "#/components/schemas/NodeState" },
+                  "status": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+                  },
+                  "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+                  "command": { "type": "string" },
+                  "description": { "type": "string" },
+                  "reason": { "type": "string" },
+                  "output": { "type": "string" },
+                  "outputLog": {
+                    "type": "object",
+                    "properties": {
+                      "ref": { "$ref": "#/components/schemas/ModelId" },
+                      "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                      "status": {
+                        "type": "string",
+                        "enum": ["capturing", "complete", "incomplete"]
+                      },
+                      "reason": { "type": "string" }
+                    },
+                    "required": ["ref", "bytes", "status"]
+                  },
+                  "exitCode": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "error": { "type": "string" },
+                  "kind": { "type": "string", "const": "service" }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "state",
+                  "startedAt",
+                  "command",
+                  "description",
+                  "output",
+                  "kind"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": { "$ref": "#/components/schemas/NodeId" },
+              "parent": { "$ref": "#/components/schemas/NodeId" },
+              "title": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+              },
+              "state": { "$ref": "#/components/schemas/NodeState" },
+              "status": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[^\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]+$"
+              },
+              "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "endedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "spawnedBy": { "$ref": "#/components/schemas/CallId" },
+              "kind": {
+                "type": "string",
+                "maxLength": 257,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*\\.[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "version": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "data": { "$ref": "#/components/schemas/JsonValue" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+            },
+            "required": ["id", "title", "state", "startedAt", "kind", "version", "data", "text"]
+          }
+        ]
+      },
       "ApprovalConcern": {
         "type": "object",
         "properties": { "argument": { "type": "string" }, "reason": { "type": "string" } },

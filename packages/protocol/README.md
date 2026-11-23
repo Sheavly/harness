@@ -19,36 +19,37 @@ routes. Optional `ModelIdentity` metadata keeps the chosen model separate from i
 display name and adapter definition; a model need not have one. Catalogue values
 belong to the backend app; this package defines and validates only their wire shapes.
 
-| Module               | What it holds                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------- |
-| `event/`             | The loop's `AgentEvent`s and the `ToolArtifact` they carry                                   |
-| `session/`           | `SessionRef`, `SessionInfo`, the `SessionUpdate` stream                                      |
-| `stream/`            | `StreamEntry`: every session's events and updates, in one order                              |
-| `approval/`          | `ApprovalRequest`, `ApprovalUpdate`, `ApprovalResponse`                                      |
-| `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream     |
-| `task/`              | Background task states                                                                       |
-| `status/`            | The one status table (session, run, task, turn stop) and `runEnd`: how a run ended           |
-| `message/`           | What a model is sent, and the `PromptPart`s a user typed                                     |
-| `history/`           | `HistoryMessage`: the stored conversation, above message, session and task                   |
-| `skill/`             | `SkillInfo`: a skill as a UI lists it                                                        |
-| `server/`            | The server's requests, responses and `ServerError` codes                                     |
-| `output/`            | `OutputRef`, `OutputLog`: the reference to a command's complete output, and its completeness |
-| `store/`             | `StoredConversation`: a past conversation as the store lists it                              |
-| `model/`             | A model's id, name and file, `AdapterDescription`, and the `KeyCheck` result                 |
-| `setup/`             | `GET /setup` and the profile, model and credential requests of a setup UI                    |
-| `id/`                | `lowercaseUuidSchema`: the shape of every id a file or folder is named by                    |
-| `profile/`           | A profile's identity and model preferences                                                   |
-| `terminal-settings/` | Global terminal preferences, shared by every profile                                         |
-| `usage/`             | Reported per-call token usage, recorded cost estimates and cumulative totals                 |
-| `notice/`            | `HarnessNotice`: model and UI data carried by `harness_notice` events                        |
-| `extension/`         | The envelope fields, name patterns and size caps of an extension's events and notices        |
-| `permission/`        | A folder's command permissions: its mode and the commands the user allowed                   |
-| `time/`              | `timestampSchema`: when something happened, in milliseconds since the epoch                  |
-| `api/`               | `API_ROUTES`: every HTTP route's method, path, schemas and `public` flag; `openApiDocument`  |
-| `contract/`          | `contract.schema.json`, generated from the schemas                                           |
-| `version/`           | `PROTOCOL_VERSION`, the semver functions and `checkProtocolVersion`: which side is older     |
-| `handshake/`         | The nonce, instance id and proof schemas, `handshakeProof` and `verifyHandshakeProof`        |
-| `discovery/`         | `DiscoveryFile`: what a running server writes for local clients, and `peekFormatVersion`     |
+| Module               | What it holds                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `event/`             | The loop's `AgentEvent`s and the `ToolArtifact` they carry                                    |
+| `session/`           | `SessionRef`, `SessionInfo`, the `SessionUpdate` stream                                       |
+| `stream/`            | `StreamEntry`: every session's events and updates, in one order                               |
+| `approval/`          | `ApprovalRequest`, `ApprovalUpdate`, `ApprovalResponse`                                       |
+| `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream      |
+| `node/`              | `NodeInfo`: one unit of work of any kind (agent, command, service, extension kind), its state |
+| `task/`              | Background task states                                                                        |
+| `status/`            | The one status table (session, run, task, turn stop) and `runEnd`: how a run ended            |
+| `message/`           | What a model is sent, and the `PromptPart`s a user typed                                      |
+| `history/`           | `HistoryMessage`: the stored conversation, above message, session and task                    |
+| `skill/`             | `SkillInfo`: a skill as a UI lists it                                                         |
+| `server/`            | The server's requests, responses and `ServerError` codes                                      |
+| `output/`            | `OutputRef`, `OutputLog`: the reference to a command's complete output, and its completeness  |
+| `store/`             | `StoredConversation`: a past conversation as the store lists it                               |
+| `model/`             | A model's id, name and file, `AdapterDescription`, and the `KeyCheck` result                  |
+| `setup/`             | `GET /setup` and the profile, model and credential requests of a setup UI                     |
+| `id/`                | `lowercaseUuidSchema`: the shape of every id a file or folder is named by                     |
+| `profile/`           | A profile's identity and model preferences                                                    |
+| `terminal-settings/` | Global terminal preferences, shared by every profile                                          |
+| `usage/`             | Reported per-call token usage, recorded cost estimates and cumulative totals                  |
+| `notice/`            | `HarnessNotice`: model and UI data carried by `harness_notice` events                         |
+| `extension/`         | The envelope fields, name patterns and size caps of an extension's events and notices         |
+| `permission/`        | A folder's command permissions: its mode and the commands the user allowed                    |
+| `time/`              | `timestampSchema`: when something happened, in milliseconds since the epoch                   |
+| `api/`               | `API_ROUTES`: every HTTP route's method, path, schemas and `public` flag; `openApiDocument`   |
+| `contract/`          | `contract.schema.json`, generated from the schemas                                            |
+| `version/`           | `PROTOCOL_VERSION`, the semver functions and `checkProtocolVersion`: which side is older      |
+| `handshake/`         | The nonce, instance id and proof schemas, `handshakeProof` and `verifyHandshakeProof`         |
+| `discovery/`         | `DiscoveryFile`: what a running server writes for local clients, and `peekFormatVersion`      |
 
 Conversation details keep `contextUsage` separate from cumulative `usage`: the latest main-session
 measurement (`used`), active window (`window`) and snapshot position (`throughSeq`). Unknown

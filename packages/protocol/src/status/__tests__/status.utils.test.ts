@@ -4,6 +4,7 @@ import { turnStopReasonSchema } from '../../message/message.validator.js';
 import { runOutcomeSchema, sessionStateSchema } from '../../session/session.validator.js';
 import { taskStatusSchema } from '../../task/task.validator.js';
 import {
+  NODE_STATE_OF_OUTCOME,
   NODE_STATES,
   RUN_OUTCOMES,
   SESSION_STATES,
@@ -95,6 +96,28 @@ describe('the status table', () => {
     expect(canTransition({ machine: 'session', from: 'idle', to: 'running' })).toBe(true);
     expect(canTransition({ machine: 'session', from: 'completed', to: 'running' })).toBe(false);
     expect(canTransition({ machine: 'task', from: 'completed', to: 'failed' })).toBe(false);
+  });
+});
+
+describe('the node state of a run outcome', () => {
+  it('has an entry for every run outcome and only those', () => {
+    expect(Object.keys(NODE_STATE_OF_OUTCOME)).toEqual([...RUN_OUTCOMES]);
+  });
+
+  it.each(RUN_OUTCOMES.map((outcome) => [outcome, NODE_STATE_OF_OUTCOME[outcome]] as const))(
+    'a run that ended %s makes the node %s, a state a node ends in and never lost',
+    (_outcome, state) => {
+      expect(NODE_STATES).toContain(state);
+      expect(STATUS_TABLE.node[state]).toHaveLength(0);
+      expect(state).not.toBe('lost');
+    },
+  );
+
+  it('keeps the three limits apart from success: each is failed, not completed', () => {
+    expect(NODE_STATE_OF_OUTCOME.max_turns).toBe('failed');
+    expect(NODE_STATE_OF_OUTCOME.max_tokens).toBe('failed');
+    expect(NODE_STATE_OF_OUTCOME.context_window_exceeded).toBe('failed');
+    expect(NODE_STATE_OF_OUTCOME.interrupted).toBe('cancelled');
   });
 });
 

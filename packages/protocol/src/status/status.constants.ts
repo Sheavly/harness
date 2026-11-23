@@ -34,6 +34,21 @@ export const TASK_STATUSES = ['running', 'completed', 'failed', 'cancelled'] as 
  */
 export const NODE_STATES = ['running', 'idle', 'completed', 'failed', 'cancelled', 'lost'] as const;
 
+/**
+ * The terminal node state an agent's run outcome becomes. `interrupted` is `cancelled`, and the
+ * three limits are `failed`, with the limit kept as the outcome: the work did not finish, and a
+ * parent reading the state must not mistake it for success. A command's end needs no table: its
+ * exit code is the detail, and its state is `completed`, `failed` or `cancelled` as a task's is.
+ */
+export const NODE_STATE_OF_OUTCOME = {
+  completed: 'completed',
+  interrupted: 'cancelled',
+  max_turns: 'failed',
+  max_tokens: 'failed',
+  context_window_exceeded: 'failed',
+  failed: 'failed',
+} as const satisfies Record<(typeof RUN_OUTCOMES)[number], 'completed' | 'failed' | 'cancelled'>;
+
 /** Why one turn ended: the model's reason, or `interrupted` when the run's signal aborted. */
 export const TURN_STOP_REASONS = [
   'end_turn',
