@@ -1,3 +1,4 @@
+import { MAX_TREE_NODES } from '@sheavly/protocol/node/node.constants';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
 import { describe, expect, it } from 'vitest';
 import { NodeRegistry } from '../node-registry.service.js';
@@ -149,6 +150,42 @@ describe('releasing finished nodes', () => {
       () => registry.open({ kind: 'command', parent: sub.id, title: 'orphan' }),
       'node_released',
     );
+  });
+});
+
+describe('how many nodes a registry holds', () => {
+  it('refuses one past the bound the tree’s snapshot holds, and takes another once one is released', () => {
+    const registry = new NodeRegistry();
+    const first = registry.open({ kind: 'command', title: 'first' });
+
+    for (let held = 1; held < MAX_TREE_NODES; held++) {
+      registry.open({ kind: 'command', title: 'more' });
+    }
+
+    refuses(() => registry.open({ kind: 'command', title: 'one too many' }), 'too_many_nodes');
+    expect(registry.list()).toHaveLength(MAX_TREE_NODES);
+
+    registry.endWork({ id: first.id, state: 'completed' });
+    registry.release(first.id);
+
+    expect(registry.open({ kind: 'command', title: 'room again' }).title).toBe('room again');
+    expect(registry.list()).toHaveLength(MAX_TREE_NODES);
+  });
+
+  it('counts the nodes put back from a stored conversation too', () => {
+    const registry = new NodeRegistry();
+
+    for (let held = 0; held < MAX_TREE_NODES; held++) {
+      registry.restore({
+        kind: 'command',
+        title: 'old',
+        startedAt: 1,
+        state: 'completed',
+        endedAt: 2,
+      });
+    }
+
+    refuses(() => registry.open({ kind: 'command', title: 'new' }), 'too_many_nodes');
   });
 });
 

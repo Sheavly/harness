@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { now } from '@sheavly/core/clock/clock.helper';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
-import { MAX_NODE_STATUS_CHARS, MAX_NODE_TITLE_CHARS } from '@sheavly/protocol/node/node.constants';
+import {
+  MAX_NODE_STATUS_CHARS,
+  MAX_NODE_TITLE_CHARS,
+  MAX_TREE_NODES,
+} from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { isConsistentNode } from '@sheavly/protocol/node/node.utils';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
@@ -246,6 +250,15 @@ export class NodeRegistry {
         : oneLineOf({ text: params.status, max: MAX_NODE_STATUS_CHARS });
 
     if (parent !== undefined) this.#require(parent);
+
+    // The tree's snapshot holds every node, so a conversation holds at most that many, ended ones
+    // included: finished work is released at the turn boundary, which makes room.
+    if (this.#nodes.size >= MAX_TREE_NODES) {
+      throw new NodeError({
+        reason: 'too_many_nodes',
+        message: `${String(MAX_TREE_NODES)} nodes are already held; release finished ones first`,
+      });
+    }
 
     const node: NodeRecord = {
       id: nodeIdSchema.parse(randomUUID()),
