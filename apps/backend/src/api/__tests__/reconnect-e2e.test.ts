@@ -23,6 +23,20 @@ const asks = () => [
   { type: 'done' as const, stopReason: 'tool_use' as const },
 ];
 
+/**
+ * The two updates one approval makes, in order, with the id the registry issued: its ids are
+ * random, so the test reads it from the request it heard. Empty when none was heard, so a missing
+ * or repeated update fails the comparison.
+ */
+function askedThenResolved(heard: readonly string[]): string[] {
+  const [asked] = heard;
+  const id = asked?.startsWith('approval_requested:')
+    ? asked.slice('approval_requested:'.length)
+    : '';
+
+  return id === '' ? [] : [`approval_requested:${id}`, `approval_resolved:${id}`];
+}
+
 /** A TCP proxy to `port` that can cut every connection through it, as a flaky network does. */
 async function proxyTo(port: number) {
   const sockets = new Set<net.Socket>();
@@ -178,7 +192,7 @@ describe('a client over a connection that drops', () => {
       for await (const _entry of promptEntries({ client: direct, id, prompt: { text: 'go' } }));
 
       await vi.waitFor(() => {
-        expect(heard).toContain('approval_resolved:a1');
+        expect(heard.some((each) => each.startsWith('approval_resolved:'))).toBe(true);
       });
       stop.abort();
       await ended;
@@ -195,7 +209,7 @@ describe('a client over a connection that drops', () => {
     await run();
 
     // Each update once, in order, although the stream was cut between the two.
-    expect(heard).toEqual(['approval_requested:a1', 'approval_resolved:a1']);
+    expect(heard).toEqual(askedThenResolved(heard));
     expect(proxy.connections()).toBeGreaterThanOrEqual(2);
 
     const history = await direct.call('getMessages', { id });
@@ -219,7 +233,7 @@ describe('a client over a connection that drops', () => {
 
     await run();
 
-    expect(heard).toEqual(['approval_requested:a1', 'approval_resolved:a1']);
+    expect(heard).toEqual(askedThenResolved(heard));
   });
 
   it('cuts a consumer that does not read, and a client that resumes gets every entry once', async () => {

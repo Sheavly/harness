@@ -19,13 +19,15 @@ export class ApprovalListenerError extends Error {
 }
 
 /** Why an approval couldn't be asked for or answered. */
-type ApprovalRequestReason = 'no_listener' | 'unknown_id' | 'not_offered' | 'session_ended';
+type ApprovalRequestReason =
+  'no_listener' | 'unknown_id' | 'not_offered' | 'session_ended' | 'too_many_pending';
 
 /**
  * An approval can't go ahead: nobody is listening to ask (`no_listener`, so the call fails
  * closed), an answer names a request that isn't waiting (`unknown_id`), it gives a decision
- * the request didn't offer (`not_offered`; the request keeps waiting), or the session that asked
- * ended while it waited (`session_ended`).
+ * the request didn't offer (`not_offered`; the request keeps waiting), the session that asked
+ * ended while it waited (`session_ended`), or too many are already waiting (`too_many_pending`,
+ * which fails closed as well).
  */
 export class ApprovalRequestError extends Error {
   override name = 'ApprovalRequestError';

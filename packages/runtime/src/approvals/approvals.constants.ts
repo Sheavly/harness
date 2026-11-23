@@ -18,5 +18,12 @@ export const APPROVAL_TABLE = {
 /** How many settled approvals the registry remembers, oldest forgotten first. */
 export const SETTLED_KEPT = 500;
 
+/**
+ * The most approvals that may wait at once, so the tree's snapshot, which holds every waiting
+ * approval, stays bounded (`MAX_TREE_NODES`, as many approvals as nodes). A request past it fails
+ * closed, like one nobody can hear, instead of waiting without a bound.
+ */
+export const MAX_PENDING_APPROVALS = 1_000;
+
 /** What an approval hook may answer: stop the command. Never an approval or a grant: those are the user's. */
 export const HOOK_DECISIONS: readonly ApprovalOption[] = ['skip', 'skip_with_message'];

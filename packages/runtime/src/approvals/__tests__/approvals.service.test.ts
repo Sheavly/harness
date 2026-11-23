@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 import { ApprovalListenerError } from '../../errors/approvals.errors.js';
+import { numberedApprovals } from '../../testing/approvals.fake.js';
 import { ApprovalRegistry } from '../approvals.service.js';
+import { MAX_PENDING_APPROVALS } from '../approvals.constants.js';
 import type { ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
 import { approvalIdSchema } from '@sheavly/protocol/approval/approval.validator';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
@@ -31,7 +33,7 @@ function listen(approvals: ApprovalRegistry): ApprovalUpdate[] {
 
 describe('ApprovalRegistry', () => {
   it('announces a typed request and waits for the answer', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const answer = ask(approvals);
 
@@ -63,7 +65,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('drops a source a client sends, so only the registry can mark a hook’s answer', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     const answer = ask(approvals);
@@ -77,11 +79,11 @@ describe('ApprovalRegistry', () => {
   });
 
   it('rejects at once when no one is listening', async () => {
-    await expect(ask(new ApprovalRegistry())).rejects.toThrow('No one is listening');
+    await expect(ask(numberedApprovals())).rejects.toThrow('No one is listening');
   });
 
   it('tells observers every update first, but an observer alone can’t answer', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const order: string[] = [];
 
     approvals.observe((update) => order.push(`observer:${update.type}`));
@@ -96,7 +98,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('cancels a waiting request when its call is interrupted', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const controller = new AbortController();
     const answer = ask(approvals, controller.signal);
@@ -111,7 +113,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('offers the options the caller names, and takes only those', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
 
     const answer = approvals.request({
@@ -143,7 +145,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('does not take always_allow for a request that did not offer it', () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     void ask(approvals);
@@ -159,7 +161,7 @@ describe('ApprovalRegistry', () => {
     { decision: 'skip_with_message' },
     { decision: 'skip_with_message', message: '   ' },
   ])('rejects a malformed answer (%o) and keeps waiting', (response) => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     void ask(approvals);
@@ -169,7 +171,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('answers each request once', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     const answer = ask(approvals);
@@ -180,7 +182,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('a listener that throws fails the request loudly, after every other listener heard it', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     approvals.subscribe(() => {
       throw new Error('UI bug');
@@ -200,7 +202,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('a listener that throws on an answer still resolves the call, then tells the responder', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
     const updates = listen(approvals);
     const answered = ask(approvals);
 
@@ -219,7 +221,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('a listener that throws on a cancel fails the call with that error', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     listen(approvals);
     const controller = new AbortController();
@@ -235,7 +237,7 @@ describe('ApprovalRegistry', () => {
   });
 
   it('every listener hears requested before resolved, even when an earlier one answers at once', async () => {
-    const approvals = new ApprovalRegistry();
+    const approvals = numberedApprovals();
 
     approvals.subscribe((update) => {
       if (update.type === 'approval_requested') {
@@ -246,5 +248,59 @@ describe('ApprovalRegistry', () => {
 
     await expect(ask(approvals)).resolves.toEqual({ decision: 'approve' });
     expect(later.map((update) => update.type)).toEqual(['approval_requested', 'approval_resolved']);
+  });
+});
+
+/** The ids of the requests a registry is waiting on, after `count` were asked. */
+function askedIds(params: { approvals: ApprovalRegistry; count: number }) {
+  listen(params.approvals);
+
+  for (let asked = 0; asked < params.count; asked++) void ask(params.approvals);
+
+  return params.approvals.pending().map((request) => request.id);
+}
+
+describe('the ids a registry issues', () => {
+  it('are unique, and a registry made later (a reopened conversation) never repeats one', () => {
+    const first = askedIds({ approvals: new ApprovalRegistry(), count: 200 });
+    const reopened = askedIds({ approvals: new ApprovalRegistry(), count: 200 });
+
+    expect(new Set([...first, ...reopened]).size).toBe(400);
+  });
+
+  it('are random, not a counter a stale client could guess or a reopen could repeat', () => {
+    const [id] = askedIds({ approvals: new ApprovalRegistry(), count: 1 });
+
+    expect(id).toMatch(/^a-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+  });
+
+  it('cannot be answered by a stale client: another registry refuses an id it never issued', () => {
+    const [stale] = askedIds({ approvals: new ApprovalRegistry(), count: 1 });
+    const reopened = new ApprovalRegistry();
+
+    listen(reopened);
+    void ask(reopened);
+
+    expect(stale).toBeDefined();
+    expect(() =>
+      reopened.respond({ id: approvalIdSchema.parse(stale), response: { decision: 'approve' } }),
+    ).toThrow(expect.objectContaining({ reason: 'unknown_id' }) as Error);
+    expect(reopened.pending()).toHaveLength(1);
+  });
+});
+
+describe('how many approvals may wait', () => {
+  it('refuses one past the bound, failing closed, and takes another once one is answered', async () => {
+    const approvals = new ApprovalRegistry();
+    const [first] = askedIds({ approvals, count: MAX_PENDING_APPROVALS });
+
+    expect(approvals.pending()).toHaveLength(MAX_PENDING_APPROVALS);
+    await expect(ask(approvals)).rejects.toMatchObject({ reason: 'too_many_pending' });
+    expect(approvals.pending()).toHaveLength(MAX_PENDING_APPROVALS);
+
+    approvals.respond({ id: approvalIdSchema.parse(first), response: { decision: 'approve' } });
+    void ask(approvals);
+
+    expect(approvals.pending()).toHaveLength(MAX_PENDING_APPROVALS);
   });
 });

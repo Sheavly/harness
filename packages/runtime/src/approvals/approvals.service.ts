@@ -4,11 +4,12 @@
  * result waiting there would hold back the request it waits for. A UI answers with `respond`,
  * and the waiting tool carries on. The harness renders nothing.
  */
+import { randomUUID } from 'node:crypto';
 import { ApprovalListenerError, ApprovalRequestError } from '../errors/approvals.errors.js';
 import { redactDiagnosticText } from '@sheavly/core/text/diagnostic-text.utils';
 import { errorMessage } from '../errors/errors.utils.js';
 import { ApprovalStates } from './approval-states.service.js';
-import { DEFAULT_OPTIONS, HOOK_DECISIONS } from './approvals.constants.js';
+import { DEFAULT_OPTIONS, HOOK_DECISIONS, MAX_PENDING_APPROVALS } from './approvals.constants.js';
 import type { ApprovalState, Screener } from './approvals.types.js';
 import type {
   ApprovalConcern,
@@ -83,7 +84,17 @@ export class ApprovalRegistry {
   /** Updates waiting to be heard, while an earlier one is still being delivered. */
   #queue: ApprovalUpdate[] = [];
   #emitting = false;
-  #nextId = 1;
+  readonly #newId: () => ApprovalId;
+
+  /**
+   * An approval's id is unique in its conversation for as long as the server keeps it, reopening
+   * included, so an answer can only mean the approval it was made for: a stale client's `a1` can
+   * never answer a newer request. A counter that starts again on reopening could not promise that,
+   * so ids are random (`a-` and a UUID). `newId` is for a test that wants to name its requests.
+   */
+  constructor(options: { newId?: () => ApprovalId } = {}) {
+    this.#newId = options.newId ?? (() => approvalIdSchema.parse(`a-${randomUUID()}`));
+  }
 
   /** True while someone subscribes, i.e. a request can be answered at all. */
   get listening(): boolean {
@@ -111,8 +122,17 @@ export class ApprovalRegistry {
 
     if (signal.aborted) return Promise.reject(signal.reason as Error);
 
+    if (this.#pending.size + this.#screening.size >= MAX_PENDING_APPROVALS) {
+      return Promise.reject(
+        new ApprovalRequestError({
+          reason: 'too_many_pending',
+          message: `${String(MAX_PENDING_APPROVALS)} approvals are already waiting; this one fails closed`,
+        }),
+      );
+    }
+
     const request: ApprovalRequest = {
-      id: approvalIdSchema.parse(`a${this.#nextId++}`),
+      id: this.#newId(),
       ...rest,
       ...(sessionId !== undefined && { sessionId }),
       options,
