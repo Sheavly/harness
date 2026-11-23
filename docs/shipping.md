@@ -82,7 +82,8 @@ wait with it.
   discovery file and proven by its handshake before the token is used; with none it says so, says
   to run `sheavly serve` in another terminal and starts nothing, and `BACKEND_URL` and
   `BACKEND_TOKEN` still name a server instead. `setup` runs the terminal's setup wizard on that
-  same verified server and ends (it ignores `BACKEND_URL`, since it sends a provider key),
+  same verified server and ends, or with none running starts a short-lived one of its own for the
+  wizard (it ignores `BACKEND_URL`, since it sends a provider key),
   `doctor` reports what is installed, what runs and what is wrong, and `connection --json`
   prints the verified connection of the running server as one line of JSON for a front end in
   another repo, so it need not read the home folder or repeat the safe read of the file: the
@@ -188,6 +189,21 @@ where the log is, and still does not fall back to a private server. Where the se
 supported, which is macOS and Windows until their service exists, it says so and points to
 `sheavly serve` in another terminal. A development checkout can still start a backend per
 terminal, as it does today.
+
+`sheavly setup` is the one exception to "no private server"
+([#473](https://github.com/Sheavly/harness/issues/473)). With nothing running at all and a
+terminal to ask in, it starts a server of its own for as long as the wizard runs, on loopback and
+a port the OS picks, with a token of its own, and stops it when the wizard ends. The reason for
+the rule does not apply to it: setup opens no conversation, so nothing is lost when its server
+goes. It finds that server through the discovery file and the handshake like any other, so the
+key still goes only to a server that proved it holds the token, and it starts none for a server
+of another protocol, without a terminal, or while another server holds the lock. A first run, and
+a pane of another front end that runs `sheavly setup` as its one program, therefore need no
+second terminal. `chat` keeps refusing, and a server for `chat` that outlives it
+waits for the detach semantics of #399 and the one-server limit of #443. While setup's server
+runs it is findable, so a client that starts in that time uses it and loses it when setup ends:
+the window is the minutes of a first run. The decision and its embedding contract (exit codes, what
+is printed) are in `apps/sheavly/docs/design.md`.
 
 ### Which extensions load
 

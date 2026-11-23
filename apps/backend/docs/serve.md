@@ -18,6 +18,37 @@ anything listens or prints, the stop handlers before the guard comes off, and th
 line last. A refused start (another server holds the lock) calls `exit(1)`, a failing setting or
 listen throws. It resolves once the server listens and keeps the process alive.
 
+The start itself is `startServer` (`src/run-server/start-server.helper.ts`): from settings already
+parsed it builds the server, takes the lock, listens and publishes the file, and returns what is
+running, or says it was refused. It installs no signal handler, prints nothing and never exits.
+`runServer` is that plus what makes a process of it: the settings, the startup guard, the stop
+handlers (`stopOnSignals`), the `listening` line and the exit. `closeServer` takes a started
+server down in the order clients and a successor need: out of the file, stop listening, close
+every conversation, then the lock.
+
+## A server for a command that goes on living
+
+`startEmbeddedServer({ env, log, exit })` (`src/run-server/embedded-server.helper.ts`, an entry the
+launcher imports) starts a server in a process that is not a server: a command that needs one for
+a while, and then ends or does something else. `sheavly setup` is the one that does. It builds on
+`startServer`, and differs from `runServer` where a caller that goes on living needs it to:
+
+- It always listens on `127.0.0.1` on a port the OS picks, with a token it makes (the caller's
+  `SERVER_HOST`, `SERVER_PORT`, `SERVER_TOKEN`, `SERVER_ALLOW_REMOTE_SETUP`,
+  `SERVER_DISCOVERY` and `SERVER_EXIT_WITH_PARENT` are replaced, never used), takes the home's
+  one-server lock and publishes its discovery file. A caller finds it as it finds any server, with
+  the finder and its handshake; the token is not returned, printed or stored by
+  `startEmbeddedServer` (what it returns is the address, `url`).
+- It prints nothing: the caller owns the terminal. What the server logs while it starts goes to
+  `log`.
+- It does not end the process. `close()` takes it down in the order `closeServer` has (the lock is
+  released even when a conversation fails to close) and then takes its signal handlers off, so a
+  process with nothing else left ends by itself; closing twice is closing once. A SIGINT, SIGTERM
+  or SIGHUP before that, or during the close, waits for it and then calls `exit` with the usual
+  code (130, 143, 129); a second one calls `exit` at once.
+- It returns `refused`, with the message of the server that holds the lock, rather than exiting,
+  and a failing setting or listen throws with the lock released and no handler left.
+
 ## Settings
 
 | Setting                     | Default                                  | What it does                                                                                                                                                                                                                               |

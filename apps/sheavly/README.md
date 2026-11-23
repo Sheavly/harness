@@ -10,7 +10,7 @@ npm run sheavly -- --version        # from the checkout, from source
 npm run sheavly -- --help           # lists the commands that exist
 npm run sheavly -- serve            # the server in the foreground, as `npm run serve`
 npm run sheavly -- service install  # the server as a systemd user service (Linux; needs a build)
-npm run sheavly -- setup            # your first profile, model and key, on the server `serve` runs
+npm run sheavly -- setup            # your first profile, model and key; starts a server for itself if none runs
 npm run sheavly -- chat             # the terminal chat, on the server `serve` runs
 npm run sheavly -- connection --json | jq .url  # the server's connection, as JSON, for another front end
 npm run sheavly -- doctor           # what is installed, what runs and what is wrong
@@ -19,7 +19,11 @@ node apps/sheavly/dist/cli.js chat  # after `npm run build`
 
 `chat` finds your running server through the discovery file, proves it with its handshake before
 it sends the token, and never starts one: run `sheavly serve` in another terminal first, or name a
-server with `BACKEND_URL` and `BACKEND_TOKEN` ([design](docs/design.md#the-commands)).
+server with `BACKEND_URL` and `BACKEND_TOKEN` ([design](docs/design.md#the-commands)). `setup` is
+the one command that may start a server: with none running and a terminal to ask in, it runs a
+short-lived one on loopback for the wizard and stops it afterwards, so a first run, or a pane of
+another front end, needs no second terminal; a chat still needs `sheavly serve` or
+`sheavly service install` afterwards.
 `connection --json` prints that server's token, so its output is a secret and it refuses to write
 to a terminal: pipe it to the program that reads it. That program should run
 `node apps/sheavly/dist/cli.js connection --json`, since `npm run` may print its own banner
@@ -33,7 +37,7 @@ first.
 | `chat [options]`    | Opens the terminal chat on your running server, or the one `BACKEND_URL` names                    |
 | `connection --json` | Prints your running server's connection as JSON, token included, to a pipe (a secret)             |
 | `service <action>`  | Runs the server as a systemd user service: install, uninstall, start, stop, restart, status, logs |
-| `setup`             | Runs the guided setup (profile, model, key) on your running server, then ends                     |
+| `setup`             | Runs the guided setup (profile, model, key) on your server, or one it starts and stops itself     |
 | `doctor`            | Reports Node, the home, the server and the profile; exits 1 when one is wrong                     |
 
 An unknown command or a missing one exits 2 with a message that points to `--help`; `--help` or
