@@ -23,3 +23,15 @@ export const REDACTED_QUERY_VALUE = 'REDACTED';
 
 /** Where a server-sent events line ends: `\r\n`, `\r` or `\n`. */
 export const LINE_BREAK = /\r\n|\r|\n/;
+
+/**
+ * The TLS key exchange groups a model call offers, in OpenSSL's list syntax. X25519 comes first
+ * because only the first group gets a key share: OpenSSL 3.5's default (Node 22.20+, 24.5+, 26)
+ * also sends a 1,216-byte ML-KEM share, which pushes the ClientHello past one TCP segment, and
+ * gateways that read only the first segment (Azure AI Foundry) reset the connection.
+ * ML-KEM stays listed, so a server that prefers it still gets it after a HelloRetryRequest.
+ */
+export const MODEL_TLS_GROUPS = 'X25519:X25519MLKEM768:P-256:P-384:P-521';
+
+/** The code Node gives a TLS context whose group list names a group this OpenSSL doesn't know. */
+export const UNKNOWN_TLS_GROUP_CODE = 'ERR_CRYPTO_OPERATION_FAILED';

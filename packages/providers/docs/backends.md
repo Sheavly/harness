@@ -268,6 +268,53 @@ A call that still fails throws a `ModelApiError` (its message names the API) who
 `timeout`, `http` with its `status`), with the original error as `cause` and Node's own reason
 in the message (`UND_ERR_SOCKET: other side closed`), so a saved run says what happened.
 
+### The model fetch: one TCP segment per ClientHello
+
+Calls go through the `fetch` in the registry's `AdapterDeps`. By default, and in the backend app,
+that is `createModelFetch()` (`http/model-fetch.helper.ts`), not Node's global `fetch`. Hand an
+`AdapterRegistry` another `fetch` only in tests.
+
+- **Why:** Node 22.20+, 24.5+ and 26 bundle OpenSSL 3.5. By default it sends a 1,216-byte ML-KEM
+  key share, which makes the TLS ClientHello about 1,600 bytes and splits it across two TCP
+  segments. Gateways that read only the first segment reset the connection: Azure AI Foundry
+  does, and every call failed with `ECONNRESET … before secure TLS connection was established`
+  ([#458](https://github.com/Sheavly/harness/issues/458), [tldr.fail](https://tldr.fail)).
+- **What it does:** it offers `MODEL_TLS_GROUPS` (`http/http.constants.ts`). X25519 comes first,
+  so only its 32-byte key share is sent and the ClientHello stays under one segment.
+  `X25519MLKEM768` is still listed, so a server that prefers post-quantum key exchange
+  (Anthropic, OpenAI, Cloudflare) asks for it with a HelloRetryRequest and gets it, at the cost
+  of one round trip per new connection.
+- **On an older OpenSSL:** OpenSSL before 3.5 (Node 24.0 to 24.4, or a system OpenSSL 3.0) has no
+  ML-KEM and refuses a list that names it. `offeredTlsGroups` tries the list once, and on that
+  refusal leaves OpenSSL's default in place. That default sends no ML-KEM share, so its
+  ClientHello already fits in one segment.
+- **HTTP/1.1 only:** the pool sets `allowH2: false`, as Node 24's own `fetch` sends. undici 8
+  would otherwise also offer HTTP/2, which changes how a stream, an abort and a timeout behave.
+- **No proxy:** the model fetch's own pool bypasses the global dispatcher. Model calls go
+  straight to the endpoint even when `NODE_USE_ENV_PROXY` and `HTTPS_PROXY` are set, or when the
+  process set its own `setGlobalDispatcher`. Proxy support is
+  [#463](https://github.com/Sheavly/harness/issues/463).
+- **Certificates:** they are checked as they are for Node's own `fetch`. A test pins that a
+  server with a certificate the client can't verify is refused.
+- **What it takes:** a URL or string, with a string or byte body, as `sendRequest` sends. A
+  global `Request` or a `FormData` body rejects with a `ModelFetchError`, because undici's own
+  `fetch` can't read them. `sendRequest` passes that error through and never retries it.
+- **What not to do:**
+  - Don't reorder the list. In a plain list only the first group gets a key share.
+  - Don't replace it with a "retry with classical groups after a reset" fallback, which an
+    attacker could force with a reset.
+  - Don't call Node's global `fetch`, or open a connection another way, in this package's
+    source: send through the injected `deps.fetch`. `modelFetchConfinement`
+    (`packages/eslint-config/src/model-fetch-confinement.js`, spread into this package's
+    `eslint.config.js`) fails these in source files, tests and fakes aside:
+    - `fetch(…)` and `globalThis.fetch(…)`;
+    - an import of `undici` or of a Node network module.
+
+    Only `http/model-fetch.helper.ts` imports them.
+- **Why undici's own `fetch`:** it pairs undici's own `fetch` with its `Agent`. Node's global
+  `fetch` rejects an `Agent` from the npm package (`UND_ERR_INVALID_ARG`) whenever the bundled
+  undici's version differs.
+
 ## Describing adapters, and checking a model
 
 A UI that sets a model up never imports this package. The backend reads the registry for it:

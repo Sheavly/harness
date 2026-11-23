@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { defineAdapter } from '@sheavly/core/adapter/adapter.utils';
 import type { Provider } from '@sheavly/core/provider/provider.types';
+import { MODEL_FETCH_HELLO } from '../../testing/client-hello.constants.js';
+import { captureClientHello, helloShape } from '../../testing/client-hello.fake.js';
 import { createDefaultRegistry } from '../default-registry.helper.js';
 import { AdapterRegistry } from '../registry.service.js';
 
@@ -45,6 +47,22 @@ describe('createDefaultRegistry', () => {
       'bedrock-openai',
     ]);
     expect(() => registry.create('openai', { apiKey: 'k' })).toThrow('Invalid config for openai');
+  });
+
+  it("sends model calls with the model fetch by default, so a ClientHello isn't split", async () => {
+    const capture = await captureClientHello();
+
+    try {
+      const checked = await createDefaultRegistry().check({
+        kind: 'azure-anthropic',
+        config: { apiKey: 'k', baseUrl: `${capture.url}/anthropic`, deployment: 'claude' },
+      });
+
+      expect(helloShape(await capture.hello)).toEqual(MODEL_FETCH_HELLO);
+      expect(checked.status).toBe('unreachable');
+    } finally {
+      await capture.close();
+    }
   });
 });
 

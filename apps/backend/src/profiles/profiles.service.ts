@@ -3,6 +3,7 @@ import type { Environment } from '@sheavly/core/environment/environment.types';
 import { ConversationsError } from '@sheavly/host/errors/conversations.errors';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
+import { createModelFetch } from '@sheavly/providers/http/model-fetch.helper';
 import { createDefaultRegistry } from '@sheavly/providers/registry/default-registry.helper';
 import type { AdapterRegistry } from '@sheavly/providers/registry/registry.service';
 import { workspaceKey } from '@sheavly/storage/config-store/config-store.utils';
@@ -41,7 +42,10 @@ export class Profiles {
     this.#registry = new ProfileRegistry({ root: this.#home });
     this.#adapters =
       params.adapters ??
-      createDefaultRegistry({ fetch: globalThis.fetch, onReplayDropped: params.onReplayDropped });
+      createDefaultRegistry({
+        fetch: createModelFetch(),
+        onReplayDropped: params.onReplayDropped,
+      });
   }
 
   /**

@@ -1,5 +1,5 @@
 import { providerErrorText } from '@sheavly/core/text/diagnostic-text.utils';
-import { ModelApiError } from '../errors/providers.errors.js';
+import { ModelApiError, ModelFetchError } from '../errors/providers.errors.js';
 import type { RequestPolicy, RequestSigner } from './http.types.js';
 import { withSignature } from './signing.utils.js';
 import {
@@ -88,8 +88,9 @@ async function attempt(params: {
       waitMs,
     };
   } catch (caughtError) {
-    // The caller's interrupt is no failure to retry or rename: it goes up as it came.
-    if (signal.aborted) throw caughtError;
+    // The caller's interrupt is no failure to retry or rename: it goes up as it came. Nor is a
+    // request the model fetch can't send: a bug in the protocol that no retry changes.
+    if (signal.aborted || caughtError instanceof ModelFetchError) throw caughtError;
 
     const timedOut = timeout.signal.aborted;
 

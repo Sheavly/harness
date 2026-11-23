@@ -1,8 +1,8 @@
-import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { ESLint, Linter } from 'eslint';
 import { describe, expect, it } from 'vitest';
 import { replayConfinement } from '../replay-confinement.js';
+import { sourceFilesUnder } from '../testing/source-files.fake.js';
 
 const TERMINAL = path.resolve(import.meta.dirname, '../../../../apps/terminal');
 const CONFINED_RULES = [
@@ -44,21 +44,11 @@ async function isErrorFor(params) {
   return (Array.isArray(entry) ? entry[0] : entry) === 2;
 }
 
-/** The source files under `folder`, relative to the terminal app, tests and fakes left out. */
-function sourcesUnder(folder) {
-  return readdirSync(path.join(TERMINAL, folder), { withFileTypes: true }).flatMap((entry) => {
-    const relative = `${folder}/${entry.name}`;
-
-    if (entry.isDirectory()) {
-      return entry.name === '__tests__' || entry.name === 'testing' ? [] : sourcesUnder(relative);
-    }
-
-    return [relative];
-  });
-}
-
 /** Every source file of replay, read from the folder so a new one is covered without an edit. */
-const replaySources = ['src/replay.ts', ...sourcesUnder('src/replay')];
+const replaySources = [
+  'src/replay.ts',
+  ...sourceFilesUnder({ root: TERMINAL, folder: 'src/replay' }),
+];
 
 const IMPORTS = 'no-restricted-imports';
 const GLOBALS = 'no-restricted-globals';

@@ -25,6 +25,8 @@ export { replayConfinement } from './replay-confinement.js';
 export { connectBackendConfinement } from './connect-backend-confinement.js';
 // The storage package's rule that stored profiles and indexes are read through the migration.
 export { storedFileReads } from './stored-file-reads.js';
+// The providers package's rule that a model call goes through the injected fetch, not the global.
+export { modelFetchConfinement } from './model-fetch-confinement.js';
 
 const TYPED_FILES = ['**/*.ts', '**/*.tsx'];
 const PLAIN_JS_FILES = ['**/*.js', '**/*.mjs'];
@@ -196,6 +198,12 @@ export function baseConfig(params) {
       files: SOURCE_FILES,
       ignores: testFiles,
       rules: { 'harness/no-handrolled-reply-reader': 'error' },
+    },
+    // --- Model calls go out through `createModelFetch`, never Node's global fetch ---
+    {
+      files: SOURCE_FILES,
+      ignores: testFiles,
+      rules: { 'harness/no-raw-model-fetch': 'error' },
     },
     // --- The server's runtime folder and discovery file are resolved in storage, not rebuilt ---
     {
