@@ -1,5 +1,5 @@
 import { defineConfig } from 'eslint/config';
-import { baseConfig, systemdConfinement } from '@sheavly/eslint-config';
+import { baseConfig, connectionConfinement, systemdConfinement } from '@sheavly/eslint-config';
 
 export default defineConfig([
   ...baseConfig({
@@ -9,4 +9,7 @@ export default defineConfig([
   }),
   // systemd's programs are run only behind `SystemTools`, which only cli.ts creates for real.
   ...systemdConfinement,
+  // After it: the connection command repeats the real-tools restriction, since a rule set twice
+  // for one file keeps only the later options.
+  connectionConfinement,
 ]);
