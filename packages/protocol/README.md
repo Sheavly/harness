@@ -25,6 +25,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `session/`           | `SessionRef`, `SessionInfo`, the `SessionUpdate` stream                                      |
 | `stream/`            | `StreamEntry`: every session's events and updates, in one order                              |
 | `approval/`          | `ApprovalRequest`, `ApprovalUpdate`, `ApprovalResponse`                                      |
+| `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream     |
 | `task/`              | Background task states                                                                       |
 | `status/`            | The one status table (session, run, task, turn stop) and `runEnd`: how a run ended           |
 | `message/`           | What a model is sent, and the `PromptPart`s a user typed                                     |

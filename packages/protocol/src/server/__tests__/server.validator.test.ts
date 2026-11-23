@@ -7,13 +7,16 @@ import {
   messagesResponseSchema,
   yieldPromptResponseSchema,
   sendPromptRequestSchema,
+  sendPromptResponseSchema,
   serverErrorSchema,
   skillsResponseSchema,
   startConversationRequestSchema,
   streamQuerySchema,
   switchModelRequestSchema,
   conversationIdSchema,
+  queuedPromptsSchema,
 } from '../server.validator.js';
+import { MAX_QUEUED_CHARS, MAX_QUEUED_LINE_CHARS } from '../server.constants.js';
 
 /** A model's id: a lowercase UUID, the only thing a switch is keyed by. */
 const FAST = '4b1f9a52-3c5e-4a77-9d64-0e2b7f1c8a30';
@@ -150,6 +153,23 @@ describe('yieldPromptResponseSchema', () => {
 
     for (const body of [{}, { accepted: 'true' }, { accepted: 1 }, null]) {
       expect(yieldPromptResponseSchema.safeParse(body).success).toBe(false);
+    }
+  });
+});
+
+describe('sendPromptResponseSchema', () => {
+  it('says whether the prompt started or waits, with the queue after it', () => {
+    for (const answer of [
+      { status: 'started', queued: [] },
+      { status: 'queued', queued: ['first', 'second'] },
+    ]) {
+      expect(sendPromptResponseSchema.parse(answer)).toEqual(answer);
+    }
+  });
+
+  it('rejects an answer without the queue, or with a status it does not define', () => {
+    for (const body of [{ status: 'started' }, { status: 'running', queued: [] }, {}]) {
+      expect(sendPromptResponseSchema.safeParse(body).success).toBe(false);
     }
   });
 });
@@ -292,5 +312,17 @@ describe('the responses', () => {
     expect(serverErrorSchema.safeParse({ error: { code: 'oops', message: 'x' } }).success).toBe(
       false,
     );
+  });
+});
+
+describe('queuedPromptsSchema', () => {
+  const line = 'x'.repeat(MAX_QUEUED_LINE_CHARS);
+  const lines = (count: number) => Array.from({ length: count }, () => line);
+
+  it('takes lines up to the total a queue may hold, and refuses one more character', () => {
+    const full = lines(MAX_QUEUED_CHARS / MAX_QUEUED_LINE_CHARS);
+
+    expect(queuedPromptsSchema.safeParse({ queued: full }).success).toBe(true);
+    expect(queuedPromptsSchema.safeParse({ queued: [...full, 'x'] }).success).toBe(false);
   });
 });

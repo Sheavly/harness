@@ -6,6 +6,7 @@ import type {
   ignoredSettingSchema,
   modelChoiceSchema,
   sendPromptRequestSchema,
+  sendPromptResponseSchema,
   serverErrorCodeSchema,
   serverErrorSchema,
 } from './server.validator.js';
@@ -30,6 +31,9 @@ export type ConversationDetails = z.infer<typeof conversationDetailsSchema>;
 
 /** What the user typed: `text` (`/<name>` mentions run skills) or `parts` (exactly those skills). */
 export type SendPromptRequest = z.infer<typeof sendPromptRequestSchema>;
+
+/** Whether a sent prompt started or waits in the queue, and the queue after it. */
+export type SendPromptResponse = z.infer<typeof sendPromptResponseSchema>;
 
 /** Why a request failed: one code per case a client handles differently. */
 export type ServerErrorCode = z.infer<typeof serverErrorCodeSchema>;

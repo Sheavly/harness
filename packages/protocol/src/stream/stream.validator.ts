@@ -5,6 +5,7 @@ import { sessionIdSchema, sessionUpdateSchema } from '../session/session.validat
 import { taskUpdateSchema } from '../task/task.validator.js';
 import { timestampSchema } from '../time/time.validator.js';
 import { messageIdSchema } from '../message/message.validator.js';
+import { queueUpdateSchema } from '../queue/queue.validator.js';
 
 /**
  * One entry of a session tree's combined stream: every session's loop events (sub-agents
@@ -36,5 +37,10 @@ export const streamEntrySchema = z.intersection(
      * what still runs (a run waiting for its tasks, a task panel) without asking.
      */
     z.object({ kind: z.literal('task'), update: taskUpdateSchema }),
+    /**
+     * The conversation's queue changed, under its main session: a line joined it, started as the
+     * next prompt (before that run's entries) or could not start.
+     */
+    z.object({ kind: z.literal('queue'), update: queueUpdateSchema }),
   ]),
 );

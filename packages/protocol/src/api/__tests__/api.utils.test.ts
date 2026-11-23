@@ -58,17 +58,28 @@ describe('openApiDocument', () => {
     }
   });
 
-  it('describes the streams as server-sent events of stream entries, and QUERY as its own method', () => {
+  it('describes the stream as server-sent events of stream entries, and QUERY as its own method', () => {
     const { paths } = openApiDocument();
     const stream = {
       'text/event-stream': { itemSchema: { $ref: '#/components/schemas/StreamEntry' } },
     };
 
-    expect(paths['/conversations/{id}/prompts']?.post).toMatchObject({
-      responses: { 200: { content: stream } },
-    });
     expect(paths['/conversations/{id}/stream']?.query).toMatchObject({
       responses: { 200: { content: stream } },
+    });
+  });
+
+  it('answers a sent prompt with JSON at once, never with a stream that waits for its run', () => {
+    const { paths } = openApiDocument();
+
+    expect(paths['/conversations/{id}/prompts']?.post).toMatchObject({
+      responses: {
+        200: {
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/SendPromptResponse' } },
+          },
+        },
+      },
     });
   });
 
