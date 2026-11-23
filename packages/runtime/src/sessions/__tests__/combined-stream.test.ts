@@ -173,6 +173,34 @@ describe("SessionRegistry's combined stream", () => {
     ]);
   });
 
+  it('puts a queue change in order with the runs, under the main session, and refuses an unknown one', () => {
+    const sessions = new SessionRegistry();
+    const seen: StreamEntry[] = [];
+
+    sessions.subscribeEntries((entry) => seen.push(entry));
+
+    const { id } = sessions.startMain({ title: 'Main' });
+
+    sessions.publishQueue({
+      sessionId: id,
+      update: { type: 'prompt_started', text: 'next', queued: [] },
+    });
+    sessions.idle({ id, outcome: 'completed' });
+
+    expect(seen.map((entry) => `${String(entry.seq)} ${entry.kind}`)).toEqual([
+      '0 update',
+      '1 queue',
+      '2 update',
+    ]);
+    expect(seen.every((entry) => entry.sessionId === id)).toBe(true);
+    expect(() =>
+      sessions.publishQueue({
+        sessionId: sessionIdSchema.parse('nobody'),
+        update: { type: 'queue_changed', queued: [] },
+      }),
+    ).toThrow();
+  });
+
   it('stops telling a listener once it unsubscribes', () => {
     const sessions = new SessionRegistry();
     const entries: StreamEntry[] = [];
