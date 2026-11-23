@@ -55,6 +55,16 @@ function testFilesOf(tsconfigRootDir) {
   return testOnly ? [...TEST_FILES, ...SOURCE_FILES] : TEST_FILES;
 }
 
+/** Whether the workspace's package.json lists `@sheavly/logger`: it logs failures with it. */
+function usesLogger(tsconfigRootDir) {
+  const manifest = path.join(tsconfigRootDir, 'package.json');
+
+  return (
+    existsSync(manifest) &&
+    '@sheavly/logger' in (JSON.parse(readFileSync(manifest, 'utf8')).dependencies ?? {})
+  );
+}
+
 function maxLines(max) {
   return max === null ? 'off' : ['error', { max, skipBlankLines: true, skipComments: true }];
 }
@@ -225,6 +235,28 @@ export function baseConfig(params) {
       ignores: testFiles,
       rules: { 'harness/no-raw-serial-queue': 'error' },
     },
+    // --- Logging: where an error ends it is logged once, as a value, under a catalogued event;
+    // a pure file never logs ---
+    {
+      files: SOURCE_FILES,
+      ignores: testFiles,
+      rules: {
+        'harness/no-log-and-throw': 'error',
+        'harness/log-error-as-value': 'error',
+        'harness/log-event-name': 'error',
+        'harness/no-logger-in-pure-kind': 'error',
+      },
+    },
+    // --- An app that logs through the logger writes no failure to stderr or the console ---
+    ...(isApp && usesLogger(tsconfigRootDir)
+      ? [
+          {
+            files: SOURCE_FILES,
+            ignores: testFiles,
+            rules: { 'harness/no-failure-output-in-catch': 'error' },
+          },
+        ]
+      : []),
 
     // --- TypeScript: strict + stylistic, type-aware ---
     {

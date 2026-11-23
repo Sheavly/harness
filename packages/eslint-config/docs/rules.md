@@ -307,6 +307,29 @@ is split by responsibility only when it does several jobs, not to fit a number. 
 - **Typed errors only** (`harness/no-raw-error`): source never builds a plain `Error`; it throws
   a class from its area's errors (each workspace's `src/errors/`, `.cursor/hooks/hooks.errors.mjs`). Tests, fakes and `scripts/` are
   exempt. The classes are listed in [the overview](../../../docs/overview.md#errors).
+- **Logging** (source except tests and fakes; the guide is `.agents/skills/sheavly/logging.md`).
+  A log call is a call of `debug`, `info`, `warn` or `error` on a receiver named like a logger
+  (`logger`, `log`, `logs`, `this.#logger`, `logs.conversation(id)`, `*Logger`); a logger held
+  under another name is not seen, and where an error should have been logged is review.
+  - `harness/no-log-and-throw`: a `catch` (or the inline function of a `.catch(...)`) that makes a
+    log call before a throw. A log after a throw is another path (`if (!(e instanceof Known))
+throw e; logger.warn(…)` is fine). A function inside the catch is its own scope.
+  - `harness/log-error-as-value`: the `error` field of a log call is the caught value, not
+    `error.message`/`.stack`, a template, a `+` concatenation, or `String`, `errorMessage`,
+    `redactDiagnosticText` or `printable` of it (called by name or as a member).
+  - `harness/log-event-name`: the event (first argument) is a `LOG_EVENT.<NAME>` member, so
+    every event is in a catalogue with a meaning. The derived suite
+    (`src/__tests__/log-events.test.js`, `src/log-events.utils.js`) reads each workspace's
+    `LOG_EVENT` and `LOG_EVENT_MEANING` from its constants files: no duplicate value, a lowercase
+    dotted `<area>.<what_happened>`, a meaning of six words or more ending in a full stop, a
+    meaning for every event and an event for every meaning, and no event that nothing in its
+    workspace uses as `LOG_EVENT.<NAME>`.
+  - `harness/no-logger-in-pure-kind`: `*.utils.ts`, `*.validator.ts` and `*.prompt.ts` neither
+    import `logger.helper` (`createLogger`) nor make a log call. Building an entry
+    (`createLogEntry`) and the types are pure and allowed.
+  - `harness/no-failure-output-in-catch`: in an app that depends on `@sheavly/logger` (read from
+    its `package.json`), a `catch` does not write `process.stderr` or `console.*`: stderr is one of
+    the logger's sinks. Output through a function passed in (`log(text)`) is not seen.
 - **Branded ids** (`harness/branded-ids`, in all source except tests and fakes): a zod schema
   property named `id` or `<x>Id`, and an id schema `<x>IdSchema`, is a branded zod schema
   (`z.string().brand<'SessionId'>()`), never a bare `z.string()`, so a session's id can't go where a

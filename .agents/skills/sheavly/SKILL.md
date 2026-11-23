@@ -40,6 +40,7 @@ third party, and no extension may take a registry. So:
 | writing or fixing tests and fakes                                                  | [tests.md](tests.md)                                               |
 | a lint, hook, format, knip or jscpd failure; the stop gate; a hook or script       | [quality-gate.md](quality-gate.md)                                 |
 | a run, a stored conversation, a backend or a workbook run that misbehaves          | [debugging.md](debugging.md)                                       |
+| logging a failure, an event name or field, a sink, or reading a conversation's log | [logging.md](logging.md)                                           |
 | a lifecycle, a status, a queue, an approval, or anything that "ends"               | [state-machines.md](state-machines.md)                             |
 | starting, owning, reading or ending background work (a command, a sub-agent)       | [sessions-and-background-work.md](sessions-and-background-work.md) |
 
