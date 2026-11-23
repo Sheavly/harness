@@ -177,8 +177,10 @@ several (a settings error lists its issues).
   wizard `chat --setup` opens (`runTerminalSetup` of the terminal, `setup/run-setup.helper`), not
   a second prompt flow: the same questions, the same setup routes, the key typed without echo and
   sent to the server's credential route only. The server is found as `chat` finds it (the finder
-  and its handshake), and it never starts one: with none it exits 1, saying why and to run
-  `sheavly serve`, and without a terminal to ask in it exits 1 saying so. Unlike `chat` it ignores
+  and its handshake). With none running at all and a terminal to ask in it starts a short-lived
+  server of its own (see "No server" below); with none and no terminal it exits 1, saying why
+  and to run `sheavly serve`, and with a server and no terminal it exits 1 saying so. Unlike
+  `chat` it ignores
   `BACKEND_URL`: setup sends a provider key, and that goes only to a server that proved it holds
   the token, never to an address named in the environment (`chat --setup` still serves a
   `BACKEND_URL` server).
@@ -195,6 +197,62 @@ several (a settings error lists its issues).
   setup screen, was checked by hand in a terminal and rests on `setup-screen.service.test.ts`.
   An error message from the server's setup routes goes to the terminal as the server wrote it;
   from reading the routes it holds field names, not values, and no test pins that.
+
+  **No server.** What each command does with none running is decided here
+  ([#473](https://github.com/Sheavly/harness/issues/473)); `docs/shipping.md` ("Starting it")
+  holds the reasons for `chat`.
+  - **`setup` starts a server of its own** (`startEmbeddedServer` of the backend, handed to it by
+    `src/cli.ts` alone: `serverStartConfinement` fails any other import of it), for as long as the
+    wizard runs: it listens on loopback only, on a port the OS picks, with a token of its own and
+    whatever `SERVER_*` settings the caller has replaced, takes the home's one-server lock and
+    publishes its discovery file. `setup` then looks it up with the same finder and handshake as
+    any server, so the key goes only to a server that proved it holds the token, and only when
+    the lookup found the address it started (any other server found after the start is not used).
+    The token stays in memory between the lookup and the wizard: it is never printed or stored by
+    the command. It stops the server when the wizard ends, however it ends (saved, cancelled,
+    failed), and a SIGHUP, SIGTERM or SIGINT stops it too before the process ends; a server that
+    will not stop never replaces the wizard's own failure, nor follows a "saved" line. It starts
+    one only for "nothing runs at all" and only with a terminal to ask in: a server of another
+    protocol, no terminal, or another server holding the lock (it says so and to run `setup`
+    again once that one is up) start nothing. It ends by saying a chat needs a server that stays
+    (`sheavly serve`, or `sheavly service install`).
+  - **`chat` keeps refusing** (and so will a settings screen, which this repo has no command for
+    yet), with the guided message, and starts nothing: a server a chat started would end with it
+    and take its conversation, which conflicts with
+    [#399](https://github.com/Sheavly/harness/issues/399).
+  - **Rejected.** Option C (a server that outlives the command, without the service) is not taken
+    here: it needs the detach semantics of #399 and the one-server limit of
+    [#443](https://github.com/Sheavly/harness/issues/443) first. A server for `chat` (Option B
+    for every command) is rejected for the conversation reason above. Option A alone (always
+    refuse, but guide) leaves a first run, and a launcher's pane, with a second terminal to open.
+  - **A known limit.** While `setup` runs its server, that server is findable, so a client that
+    starts then (a second `setup`, which then runs its wizard on it, as `setup.processes.test.ts`
+    shows, or a `chat`) uses it and loses it when the first `setup` ends. The window is the
+    minutes of a first run.
+
+  **Embedded in another front end's pane** (the tmux client runs `sheavly setup` as the one
+  program of a pane): it needs a terminal, nothing else from the front end, no second terminal and
+  no `BACKEND_URL` (ignored). Exit 0: saved, and one line on stdout. Exit 130: the user pressed Esc
+  or Ctrl+C, what was saved stays, and no server, lock or file is left. Exit 1: it could not run
+  (no terminal, a refused or unusable server, another protocol), with the reason on stderr. Exit 2:
+  an argument. A SIGHUP, SIGTERM or SIGINT stops its server and ends it. It prints no token and no
+  key on either stream; the wizard draws on the terminal while it runs. A server it started is
+  gone with it, except when the process is killed outright (SIGKILL) or crashes: the lock is then
+  free, so the finder reads what is left as stale and the next server replaces it.
+  `setup.processes.test.ts` runs it in process against a real server it starts, with the wizard
+  answered by question title, for the first run on a clean home, the cancelled wizard (no lock or
+  file left, a server starts on the home at once), the key reaching only that server (a recording
+  listener at `BACKEND_URL` sees nothing) and a setup that starts while another runs its wizard
+  (it uses that server and starts none). `setup.helper.test.ts` holds the failure paths with the
+  server and the lookups scripted: another address found, a server that will not stop. The exit
+  code 130 itself rests on the terminal's `chat-failure.helper.test.ts` and on the check by hand
+  below, since these tests reject with a plain error. The real command in a pseudo-terminal with no server was
+  checked by hand, with `SERVER_HOST`, `SERVER_PORT`, `SERVER_EXIT_WITH_PARENT` and
+  `SERVER_DISCOVERY` set in its environment: the wizard came up on a server findable on
+  loopback, Esc and Ctrl+C ended it with exit 130, a SIGHUP ended the process (`waitpid` reported
+  the signal, not an exit code, there; the in-process server's own test exits 129), and each
+  left nothing in the runtime folder. No test drives the real terminal screen.
+
 - **`doctor`** prints one line per check and exits 1 when any is wrong (the report on stdout,
   then `sheavly: N check(s) failed` through `DoctorFailedError`, which prints a stack too with
   `SHEAVLY_DEBUG` set, like any failure). It takes no argument and only reads and probes: it
