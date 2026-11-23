@@ -27,6 +27,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `approval/`          | `ApprovalRequest`, `ApprovalUpdate`, `ApprovalResponse`                                       |
 | `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream      |
 | `node/`              | `NodeInfo`: one unit of work of any kind (agent, command, service, extension kind), its state |
+| `channel/`           | A node's channel: the cursors, the `opened` and `closed` entries, and a channel log's shape   |
 | `task/`              | Background task states                                                                        |
 | `status/`            | The one status table (session, run, task, turn stop) and `runEnd`: how a run ended            |
 | `message/`           | What a model is sent, and the `PromptPart`s a user typed                                      |

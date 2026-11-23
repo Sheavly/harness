@@ -34,6 +34,9 @@ export const TASK_STATUSES = ['running', 'completed', 'failed', 'cancelled'] as 
  */
 export const NODE_STATES = ['running', 'idle', 'completed', 'failed', 'cancelled', 'lost'] as const;
 
+/** The states a node ends in: every node state but the two that are still open. */
+export const NODE_END_STATES = ['completed', 'failed', 'cancelled', 'lost'] as const;
+
 /**
  * The terminal node state an agent's run outcome becomes. `interrupted` is `cancelled`, and the
  * three limits are `failed`, with the limit kept as the outcome: the work did not finish, and a

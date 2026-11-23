@@ -2704,6 +2704,93 @@
           }
         ]
       },
+      "SequenceCursor": { "type": "string", "pattern": "^s(?:0|[1-9]\\d{0,14})$" },
+      "ByteCursor": { "type": "string", "pattern": "^b(?:0|[1-9]\\d{0,14})$" },
+      "Cursor": {
+        "anyOf": [
+          { "$ref": "#/components/schemas/SequenceCursor" },
+          { "$ref": "#/components/schemas/ByteCursor" }
+        ]
+      },
+      "ChannelName": {
+        "anyOf": [{ "type": "string", "const": "tree" }, { "$ref": "#/components/schemas/NodeId" }]
+      },
+      "ChannelBoundary": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "opened" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" },
+              "spawnedAt": {
+                "type": "object",
+                "properties": {
+                  "channel": { "$ref": "#/components/schemas/ChannelName" },
+                  "cursor": { "$ref": "#/components/schemas/Cursor" }
+                },
+                "required": ["channel", "cursor"]
+              }
+            },
+            "required": ["cursor", "at", "channel", "type", "node"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "closed" },
+              "state": { "type": "string", "enum": ["completed", "failed", "cancelled", "lost"] },
+              "outcome": { "$ref": "#/components/schemas/RunOutcome" },
+              "exitCode": {
+                "anyOf": [
+                  { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+                  { "type": "null" }
+                ]
+              },
+              "error": { "type": "string" }
+            },
+            "required": ["cursor", "at", "channel", "type", "state"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "opened" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "closed" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          }
+        ]
+      },
+      "ChannelLog": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "cursor": { "$ref": "#/components/schemas/Cursor" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "channel": { "$ref": "#/components/schemas/ChannelName" },
+            "type": { "type": "string", "minLength": 1 }
+          },
+          "required": ["cursor", "at", "channel", "type"],
+          "additionalProperties": {}
+        }
+      },
       "ApprovalConcern": {
         "type": "object",
         "properties": { "argument": { "type": "string" }, "reason": { "type": "string" } },

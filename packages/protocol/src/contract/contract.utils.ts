@@ -105,6 +105,14 @@ import {
 import { streamEntrySchema } from '../stream/stream.validator.js';
 import { queueUpdateSchema } from '../queue/queue.validator.js';
 import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.validator.js';
+import {
+  byteCursorSchema,
+  channelBoundarySchema,
+  channelLogSchema,
+  channelNameSchema,
+  cursorSchema,
+  sequenceCursorSchema,
+} from '../channel/channel.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -183,6 +191,12 @@ function contractSchemas(): Record<string, z.ZodType> {
     NodeId: nodeIdSchema,
     NodeState: nodeStateSchema,
     NodeInfo: nodeInfoSchema,
+    SequenceCursor: sequenceCursorSchema,
+    ByteCursor: byteCursorSchema,
+    Cursor: cursorSchema,
+    ChannelName: channelNameSchema,
+    ChannelBoundary: channelBoundarySchema,
+    ChannelLog: channelLogSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,
