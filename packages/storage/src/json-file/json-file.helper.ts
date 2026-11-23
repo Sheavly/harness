@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { z } from 'zod';
@@ -103,14 +103,51 @@ export async function assertPrivateFile(params: { file: string }): Promise<void>
  */
 export async function writeJsonFile(params: { file: string; value: unknown }): Promise<void> {
   const { file, value } = params;
+  let text: string;
+
+  try {
+    text = `${JSON.stringify(value, null, 2)}\n`;
+  } catch (caughtError) {
+    throw new StorageFileError({ file, cause: caughtError });
+  }
+
+  await writeTextFile({ file, text });
+}
+
+/**
+ * Writes `text` to `file` as it is, with the guarantees of `writeJsonFile`: for a file the user's
+ * tools read that is not JSON (a token in an environment file, a service's unit). Throws a
+ * `StorageFileError` naming `file` and never holding the text.
+ */
+export async function writeTextFile(params: { file: string; text: string }): Promise<void> {
+  const { file, text } = params;
   const temp = `${file}.${randomUUID()}.tmp`;
 
   try {
     await mkdir(path.dirname(file), { recursive: true, mode: PRIVATE_FOLDER_MODE });
-    await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: PRIVATE_FILE_MODE });
+    await writeFile(temp, text, { mode: PRIVATE_FILE_MODE });
     await replaceFile({ from: temp, to: file });
   } catch (caughtError) {
     await discardTemp({ temp, file, writeError: caughtError });
+    throw new StorageFileError({ file, cause: caughtError });
+  }
+}
+
+/**
+ * Deletes the file `file`. Nothing there is fine, and the answer says which it was: `true` when a
+ * file was removed. It removes one file and never a folder or what a link points to. Throws a
+ * `StorageFileError` naming `file` for anything else (a folder, no permission).
+ */
+export async function removeTextFile(params: { file: string }): Promise<boolean> {
+  const { file } = params;
+
+  try {
+    await unlink(file);
+
+    return true;
+  } catch (caughtError) {
+    if (isMissingPath(caughtError)) return false;
+
     throw new StorageFileError({ file, cause: caughtError });
   }
 }

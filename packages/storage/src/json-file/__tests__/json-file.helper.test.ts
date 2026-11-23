@@ -1,11 +1,17 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { StorageFileError } from '../../errors/storage.errors.js';
 import { expectPrivate, useTempFolder } from '../../testing/temp-folder.fake.js';
 import { RENAME_ATTEMPTS } from '../json-file.constants.js';
-import { readJsonFile, replaceFile, writeJsonFile } from '../json-file.helper.js';
+import {
+  readJsonFile,
+  removeTextFile,
+  replaceFile,
+  writeJsonFile,
+  writeTextFile,
+} from '../json-file.helper.js';
 
 const schema = z.object({ name: z.string(), count: z.number() });
 /** Windows has no file modes: a test of one has nothing to check there. */
@@ -178,5 +184,92 @@ describe('replaceFile', () => {
       code: 'ENOENT',
     });
     expect(calls).toBe(1);
+  });
+});
+
+describe('writeTextFile', () => {
+  it('writes the text as it is and creates the folders above the file', async () => {
+    const target = path.join(temp.path(), 'a', 'b', 'service.env');
+
+    await writeTextFile({ file: target, text: 'SERVER_TOKEN=abc\n' });
+
+    expect(await readFile(target, 'utf8')).toBe('SERVER_TOKEN=abc\n');
+  });
+
+  it.skipIf(!hasFileModes)('makes the file and the folders it creates private', async () => {
+    const target = path.join(temp.path(), 'made', 'service.env');
+
+    await writeTextFile({ file: target, text: 'x' });
+
+    expect((await stat(target)).mode & 0o777).toBe(0o600);
+    expect((await stat(path.dirname(target))).mode & 0o777).toBe(0o700);
+  });
+
+  it('replaces the whole file and leaves no temp file beside it', async () => {
+    const target = path.join(temp.path(), 'service.env');
+
+    await writeTextFile({ file: target, text: 'a long first version of the text\n' });
+    await writeTextFile({ file: target, text: 'short\n' });
+
+    expect(await readFile(target, 'utf8')).toBe('short\n');
+    expect(await readdir(temp.path())).toEqual(['service.env']);
+  });
+
+  it('throws a StorageFileError that names the file and never holds the text, and leaves no temp file', async () => {
+    const blocker = path.join(temp.path(), 'blocker');
+    const secret = 'SERVER_TOKEN=must-not-be-in-the-message';
+
+    await writeFile(blocker, 'a file where a folder is needed');
+
+    const failure = await writeTextFile({
+      file: path.join(blocker, 'service.env'),
+      text: secret,
+    }).catch((caughtError: unknown) => caughtError);
+
+    expect(failure).toBeInstanceOf(StorageFileError);
+    expect((failure as StorageFileError).file).toBe(path.join(blocker, 'service.env'));
+    expect((failure as StorageFileError).message).not.toContain(secret);
+    expect(await readdir(temp.path())).toEqual(['blocker']);
+  });
+
+  it('turns a value JSON cannot hold into a StorageFileError naming the file', async () => {
+    const circular: Record<string, unknown> = {};
+
+    circular.self = circular;
+
+    await expect(writeJsonFile({ file, value: circular })).rejects.toBeInstanceOf(StorageFileError);
+  });
+});
+
+describe('removeTextFile', () => {
+  it('removes a file and says so, and says so when there was none', async () => {
+    const target = path.join(temp.path(), 'service.env');
+
+    await writeFile(target, 'x');
+
+    expect(await removeTextFile({ file: target })).toBe(true);
+    expect(await removeTextFile({ file: target })).toBe(false);
+    expect(await readdir(temp.path())).toEqual([]);
+  });
+
+  it('refuses a folder with a StorageFileError and leaves it and what is in it', async () => {
+    const inside = path.join(temp.path(), 'dir');
+
+    await mkdir(inside);
+    await writeFile(path.join(inside, 'keep'), 'x');
+
+    await expect(removeTextFile({ file: inside })).rejects.toBeInstanceOf(StorageFileError);
+    expect(await readdir(inside)).toEqual(['keep']);
+  });
+
+  it.skipIf(!hasFileModes)('removes a link and never what it points to', async () => {
+    const target = path.join(temp.path(), 'target');
+    const link = path.join(temp.path(), 'link');
+
+    await writeFile(target, 'kept');
+    await symlink(target, link);
+
+    expect(await removeTextFile({ file: link })).toBe(true);
+    expect(await readFile(target, 'utf8')).toBe('kept');
   });
 });
