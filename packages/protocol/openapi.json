@@ -3000,6 +3000,35 @@
         },
         "required": ["channel", "cursor", "at", "type", "nodes", "approvals"]
       },
+      "SubscribeFrom": {
+        "anyOf": [
+          { "type": "string", "const": "start" },
+          { "type": "string", "const": "now" },
+          { "type": "string", "const": "snapshot" },
+          { "type": "string", "pattern": "^tail:[1-9]\\d{0,14}$" },
+          { "$ref": "#/components/schemas/Cursor" }
+        ]
+      },
+      "SubscribeRequest": {
+        "type": "object",
+        "properties": {
+          "subscriptions": {
+            "minItems": 1,
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": { "$ref": "#/components/schemas/ChannelName" },
+                "from": { "$ref": "#/components/schemas/SubscribeFrom" }
+              },
+              "required": ["channel", "from"]
+            }
+          },
+          "approvals": { "type": "boolean" }
+        },
+        "required": ["subscriptions"]
+      },
       "ApprovalConcern": {
         "type": "object",
         "properties": { "argument": { "type": "string" }, "reason": { "type": "string" } },
@@ -3473,6 +3502,7 @@
           "cannot_queue",
           "unknown_skill",
           "unknown_approval",
+          "cursor_out_of_range",
           "unknown_model",
           "storage_failed",
           "not_set_up",

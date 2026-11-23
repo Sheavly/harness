@@ -114,6 +114,10 @@ import {
   sequenceCursorSchema,
 } from '../channel/channel.validator.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
+import {
+  subscribeFromSchema,
+  subscribeRequestSchema,
+} from '../subscription/subscription.validator.js';
 import { jsonValueSchema } from '../extension/extension.validator.js';
 import {
   taskIdSchema,
@@ -200,6 +204,8 @@ function contractSchemas(): Record<string, z.ZodType> {
     ChannelLog: channelLogSchema,
     TreeChannelEntry: treeChannelEntrySchema,
     TreeSnapshot: treeSnapshotSchema,
+    SubscribeFrom: subscribeFromSchema,
+    SubscribeRequest: subscribeRequestSchema,
     ApprovalConcern: approvalConcernSchema,
     ApprovalOption: approvalOptionSchema,
     ApprovalRequest: approvalRequestSchema,
