@@ -338,6 +338,55 @@ skipped); the named profile is checked instead, before a conversation opens:
 The startup banner says which profile the chat runs on, next to the conversation line:
 `→ profile Work (<id>)`. `/model` and `/effort` still remember their choice on that profile.
 
+### A chat on a conversation another program created
+
+A launcher that must know which conversation a chat is (the tmux client, one chat per pane)
+creates the conversation itself: it calls `POST /conversations` through the API (`@sheavly/client`),
+with the folder the pane works in as `workspace`, and starts the chat with `--resume <id>`. It
+holds the id before the chat exists, so two chats started at once in one folder cannot be mixed
+up, and it needs neither the home folder nor the chat's output (the banner line
+`→ conversation <id>` is for people, and a launcher should not depend on it). This is the
+supported way for another program to learn a chat's conversation id.
+
+`--resume` on a conversation that is already live joins it as it is (reopening a live
+conversation changes nothing) and starts no second one. An id no conversation has fails the chat
+in one line and starts none. Things a launcher must know:
+
+- **One chat per conversation.** The chat's end closes its conversation: it leaves the live ones
+  and is kept as closed, so the launcher's own later calls on it get `not_found` until it reopens
+  it (`POST /stored-conversations/{id}/reopen`). Reopening builds it again, so its project trust is
+  judged again against the trust store and the folder's `.sheavly/` as they are then; its folder
+  and profile stay as created. A second chat joined to the same id is closed under it when the
+  first ends. A chat that fails before it joins (an unknown id, a refused `--trust`, a folder with
+  no ready profile), and one killed by SIGKILL, which no handler can catch, leaves a conversation
+  the launcher created live: the launcher closes it.
+- **Folder and profile are fixed when the conversation is created.** `--profile` given with
+  `--resume` is ignored, and the notice that says so is printed only for a conversation the store
+  lists (live or closed) that runs on a different profile. Setup still runs for the chat's own
+  folder before it joins, so a chat without a terminal in a folder with no ready profile fails
+  even when the conversation's profile is ready (with a terminal it opens the setup wizard).
+- **Trust comes first, and is a person's decision.** Trusting a folder makes the code in its
+  `.sheavly/` hooks run, so a launcher calls the API's trust route only after the user chose to
+  trust that folder, never as routine for every pane (the route is refused when the backend
+  listens beyond this machine). A conversation loads its hooks when it is created, and trusting
+  afterwards changes nothing for it: trust the folder, then create the conversation, then read
+  `projectTrust` from `GET /conversations/{id}` and start the chat only when it is `trusted` or
+  `no_hooks` (`changed` means the folder's `.sheavly/` changed since it was trusted, and no hooks
+  run).
+- **Do not pass `--trust` with `--resume`.** It trusts the folder the chat runs in
+  (`WORKSPACE_ROOT`, else the current folder), not the conversation's, and does so before the id
+  is looked up, so a chat that then fails still leaves that folder trusted. It does not make the
+  joined conversation load hooks, and the banner's hint to rerun with `--trust` does not help a
+  conversation that is already live. Without `--trust` nothing is sent, and a folder already
+  trusted stays trusted.
+
+`resume-live.processes.test.ts` (`apps/sheavly/src/chat/__tests__/`) runs the real command on a
+real server for joining, two chats at once, a missing id and the trust cases above, and checks
+that trust after creation changes nothing for a live conversation. It does not cover the
+`--profile` notice, setup failing before the join, a refused `--trust`, a failed or killed chat
+leaving the conversation live, or two chats on one id; the close at exit is relied on by its
+history check but not asserted by itself.
+
 ## Setup
 
 ### Model effort
