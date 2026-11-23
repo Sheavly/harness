@@ -55,8 +55,9 @@ several (a settings error lists its issues).
   1 with the server's one-line message and starts nothing.
 - **`chat`** finds the user's running server and runs `runTerminalChat({ env, args, server })` of
   the terminal on it, handing a failure to the terminal's `reportChatFailure`, so it ends with
-  the same message and exit code (130 for a cancelled setup, 1 otherwise). `findChatServer`
-  (`chat/find-server.helper.ts`) calls `findRunningServer` of `@sheavly/storage` with
+  the same message and exit code (130 for a cancelled setup, 1 otherwise). `findVerifiedServer`
+  (`chat/find-server.helper.ts`; `findChatServer` narrows it to the url and token, all that
+  `chat` and `setup` pass on) calls `findRunningServer` of `@sheavly/storage` with
   `verifyServer` of `@sheavly/client` as the handshake: the file is read through the safe reader,
   a free lock means the file is left over and nothing is contacted, and the token is handed on
   only after the server proved it holds it. With none it exits 1, saying why for each folder it
@@ -73,6 +74,44 @@ several (a settings error lists its issues).
   lock's pipe, so the Sheavly home must not be a folder others can write to: there, someone
   else's server could pass the handshake and get the chat's prompts and `--trust`, though not the
   user's token ([#462](https://github.com/Sheavly/harness/issues/462)).
+
+- **`connection --json`** prints how to reach the user's running server as one line of JSON on
+  stdout, for a front end in another repo (the tmux client) that must not read the home folder or
+  repeat the safe read of the discovery file:
+  `{ source: "discovery", url, token, protocolVersion, serverVersion }`. The server is found by
+  `findVerifiedServer`, the lookup `chat` and `setup` use (`doctor` calls the finder itself, to
+  report on it), so a stale file, an impostor listener
+  and a server of another protocol are refused as they are there: nothing on stdout, one line on
+  stderr, exit 1, and never the token. It starts nothing and never contacts a server whose lock
+  is free; the two known gaps of `chat` apply to it. With `BACKEND_URL` and `BACKEND_TOKEN` set it
+  prints those as `{ source: "environment", url, token }` and contacts nothing: the handshake
+  proof is bound to the server's instance id, which only the discovery file holds and no route
+  returns (a route that returned it would let whoever learns it test guesses of a weak token
+  offline), so an address given by hand cannot be verified, and `source` tells the caller which
+  connection it got, and a caller must treat `environment` as unverified. The address is printed
+  as given. A `BACKEND_URL` that is not an `http://` or `https://` URL written as one word (no
+  space, control or invisible format character, no backslash) and with no login in it
+  (`http://127.0.0.1@evil.example`: a person reads the first host, a client connects to the
+  second), or has no `BACKEND_TOKEN`, is an error naming the variable and never repeating a value;
+  those are the forms a URL parser reads differently from another, or that hide what a terminal
+  shows. `BACKEND_TOKEN` alone is ignored, as for `chat`. The output is the token, written to
+  stdout in that one line and nowhere else. It refuses to write to a terminal, before it looks
+  for anything (exit 1, saying to pipe it to the program that reads it): a token printed there
+  stays in the scrollback, and a program that reads the line reads a pipe. `cli.ts` passes
+  whether stdout is a terminal, since the command's folder may not read `process`, so a test of
+  the refusal is a unit test of the command; the process tests write to pipes. `--json` is
+  required, once and with nothing else (any other argument is a usage error, exit 2, and is not
+  echoed), so running it says what it prints. A program should run
+  `node apps/sheavly/dist/cli.js connection --json`: `npm run` may print its own banner before
+  the line. `connectionConfinement` (`@sheavly/eslint-config`, spread into this workspace's
+  config) keeps `src/connection/` from importing the backend, the terminal, the client, a network
+  module, `process`, `console`, `module` or the process runner, from using `fetch` or `console`,
+  and from writing with `process.stdout`: it starts and contacts nothing itself, the lookup
+  `cli.ts` passes in does, and it writes only through its streams. It does not see a dynamic
+  `import()` or `createRequire`. That the token goes into no message is held by tests:
+  `connection.processes.test.ts` runs the real command on a real server and on the planted
+  left-over file, impostor and other-protocol cases of `chat`'s tests, and searches stdout and
+  stderr of each refusal for the token, with `SHEAVLY_DEBUG` set as well.
 
 - **`service`** runs the server as a systemd user service on Linux: `install`, `uninstall`,
   `start`, `stop`, `restart`, `status` and `logs` (`service/`, see

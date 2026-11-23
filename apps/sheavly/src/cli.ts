@@ -6,9 +6,9 @@
  *   node apps/sheavly/dist/cli.js      after `npm run build`
  *
  * `sheavly --version`, `sheavly --help`, `sheavly serve`, `sheavly service`, `sheavly chat`,
- * `sheavly setup` and `sheavly doctor`: see apps/sheavly/docs/design.md. An uncaught error is one
- * line and a non-zero exit code; the stack only with SHEAVLY_DEBUG set. This file wires the commands to the process; the table, the help
- * and the exit codes are `dispatch`.
+ * `sheavly connection`, `sheavly setup` and `sheavly doctor`: see apps/sheavly/docs/design.md. An
+ * uncaught error is one line and a non-zero exit code; the stack only with SHEAVLY_DEBUG set. This
+ * file wires the commands to the process; the table, the help and the exit codes are `dispatch`.
  */
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,8 @@ import { reportChatFailure } from '@sheavly/terminal/chat/chat-failure.helper';
 import { runTerminalChat } from '@sheavly/terminal/chat/start.helper';
 import { runTerminalSetup } from '@sheavly/terminal/setup/run-setup.helper';
 import { createChatCommand } from './chat/chat.helper.js';
-import { findChatServer } from './chat/find-server.helper.js';
+import { findChatServer, findVerifiedServer } from './chat/find-server.helper.js';
+import { createConnectionCommand } from './connection/connection.helper.js';
 import { dispatch } from './dispatch/dispatch.helper.js';
 import { createDoctorCommand } from './doctor/doctor.helper.js';
 import { createServeCommand } from './serve/serve.helper.js';
@@ -44,6 +45,12 @@ const code = await dispatch({
       runChat: runTerminalChat,
       findServer: findChatServer,
       reportFailure: reportChatFailure,
+    }),
+    createConnectionCommand({
+      findServer: findVerifiedServer,
+      streams,
+      // `isTTY` is undefined, not false, when stdout is a pipe or a file: falsy either way.
+      outputIsTerminal: process.stdout.isTTY,
     }),
     createDoctorCommand({
       nodeVersion: process.versions.node,

@@ -578,6 +578,28 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   template literal with expressions, `node:worker_threads`, `@sheavly/process`, `child_process`
   reached through another module, a file outside the globs (`.mts`, `.cts`, `.jsx`), or a program
   started by the shell tool of the harness itself; those stay with review.
+- **The launcher's connection command** (`connectionConfinement`, one config block the `sheavly`
+  app spreads after `systemdConfinement`, not a `harness/*` rule: `no-restricted-imports`,
+  `no-restricted-globals` and `no-restricted-properties`, with a message each):
+  `sheavly connection` prints the token of a server it did not start, so the files of
+  `apps/sheavly/src/connection/` (tests and fakes excepted) may not import the backend or the
+  terminal (it starts no server and no chat), the client, `undici` or a network or process
+  built-in (it contacts no server itself: the finder and the handshake are in the lookup that
+  `cli.ts` passes in), use the globals `fetch`, `WebSocket`, `XMLHttpRequest` or `EventSource`,
+  or write with `console`, `process.stdout` or `process.stderr` (it writes only through the
+  `streams` it is given), and may not import `process`, `console`, `module`, `vm`,
+  `inspector` or `@sheavly/process`, nor call `process.getBuiltinModule`, which would write or
+  load around those. The block repeats the real-tools restriction of `systemdConfinement`
+  for its folder, because a rule set twice for one file keeps only the later options; the other
+  rule that block sets, a dynamic `import('…')` of the real tools, still applies there.
+  `connection-confinement.test.js` lints the real launcher config and pins each of these in that
+  folder, in its tests, and in the rest of the app, where they stay allowed. It does not see
+  `createRequire`, a dynamic `import('…')` of anything but the real tools, `globalThis.fetch`,
+  `node:fs` writing to descriptor 1, a stream's `err` being given the token, or the token being
+  put in a thrown message: that the token goes only to `streams.out` in one line, and into no
+  message, is held by `connection.processes.test.ts` and review, and the lint covers only the
+  slice of it that is `console`, `process` and the streams. Nor does it pin that `cli.ts` passes
+  the right lookup (`findVerifiedServer`); the process tests, which run the real command, do.
 - **File writes** (`harness/no-direct-file-writes`, source files; tests and fakes write fixtures
   into temp folders and are exempt): no import of a function that creates, changes, moves or
   deletes a file or folder from `node:fs` or `node:fs/promises` (`writeFile`, `appendFile`,

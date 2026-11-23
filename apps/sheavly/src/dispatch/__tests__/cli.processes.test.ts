@@ -43,11 +43,18 @@ describe('the sheavly command, from the checkout', () => {
     });
   }, 60_000);
 
-  it('lists chat, doctor, serve, service and setup, and nothing that does not exist, with --help', async () => {
+  it('lists chat, connection, doctor, serve, service and setup, and nothing that does not exist, with --help', async () => {
     const { exit, out } = await outcome(await cli.startAndWaitForExit({}, ['--help']));
 
     expect(exit.code).toBe(0);
-    expect(listedCommands(out)).toEqual(['chat', 'doctor', 'serve', 'service', 'setup']);
+    expect(listedCommands(out)).toEqual([
+      'chat',
+      'connection',
+      'doctor',
+      'serve',
+      'service',
+      'setup',
+    ]);
   }, 60_000);
 
   it('answers `serve --help` and `chat --help` without starting anything', async () => {

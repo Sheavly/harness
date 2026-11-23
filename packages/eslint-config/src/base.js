@@ -25,6 +25,8 @@ export { replayConfinement } from './replay-confinement.js';
 export { connectBackendConfinement } from './connect-backend-confinement.js';
 // The launcher's rule that systemd's programs are run only behind `SystemTools`, created in cli.ts.
 export { systemdConfinement } from './systemd-confinement.js';
+// The launcher's rule that `sheavly connection` starts and contacts nothing, and writes only through its streams.
+export { connectionConfinement } from './connection-confinement.js';
 // The storage package's rule that stored profiles and indexes are read through the migration.
 export { storedFileReads } from './stored-file-reads.js';
 // The providers package's rule that a model call goes through the injected fetch, not the global.

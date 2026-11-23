@@ -57,9 +57,9 @@ wait with it.
   holds it, and only then calls the handshake, which is passed in as a function because a library
   package may not depend on `@sheavly/client`; an app passes `verifyServer`. It returns the token
   only for a server that proved it holds it, and it reads and probes only. It is covered by tests
-  with real servers and real listeners. `sheavly chat` calls it; `sheavly doctor`
+  with real servers and real listeners. `sheavly chat`, `sheavly doctor`
   ([#392](https://github.com/Sheavly/harness/issues/392)) and `sheavly connection`
-  ([#414](https://github.com/Sheavly/harness/issues/414)) will. Every workspace but the server
+  ([#414](https://github.com/Sheavly/harness/issues/414)) call it. Every workspace but the server
   reaches the server only through it, with `verifyServer`: `harness/server-through-finder` fails
   source that imports the discovery file, the lock or the runtime folder directly, or calls the
   finder without `verify: verifyServer`. `connectBackend` and
@@ -73,8 +73,8 @@ wait with it.
   reported, naming the folder and never the token, as one line of at most 200 characters; a
   backend that does not answer in 10 s fails the start.
 - **The `sheavly` command exists and runs from the checkout** (`apps/sheavly`, the one workspace
-  named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve`, `chat`, `setup` and
-  `doctor`, or `node apps/sheavly/dist/cli.js` after `npm run build`. It imports the backend's
+  named `sheavly`): `npm run sheavly -- --version`, `--help`, `serve`, `service`, `chat`,
+  `connection`, `setup` and `doctor`, or `node apps/sheavly/dist/cli.js` after `npm run build`. It imports the backend's
   `runServer` and the terminal's `runTerminalChat` and `runTerminalSetup` in its own process, through the launcher exception to "nothing imports an app" (`sheavly.launcher`, limited to the
   apps and entry files `LAUNCHER_ENTRIES` lists; see the layout doc in `@sheavly/eslint-config`). `serve`
   starts the server exactly as `npm run serve` does (the same settings, lock, discovery file,
@@ -82,8 +82,13 @@ wait with it.
   discovery file and proven by its handshake before the token is used; with none it says so, says
   to run `sheavly serve` in another terminal and starts nothing, and `BACKEND_URL` and
   `BACKEND_TOKEN` still name a server instead. `setup` runs the terminal's setup wizard on that
-  same verified server and ends (it ignores `BACKEND_URL`, since it sends a provider key), and
-  `doctor` reports what is installed, what runs and what is wrong.
+  same verified server and ends (it ignores `BACKEND_URL`, since it sends a provider key),
+  `doctor` reports what is installed, what runs and what is wrong, and `connection --json`
+  prints the verified connection of the running server as one line of JSON for a front end in
+  another repo, so it need not read the home folder or repeat the safe read of the file: the
+  token is in that line, so it is a secret and `--json` is required. With `BACKEND_URL` and
+  `BACKEND_TOKEN` set it prints those, marked `"source": "environment"` and unverified, since the
+  handshake needs the instance id that only the discovery file holds.
   The package is not packed or installed yet ([#450](https://github.com/Sheavly/harness/issues/450)),
   and `update` is not built.
 - **Every package is private at version `0.0.0`** and is consumed from source inside this repository.
@@ -274,7 +279,8 @@ closing every conversation when it stops, stay as they are today.
 
 The file and the lock are built as library code and the backend uses them, and the protocol
 version, the two token-free routes, the client's verification and the finder that reads the file,
-described below, are built. `sheavly chat` calls the finder, the other `sheavly` commands will
+described below, are built. `sheavly chat`, `sheavly setup`, `sheavly doctor` and
+`sheavly connection` call the finder
 ([#392](https://github.com/Sheavly/harness/issues/392),
 [#414](https://github.com/Sheavly/harness/issues/414)), and the terminal's `connectBackend` and
 `npm run dev:terminal` never do.

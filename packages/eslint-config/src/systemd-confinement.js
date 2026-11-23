@@ -20,6 +20,12 @@ const PROCESS_MODULES = ['child_process', 'node:child_process'].flatMap((name) =
 /** The one file that wraps the real programs, however it is written in an import. */
 const REAL_TOOLS = ['**/system.helper', '**/system.helper.js'];
 
+/**
+ * The import restriction on the real tools, for a folder that sets `no-restricted-imports` of its
+ * own: a rule set twice for one file keeps only the later options, so it must repeat this one.
+ */
+export const REAL_TOOLS_RESTRICTION = { group: REAL_TOOLS, message: REAL_TOOLS_MESSAGE };
+
 // `no-restricted-imports` does not see `import('…')` with a string literal or a template literal
 // without expressions; these selectors do. A specifier in a variable, or with an expression in a
 // template, and `createRequire` stay with review.

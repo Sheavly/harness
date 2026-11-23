@@ -1,12 +1,8 @@
-import path from 'node:path';
-import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
+import { launcherReports as reported } from '../testing/launcher-lint.fake.js';
 import { systemdConfinement } from '../systemd-confinement.js';
 
-const SHEAVLY = path.resolve(import.meta.dirname, '../../../../apps/sheavly');
-const IMPORTS = 'no-restricted-imports';
 const SYNTAX = 'no-restricted-syntax';
-const eslint = new ESLint({ cwd: SHEAVLY });
 const WRAPPER = 'src/service/system.helper.ts';
 const ENTRY = 'src/cli.ts';
 // The service folder, tests included: a test is where a real `systemctl --user enable` would run
@@ -34,14 +30,6 @@ const REAL_TOOLS_LINES = [
   "import { createSystemTools } from '../service/system.helper';\nvoid createSystemTools;\n",
   "import { createSystemTools } from './service/system.helper.js';\nvoid createSystemTools;\n",
 ];
-
-/** The messages of `rule` the launcher's real config reports for `code` as `file`. */
-async function reported(params) {
-  const { code, file, rule = IMPORTS } = params;
-  const [result] = await eslint.lintText(code, { filePath: path.join(SHEAVLY, file) });
-
-  return result.messages.filter(({ ruleId }) => ruleId === rule);
-}
 
 // The service runs systemd's programs only behind `SystemTools`, so a test passes a fake and no
 // test runs `systemctl` or `loginctl` on the machine it runs on. A static import and a dynamic

@@ -3,6 +3,7 @@ import { setUpTestProfile } from '@sheavly/client/testing/test-profile.fake';
 import { PROTOCOL_VERSION } from '@sheavly/protocol/version/protocol-version.constants';
 import { PROTOCOL_MISMATCH_MESSAGES } from '@sheavly/protocol/version/version.constants';
 import { useFinderScenarios } from '../../testing/finder-scenarios.fake.js';
+import { findChatServer, findVerifiedServer } from '../find-server.helper.js';
 
 // No input: a chat with no terminal reads its end at once, so one prompt runs and the chat ends.
 const scenarios = useFinderScenarios();
@@ -90,5 +91,27 @@ describe.skipIf(process.platform === 'win32')('sheavly chat finds the running se
     );
     expect(`${result.out}${result.err}`).not.toContain(cli.folders().token);
     scenarios.expectNothingSecretSent(server);
+  }, 60_000);
+
+  it('hands chat and setup only the url and token of what the lookup found, versions and all', async () => {
+    const server = await cli.start({}, ['serve']);
+    const { home, xdg, token } = cli.folders();
+    // What the child processes read, which the in-process lookup reads the same way.
+    const env = { SHEAVLY_HOME: home, XDG_RUNTIME_DIR: xdg };
+    const health = (await (await fetch(new URL('/health', server.url))).json()) as {
+      serverVersion: string;
+    };
+
+    expect(await findVerifiedServer(env)).toEqual({
+      url: server.url,
+      token,
+      serverVersion: health.serverVersion,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+
+    const narrowed = await findChatServer(env);
+
+    expect(narrowed).toEqual({ url: server.url, token });
+    expect(Object.keys(narrowed)).toEqual(['url', 'token']);
   }, 60_000);
 });
