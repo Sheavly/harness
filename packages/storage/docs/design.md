@@ -65,10 +65,11 @@ written or removed.
 
 ## The queue
 
-`FileConversationStore.queue(id)` is a conversation's `queue.json`: the lines a person queued
-behind a running prompt, `{ queued: string[] }`. It is a separate document from the history logs,
-so pending input never reaches model input or a summary, and it survives a restart. Reopening a
-conversation reads it and never sends it; a UI decides when a line becomes a prompt. It shares the
+`FileConversationStore.queue(id)` is a conversation's `queue.json`: the lines waiting in its queue,
+`{ queued: string[] }`. It is a separate document from the history logs, so pending input never
+reaches model input or a summary, and it survives a restart. Reopening a conversation reads it and
+starts none of it until the next line is sent; the host's queue decides when a line becomes a
+prompt. It shares the
 `DocumentStore` wrapper with the shell state and is removed with the conversation.
 
 ## Shell state
