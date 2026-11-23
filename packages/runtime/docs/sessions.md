@@ -214,6 +214,15 @@ parent's history, `Conversations.reopen` (host) appends an `agent-report` notice
 the sub-agent's stored history and with no task id, so the next prompt tells the model once. Stored entries with a gap throw
 a `StoreError` instead of resuming a conversation with a hole in it.
 
+Sessions that were released come back as released (`StoredLog.released`), not live, so a long
+conversation does not carry every sub-agent it ever had and they do not count toward the node bound.
+A sub-agent whose parent was released but whose own release was never written (a crash between the
+two writes) comes back released too. Because a released session is no longer live, the reopen no
+longer owes a report for one whose history write was lost just before the crash. A stored log that
+is otherwise corrupt (a session whose parent was never stored, an id stored twice, an ended session
+with no end time) fails the reopen loudly with a `SessionError` or `NodeError` rather than being
+repaired.
+
 The registry also keeps each session's last reported tokens: `lastTokens(id)` is what the session's
 newest `usage` event carried, not a total. A call that reported none clears it, since the old
 numbers no longer say how full the context is. It belongs to the session, not to a run, so a

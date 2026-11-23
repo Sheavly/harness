@@ -15,7 +15,8 @@ function started(params: {
   signal: AbortSignal;
   onOutput: (chunk: string) => void;
 }): ReturnType<StartTask['run']> {
-  // An async function's body runs at once, so `run` starts as before; only a throw changes.
+  // An async function's body runs at once, so `run` starts as before, and an `onOutput` before it
+  // returns is heard as before; a throw is now a rejection, and settling comes a few microtasks later.
   return (async () => params.run({ signal: params.signal, onOutput: params.onOutput }))();
 }
 

@@ -6,7 +6,8 @@ import type { NodeRecord, NodeState } from './nodes.types.js';
 /**
  * `text` as a node's title or status on the wire: the characters a line cannot hold become spaces,
  * runs of space become one, and it is cut to `max`. Undefined when nothing is left, or only text
- * that draws as nothing, so a caller picks what stands for a blank. A command's description or an
+ * that draws as nothing, in the first `max * HEAD_FACTOR` characters, so a caller picks what
+ * stands for a blank. A command's description or an
  * agent's status report can be anything; the schema refuses what is not one line.
  */
 export function oneLineOf(params: { text: string; max: number }): string | undefined {

@@ -13,9 +13,11 @@ export const MAX_CHANNEL_ENTRIES = 1_000;
 export const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}\p{Co}]+/gu;
 
 /**
- * How many times the cap of a title or status is read before it is made one line: enough for the
- * text to still fill the cap once control characters and runs of space are squeezed out of it, and
- * little enough that a huge input costs no more than a long one.
+ * How many times the cap of a title or status is read before it is made one line, so a huge input
+ * costs no more than a long one. Text made mostly of control characters and runs of space still
+ * fills the cap, but one that opens with more than `max * HEAD_FACTOR` of them (1,600 for a
+ * title) reads as blank: that is the price of the bound, and a title or status like that is not
+ * one a person wrote.
  */
 export const HEAD_FACTOR = 8;
 

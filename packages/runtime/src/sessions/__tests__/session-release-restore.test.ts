@@ -1,5 +1,6 @@
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
+import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { describe, expect, it } from 'vitest';
 import { startHeldTask } from '../../testing/held-task.fake.js';
@@ -88,6 +89,73 @@ describe('a reopened conversation with sessions that were released', () => {
 
     // A parent comes before its children, and the rest keep the order they were started in.
     expect(again.list().map((session) => session.title)).toEqual(['main', 'A', 'AA', 'B']);
+  });
+});
+
+/** What `store` holds of the conversation, as a list of entries. */
+async function entriesOf(store: MemoryConversationStore) {
+  const entries: StreamEntry[] = [];
+
+  for await (const entry of store.entries(id).read()) entries.push(entry);
+
+  return entries;
+}
+
+describe('a reopened conversation cut between a parent’s release and its child’s', () => {
+  it('has the child back as released, not as a live session under a parent that is gone', async () => {
+    const store = new MemoryConversationStore();
+    const sessions = new SessionRegistry({ store: store.entries(id) });
+    const main = sessions.startMain({ title: 'Chat' });
+    const parent = sessions.startChild({
+      parentId: main.id,
+      startedByCall: STARTED_BY,
+      title: 'Parent',
+    });
+    const child = sessions.startChild({
+      parentId: parent.id,
+      startedByCall: STARTED_BY,
+      title: 'Child',
+    });
+
+    sessions.end({ id: child.id, state: 'completed' });
+    sessions.end({ id: parent.id, state: 'completed' });
+    sessions.release(parent.id);
+    await sessions.flushStore();
+
+    // A crash after the parent's release was written and before its child's: drop the last one.
+    const written = await entriesOf(store);
+    const last = written.findLastIndex(
+      (entry) => entry.kind === 'update' && entry.update.type === 'session_released',
+    );
+    const cut = new MemoryConversationStore();
+
+    for (const entry of written.slice(0, last)) await cut.entries(id).append(entry);
+
+    const again = await reopened(cut);
+
+    expect(again.list().map((session) => session.title)).toEqual(['Chat']);
+    expect(again.isReleased(parent.id)).toBe(true);
+    expect(again.isReleased(child.id)).toBe(true);
+  });
+});
+
+describe('a stored session id that appears twice', () => {
+  it('is refused, not restored as two nodes with the first orphaned', () => {
+    const source = new SessionRegistry();
+    const stored = source.startMain({ title: 'Chat' });
+    const session = source.get(stored.id);
+
+    expect(session).toBeDefined();
+    expect(() => {
+      new SessionRegistry({
+        resume: {
+          next: 0,
+          tail: [],
+          sessions: session ? [session, session] : [],
+          lastTokens: [],
+        },
+      });
+    }).toThrow(expect.objectContaining({ reason: 'unknown_session' }));
   });
 });
 

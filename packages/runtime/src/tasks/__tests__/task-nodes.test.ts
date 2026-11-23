@@ -286,6 +286,31 @@ describe('a sub-agent', () => {
   });
 });
 
+describe('an agent task with no session to share', () => {
+  it('has an agent node of its own, which the task ends with how it settled', async () => {
+    const world = conversation();
+
+    // No session of this call id is open and unclaimed: this one has a node of its own.
+    world.sessions.end({ id: world.child.id, state: 'completed' });
+
+    const task = startSubAgent({ world, run: () => Promise.resolve({ exitCode: 1 }) });
+
+    await world.tasks.nextSettled();
+
+    expect(world.tasks.get(task.id)?.status).toBe('failed');
+    expect(world.tasks.nodes.list().filter((node) => node.kind === 'agent')).toHaveLength(3);
+
+    const sessionNode = world.sessions.nodeIdOf(world.child.id);
+    const own = world.tasks.nodes
+      .list()
+      .find(
+        (node) => node.kind === 'agent' && node.parent !== undefined && node.id !== sessionNode,
+      );
+
+    expect(own).toMatchObject({ state: 'failed' });
+  });
+});
+
 describe('a run that throws before it returns a promise', () => {
   it('is a failed task, and its node ends failed rather than running for good', async () => {
     const world = conversation();

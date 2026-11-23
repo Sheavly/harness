@@ -115,6 +115,28 @@ describe('the child-sessions service: runChild', () => {
     await run.harness.tasks.cancelAll();
   });
 
+  it('ends the child as failed when the loop throws before it ended the session, so it can be released', async () => {
+    const { run, scope, child } = await withChild(() => Promise.reject(new Error('loop failed')));
+
+    await expect(scope.runChild({ ...params(), child })).rejects.toThrow('loop failed');
+
+    expect(run.harness.sessions.get(child.id)).toMatchObject({ state: 'failed' });
+    expect(run.harness.sessions.releaseAgent(child.id)).toBe(true);
+    expect(run.harness.nodes.list().map((node) => node.kind)).toEqual(['agent']);
+  });
+
+  it('keeps the outcome the loop gave the session when it threw after ending it', async () => {
+    const { run, scope, child } = await withChild(() => {
+      run.harness.sessions.end({ id: child.id, state: 'max_turns' });
+
+      return Promise.reject(new Error('loop failed late'));
+    });
+
+    await expect(scope.runChild({ ...params(), child })).rejects.toThrow('loop failed late');
+
+    expect(run.harness.sessions.get(child.id)?.state).toBe('max_turns');
+  });
+
   it('refuses a session the scope did not start, and runs nothing', async () => {
     const seen: unknown[] = [];
     const run = scopeRun({

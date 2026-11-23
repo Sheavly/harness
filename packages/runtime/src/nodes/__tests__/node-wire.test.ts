@@ -6,7 +6,7 @@ import {
 import { nodeInfoSchema } from '@sheavly/protocol/node/node.validator';
 import { describe, expect, it } from 'vitest';
 import { NodeRegistry } from '../node-registry.service.js';
-import { NOT_ONE_LINE, UNTITLED } from '../nodes.constants.js';
+import { HEAD_FACTOR, NOT_ONE_LINE, UNTITLED } from '../nodes.constants.js';
 import { oneLineOf } from '../nodes.utils.js';
 
 /** Titles and status reports a tool or a model can produce, none of them one line of text. */
@@ -48,6 +48,23 @@ describe('a text as a node’s title or status', () => {
     expect(oneLineOf({ text: 'abcdef', max: 3 })).toBe('abc');
     expect(oneLineOf({ text: 'ab de', max: 3 })).toBe('ab');
     expect(oneLineOf({ text: '😀😀😀', max: 2 })).toBe('😀😀');
+  });
+
+  it('reads only the head of a huge input, so it costs no more than a long one', () => {
+    const huge = `${'x'.repeat(100)}${'y'.repeat(20_000_000)}`;
+    const started = performance.now();
+    const line = oneLineOf({ text: huge, max: MAX_NODE_TITLE_CHARS });
+
+    expect(line).toBe(huge.slice(0, MAX_NODE_TITLE_CHARS));
+    // Linear in the head, not in the input: a 20 MB input is not a second of blocked CPU.
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  it('reads blank when the title opens with more blank than the head holds: the price of the bound', () => {
+    const blanks = ' '.repeat(MAX_NODE_TITLE_CHARS * HEAD_FACTOR);
+
+    expect(oneLineOf({ text: `${blanks}title`, max: MAX_NODE_TITLE_CHARS })).toBeUndefined();
+    expect(oneLineOf({ text: `${blanks.slice(1)}title`, max: MAX_NODE_TITLE_CHARS })).toBe('t');
   });
 
   it.each(NASTY)('is always valid on the wire: %j', (text) => {

@@ -34,6 +34,26 @@ function keepSession(params: {
 }
 
 /**
+ * Moves the sessions whose parent was released to `released` too. Releasing a session announces
+ * it first and the sub-agents under it after, so a crash between those writes leaves a live child
+ * under a released parent, which cannot be put back: it is released as the registry meant it.
+ * `sessions` is in the order they started, so a parent is settled before its children.
+ */
+function releaseOrphans(params: {
+  sessions: Map<SessionId, SessionInfo>;
+  released: Map<SessionId, SessionInfo>;
+}): void {
+  const { sessions, released } = params;
+
+  for (const session of [...sessions.values()]) {
+    if (!('parentId' in session) || !released.has(session.parentId)) continue;
+
+    sessions.delete(session.id);
+    released.set(session.id, session);
+  }
+}
+
+/**
  * What a registry needs to carry on a conversation that was stored: where the numbering resumes,
  * the newest entries (kept in memory as a live log keeps them), and each session as its last
  * update left it, sub-agents included. Reads every entry once, in order; a gap means a write was
@@ -62,6 +82,8 @@ export async function readStoredLog(store: EntryStore): Promise<StoredLog> {
     if (entry.kind === 'event') lastTokens.observe(entry);
     messageContexts.observe(entry);
   }
+
+  releaseOrphans({ sessions, released });
 
   return {
     next,

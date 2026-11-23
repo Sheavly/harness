@@ -328,9 +328,8 @@ describe('how many approvals may wait', () => {
     expect(settled.every((each) => each instanceof Error)).toBe(true);
     // Given up, they no longer count: a new request is screened and asked again.
     void ask(approvals);
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    expect(approvals.pending().length).toBeLessThanOrEqual(1);
+    expect(approvals.pending()).toHaveLength(1);
   });
 });

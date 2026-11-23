@@ -102,12 +102,21 @@ export class SessionNodes {
 
   /** Puts back a session as a stored conversation left it; its parent must be back already. */
   restore(session: SessionInfo): SessionInfo {
+    // Two stored sessions under one id would orphan the first node, which could never be released.
+    if (this.#nodeOf.has(session.id)) {
+      throw new SessionError({
+        reason: 'unknown_session',
+        sessionId: session.id,
+        message: `Session ${session.id} is stored twice`,
+      });
+    }
+
     const parent = 'parentId' in session ? this.#require(session.parentId) : undefined;
     const node = this.registry.restore({
       kind: 'agent',
       title: session.title,
       startedAt: session.startedAt,
-      ...(parent && 'startedByCall' in session && { parent, spawnedBy: session.startedByCall }),
+      ...('parentId' in session && parent && { parent, spawnedBy: session.startedByCall }),
       ...(session.modelId && { modelId: session.modelId }),
       ...(session.effort && { effort: session.effort }),
       ...restoredFieldsOf(session),
