@@ -2,6 +2,10 @@
 
 What is in the contract, what stays out, and how it is kept honest.
 
+The stream, session and task shapes below are the wire as it is built today. The model that
+replaces them (nodes, channels and one subscribe endpoint) is decided and written in
+[the wire model](wire-model.md), and not built yet.
+
 ## What is in it
 
 `@sheavly/protocol` is the bottom layer: everything the harness sends a UI or accepts from one
