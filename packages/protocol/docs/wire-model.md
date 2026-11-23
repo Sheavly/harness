@@ -262,6 +262,12 @@ client that holds the token can read it for a command in a conversation on any p
 accepted that with a caveat about profiles that was to be written down. This paragraph is the facts as the code has them. What
 the caveat should say, and whether profiles are ever to be a boundary, is a decision for the owner.
 
+## Where each current entry goes
+
+Every entry the stream carries today, 39 in all, has a place in the model: see
+[the mapping](wire-model-mapping.md). It also lists the three decisions the mapping leaves for the
+schema and registry work.
+
 ## What this changes
 
 All of it is sub-issues of #387, one pull request each, blocked by #438 through #422:
