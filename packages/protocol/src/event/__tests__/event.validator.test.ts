@@ -92,6 +92,7 @@ describe('agentEventSchema', () => {
       { type: 'harness_notice', notice: { kind: 'context-usage', context: { used: 100 } } },
       { type: 'reasoning', item: { source: 'openai:gpt', data: { encrypted: 'x' } } },
       { type: 'reasoning_activity', active: true },
+      { type: 'model_connection', connection: { state: 'offline', error: 'ENOTFOUND' } },
       { type: 'run_state', state: 'waiting', groupedTasks: 2 },
       { type: 'tool_call_started', ...CALL },
       { type: 'turn_end', turn: 1, stopReason: 'interrupted' },
@@ -148,6 +149,24 @@ describe('agentEventSchema', () => {
     for (const extra of [{ text: 'secret' }, { encrypted_content: 'x' }, { item: {} }]) {
       expect(agentEventBodySchema.safeParse({ ...activity, ...extra }).success).toBe(false);
     }
+  });
+
+  it('carries each connection state on model_connection, and rejects an unknown or incomplete one', () => {
+    const event = (connection: unknown) => ({ seq: 0, type: 'model_connection', connection });
+    const unreachable = {
+      state: 'provider_unreachable',
+      error: 'HTTP 503',
+      attempt: 1,
+      retries: 2,
+    };
+
+    expect(agentEventSchema.safeParse(event({ state: 'restored' })).success).toBe(true);
+    expect(agentEventSchema.safeParse(event(unreachable)).success).toBe(true);
+    expect(agentEventSchema.safeParse(event({ state: 'waiting' })).success).toBe(false);
+    expect(agentEventSchema.safeParse(event({ state: 'provider_unreachable' })).success).toBe(
+      false,
+    );
+    expect(agentEventSchema.safeParse({ seq: 0, type: 'model_connection' }).success).toBe(false);
   });
 
   it('rejects a run_state with an unknown state or a negative or missing count', () => {

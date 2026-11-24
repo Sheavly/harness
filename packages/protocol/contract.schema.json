@@ -440,6 +440,49 @@
         {
           "type": "object",
           "properties": {
+            "type": { "type": "string", "const": "model_connection" },
+            "connection": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "state": { "type": "string", "const": "offline" },
+                    "error": { "type": "string" }
+                  },
+                  "required": ["state", "error"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "state": { "type": "string", "const": "provider_unreachable" },
+                    "error": { "type": "string" },
+                    "attempt": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "retries": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["state", "error", "attempt", "retries"]
+                },
+                {
+                  "type": "object",
+                  "properties": { "state": { "type": "string", "const": "restored" } },
+                  "required": ["state"]
+                }
+              ]
+            }
+          },
+          "required": ["type", "connection"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "call": { "$ref": "#/$defs/ToolCall" },
             "description": { "type": "string" },
             "type": { "type": "string", "const": "tool_call_started" }
@@ -729,6 +772,49 @@
             "active": { "type": "boolean" }
           },
           "required": ["seq", "type", "active"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "type": { "type": "string", "const": "model_connection" },
+            "connection": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "state": { "type": "string", "const": "offline" },
+                    "error": { "type": "string" }
+                  },
+                  "required": ["state", "error"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "state": { "type": "string", "const": "provider_unreachable" },
+                    "error": { "type": "string" },
+                    "attempt": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "retries": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["state", "error", "attempt", "retries"]
+                },
+                {
+                  "type": "object",
+                  "properties": { "state": { "type": "string", "const": "restored" } },
+                  "required": ["state"]
+                }
+              ]
+            }
+          },
+          "required": ["seq", "type", "connection"]
         },
         {
           "type": "object",

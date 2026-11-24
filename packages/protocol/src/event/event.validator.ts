@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelConnectionSchema } from '../connection/connection.validator.js';
 import { modelUsageSchema } from '../usage/usage.validator.js';
 import { inboxMessageSchema, sessionRefSchema } from '../session/session.validator.js';
 import { taskInfoSchema } from '../task/task.validator.js';
@@ -113,6 +114,13 @@ const stepEventSchemas = [
    * sends none, so a UI keeps its generic busy state rather than claiming the model thinks.
    */
   z.strictObject({ type: z.literal('reasoning_activity'), active: z.boolean() }),
+  /**
+   * Live: the model call waits for this machine's connection (`offline`) or retries a provider
+   * that does not answer (`provider_unreachable`), and `restored` once it got through. A UI shows
+   * the state until `restored`, the next turn's events or `done`. Never kept in history, and sent
+   * before anything of the reply it belongs to.
+   */
+  z.strictObject({ type: z.literal('model_connection'), connection: modelConnectionSchema }),
   /** The model asked for a tool and it started running (concurrently with the rest of the turn). */
   describedCallSchema.extend({ type: z.literal('tool_call_started') }),
   z.object({
