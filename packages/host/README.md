@@ -125,6 +125,19 @@ reopening starts no run. If storage fails, the
 conversation takes no more prompts (`storage_failed`) instead of carrying on unrecorded. With no
 store, nothing is kept and everything behaves as before.
 
+Each node's channel is kept too, beside the stream, through `storage.channels` (`createHarness`'s
+`channels`): the agents', commands' and services' own logs, written as the conversation runs. A
+write that fails is announced once as `storage_failed` and ends no run, since the stream is still
+the record; that channel takes no more entries. `reopen` closes every node channel the stopped
+process left without a `closed` entry as `lost`, before the conversation has a node of its own, and
+only once: reopening again finds them closed. That repair is best effort: a channel the store
+cannot read or close (a damaged file, a failed disk) is left as it was, and the conversation still
+reopens. They are announced together as one `storage_failed` on the reopened conversation's stream,
+naming how many and the first reason, so thousands of damaged files do not flood it; a channel that
+stays damaged is announced again on each reopen. A `reopen`
+of a conversation that is still being closed waits for the close to finish its writes.
+`Harness.nodeChannels` is the writer, which `close` waits for.
+
 ## Docs
 
 Normal prompts sent with `send` have stable UUID `id`s, persisted in history and attached to stream

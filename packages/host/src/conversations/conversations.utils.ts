@@ -1,8 +1,28 @@
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ToolMessage } from '@sheavly/protocol/message/message.types';
+import type { ConversationId, ConversationSummary } from '@sheavly/protocol/server/server.types';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
 import type { StoredConversation } from '@sheavly/protocol/store/store.types';
 import { INTERRUPTED_CALL } from './conversations.constants.js';
+import type { LiveConversation } from './conversations.types.js';
+
+/** What a UI lists of live conversation `id`: its main session's title and start, and whether a prompt runs. */
+export function summaryOf(params: {
+  id: ConversationId;
+  live: LiveConversation;
+}): ConversationSummary {
+  const { id, live } = params;
+  const { harness, conversation } = live;
+  const session = harness.sessions.get(harness.mainSession.id);
+
+  return {
+    id,
+    title: session?.title ?? '',
+    session: harness.mainSession.id,
+    running: conversation.running,
+    startedAt: session?.startedAt ?? 0,
+  };
+}
 
 /** Whether `stored`'s title has `search`, ignoring case. */
 function matchesTitle(params: { stored: StoredConversation; search: string }): boolean {

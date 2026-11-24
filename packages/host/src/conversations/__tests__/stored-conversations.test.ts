@@ -15,17 +15,19 @@ import { streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
 import { createConversation } from '../../conversation/conversation.helper.js';
 import { createHarness } from '../../host/host.helper.js';
 import { say, scriptedConversations as setup } from '../../testing/conversations.fake.js';
-import { loggedSeqs, seedMainSession } from '../../testing/stored-conversation.fake.js';
+import {
+  loggedSeqs,
+  ranOnePrompt,
+  seedMainSession,
+} from '../../testing/stored-conversation.fake.js';
 import { DEEP_ID, FAST_ID, TEST_PROFILE_ID, twoModelRun } from '../../testing/run.fake.js';
 import { Conversations } from '../conversations.service.js';
 
 /** A conversation that ran one prompt on `store` and was closed, as a process that ended well. */
 async function pastConversation(store: MemoryConversationStore) {
-  const first = setup({ store, replies: [say('one')] });
-  const id = await first.conversations.start();
+  const { id, conversations } = await ranOnePrompt(store);
 
-  await collect((await first.conversations.send({ id, prompt: { text: 'first' } })).events);
-  await first.conversations.close(id);
+  await conversations.close(id);
 
   return id;
 }

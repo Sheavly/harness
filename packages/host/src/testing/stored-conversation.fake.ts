@@ -1,3 +1,4 @@
+import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
 import type { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
@@ -5,8 +6,23 @@ import type { SessionUpdate } from '@sheavly/protocol/session/session.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
+import { say, scriptedConversations } from './conversations.fake.js';
 
 const MAIN = sessionIdSchema.parse('main');
+
+/**
+ * Test-only: a conversation on `store` that ran one prompt (the model said "one") and was left
+ * open, as a process that ended without closing it leaves it. `conversations` is the host that ran
+ * it, to close it or to ask for what it kept.
+ */
+export async function ranOnePrompt(store: MemoryConversationStore) {
+  const { conversations } = scriptedConversations({ store, replies: [say('one')] });
+  const id = await conversations.start();
+
+  await collect((await conversations.send({ id, prompt: { text: 'first' } })).events);
+
+  return { id, conversations };
+}
 
 /**
  * Test-only: writes the first stream entry of a stored conversation, its main session started in
