@@ -3,14 +3,15 @@ import { ModelApiError } from '../errors/providers.errors.js';
 import { internetReachable } from './connectivity.helper.js';
 import { PROBE_TIMEOUT_MS } from './http.constants.js';
 import type { ConnectionReport, SendRequestParams, Standing } from './http.types.js';
-import { awakeTime, describeWait, isLoopbackHost } from './outage.utils.js';
+import { awakeTime, describeWait, isLocalHost } from './outage.utils.js';
 import { offlineBackoffMs } from './retry-policy.helper.js';
 import { waitAwake } from './wait.helper.js';
 
 /**
  * Whether a failed attempt is this machine having no connection, as opposed to the provider
  * failing. Only a request that did not get an HTTP answer can be: of those, one to this machine
- * can't, and neither can one when waiting is off or there is nothing to probe with. The rest
+ * or its own network can't, and neither can one when waiting is off or there is nothing to probe
+ * with. The rest
  * ask the probe, which has the last word: if the internet answers, the provider is the problem.
  * Rejects with the signal's reason when interrupted.
  */
@@ -25,13 +26,17 @@ export async function isOutage(params: {
 
   if (policy.offlineTimeoutMs === 0 || policy.probeUrls.length === 0) return false;
 
-  if (isLoopbackHost(url.hostname)) return false;
+  if (isLocalHost(url.hostname)) return false;
 
   return !(await internetReachable({ urls: policy.probeUrls, fetch, signal }));
 }
 
-/** The machine slept, so the outage is new again: the budget is for time awake without a connection. */
-function startOutageAgain(standing: Standing): void {
+/**
+ * The outage is over, or is a new one: the connection answered (the next failure is the
+ * provider's), or the machine slept. The budget is for time awake without a connection, so it
+ * starts again from nothing.
+ */
+export function forgetOutage(standing: Standing): void {
   standing.offlineAwakeMs = 0;
   standing.offlineRounds = 0;
 }
@@ -46,7 +51,7 @@ function keepOfflineTime(params: {
   const { awakeMs, slept } = awakeTime({ elapsedMs, expectedMs });
 
   if (slept) {
-    startOutageAgain(standing);
+    forgetOutage(standing);
 
     return;
   }
@@ -106,7 +111,7 @@ export async function* waitForConnection(params: {
   const waited = await waitAwake({ ms: delayMs, signal });
 
   if (waited.slept) {
-    startOutageAgain(standing);
+    forgetOutage(standing);
 
     return;
   }

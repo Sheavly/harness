@@ -1,8 +1,11 @@
-import { LOOPBACK_HOST, MS_PER_MINUTE, MS_PER_SECOND, WAKE_GAP_MS } from './http.constants.js';
+import { LOCAL_HOST, MS_PER_MINUTE, MS_PER_SECOND, WAKE_GAP_MS } from './http.constants.js';
 
-/** Whether `hostname` (as a `URL` has it) is this machine: a model served here has no internet to lose. */
-export function isLoopbackHost(hostname: string): boolean {
-  return LOOPBACK_HOST.test(hostname);
+/**
+ * Whether `hostname` (as a `URL` has it) is on this machine or its own network: a model served
+ * there has no internet to lose, so its failure is its own and is never waited for.
+ */
+export function isLocalHost(hostname: string): boolean {
+  return LOCAL_HOST.test(hostname);
 }
 
 /**

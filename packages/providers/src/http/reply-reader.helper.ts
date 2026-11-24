@@ -1,3 +1,4 @@
+import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
 import type { StreamEvent } from '@sheavly/core/message/message.types';
 import { ModelApiError } from '../errors/providers.errors.js';
 import { STREAM_IDLE_MS } from './http.constants.js';
@@ -24,15 +25,21 @@ export async function* readReply<TEvent>(params: {
   const { body, signal, protocol, idleMs = STREAM_IDLE_MS } = params;
   let ended = false;
 
-  for await (const raw of readServerSentEvents(streamChunks({ body, idleMs, signal }))) {
-    const event = protocol.parse(raw);
+  try {
+    for await (const raw of readServerSentEvents(streamChunks({ body, idleMs, signal }))) {
+      const event = protocol.parse(raw);
 
-    if (event === undefined) continue;
+      if (event === undefined) continue;
 
-    const step = protocol.step(event);
+      const step = protocol.step(event);
 
-    if (step.ended) ended = true;
-    if (step.events) yield* step.events;
+      if (step.ended) ended = true;
+      if (step.events) yield* step.events;
+    }
+  } catch (caughtError) {
+    // A server that sent the end marker and then left the connection open lost nothing: the
+    // reply is whole. Before the marker, a lost connection is the loop's to recover from.
+    if (!(ended && caughtError instanceof ConnectionLostError)) throw caughtError;
   }
 
   if (!ended) {

@@ -2,7 +2,7 @@ import { providerErrorText } from '@sheavly/core/text/diagnostic-text.utils';
 import { ModelApiError, ModelFetchError } from '../errors/providers.errors.js';
 import { now } from '@sheavly/core/clock/clock.helper';
 import type { ConnectionReport, SendRequestParams, Standing } from './http.types.js';
-import { isOutage, waitForConnection } from './outage.helper.js';
+import { forgetOutage, isOutage, waitForConnection } from './outage.helper.js';
 import { withSignature } from './signing.utils.js';
 import {
   backoffMs,
@@ -107,6 +107,9 @@ export async function* sendRequest(
 
       continue;
     }
+
+    // The connection answered, so any later outage is a new one with a budget of its own.
+    forgetOutage(standing);
 
     if (!outcome.retryable || tried >= policy.retries) {
       throw failureAfter({ failure: outcome.failure, attempts: tried + 1 });

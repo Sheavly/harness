@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { collect, fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import type { ProviderRequest } from '@sheavly/core/provider/provider.types';
 import { ModelApiError } from '../../errors/providers.errors.js';
@@ -79,10 +79,19 @@ describe('sending a Responses call', () => {
   it('streams what it says about the connection before the reply, and keeps it out of the reply', async () => {
     // The model call is dropped, then the probe fails too (the second fetch), so the call waits.
     const { fetch } = scriptedFetch([dropped(), dropped()]);
-    const events = await run({
+
+    // The wait while offline is a second at least: its timers are fake, so the test is not.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    const running = run({
       fetch,
       request: policy({ offlineTimeoutMs: 3_600_000, probeUrls: ['https://probe.test'] }),
     });
+
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+
+    const events = await running;
 
     expect(events.slice(0, 2)).toMatchObject([
       { type: 'model_connection', connection: { state: 'offline' } },

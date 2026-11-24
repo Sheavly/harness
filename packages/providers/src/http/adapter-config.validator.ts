@@ -29,6 +29,23 @@ export const explicitCacheSchema = z.boolean().meta({
 });
 
 /**
+ * An address a call asks to find out whether the internet is up: http or https, with no user name
+ * or password in it (the probe sends nothing, and undici refuses an address that holds them, which
+ * would read as "offline" for ever).
+ */
+const probeUrlSchema = z.url({ protocol: /^https?$/ }).refine(
+  (url) => {
+    // Not an address at all: `z.url` already says so.
+    if (!URL.canParse(url)) return true;
+
+    const { username, password } = new URL(url);
+
+    return username === '' && password === '';
+  },
+  { error: 'A probe address carries no user name or password' },
+);
+
+/**
  * How a call is sent: how long to wait for the response to start, how often to retry one that
  * failed before anything streamed, and how long to wait for a lost connection to come back.
  * Required, with no defaults: like the model, it is the
@@ -41,6 +58,6 @@ export const requestPolicySchema = z
     retries: z.number().int().min(0).max(10),
     retryDelayMs: z.number().int().min(0),
     offlineTimeoutMs: z.number().int().min(0),
-    probeUrls: z.array(z.url()),
+    probeUrls: z.array(probeUrlSchema),
   })
   .meta({ [FIELD_KIND.host]: true });

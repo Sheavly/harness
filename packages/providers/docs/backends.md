@@ -278,16 +278,21 @@ and types without including text, arguments or signatures.
 - `offlineTimeoutMs` and `probeUrls`: a call that gets no HTTP answer at all (a network error or a
   timeout) is either this machine having lost its connection or the provider being down, and
   only the first is waited for (`http/outage.helper.ts`). After such a failure the call asks every
-  `probeUrls` address, over the same `fetch`, for its headers (`http/connectivity.helper.ts`; any
-  HTTP answer, whatever its status, shows the path is up). If one answers, the provider is the
-  problem: the retries above apply and the error is reported, never an hour's wait. If none does,
-  the call waits for the connection and asks again, 1s doubling to 30s apart (`retryDelayMs`
-  is the first wait), for up to `offlineTimeoutMs`. Only time the machine was awake counts: the
-  wait is cut into one-second slices, and a slice that ran `WAKE_GAP_MS` over means the machine
-  slept, so the count starts over and the next attempt is made at once. It never waits for a model
-  on this machine (a loopback host), with no `probeUrls` (a lost connection can't be told from a
+  `probeUrls` address, over the same `fetch`, for its headers (`http/connectivity.helper.ts`: a
+  bare `HEAD` that follows no redirect, and the addresses still waiting are stopped once one has
+  answered; any HTTP answer, a 3xx included, whatever its status, shows the path is up). If one
+  answers, the provider is the problem: the retries above apply and the error is reported, never
+  an hour's wait, and an outage that comes later starts its budget again. If none does, the call
+  waits for the connection and asks again, never less than a second apart (`OFFLINE_MIN_DELAY_MS`,
+  whatever `retryDelayMs` is) and doubling from `retryDelayMs` up to 30s, for up to
+  `offlineTimeoutMs`. Only time the machine was awake counts: the wait is cut into one-second
+  slices, and a slice that ran `WAKE_GAP_MS` over means the machine slept, so the count starts over
+  and the next attempt is made at once. It never waits for a model on this machine or its own
+  network (`isLocalHost`: a name with no dot, `.local` and `.internal` names, and the loopback,
+  private and link-local ranges), with no `probeUrls` (a lost connection can't be told from a
   provider that is down), or with `offlineTimeoutMs` 0. It gives up with the failure and how long it
-  waited, or when `signal` aborts.
+  waited, or when `signal` aborts. A probe address is http or https with no user name or
+  password (`requestPolicySchema`).
 - While it waits or retries, `sendRequest` yields `model_connection` reports (`offline` once;
   `provider_unreachable`, with the retry's number, before each retry of the provider's own
   failures, 429 and 5xx included; `restored` once a call that reported got through), and each

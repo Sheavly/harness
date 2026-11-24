@@ -1,17 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { awakeTime, describeWait, isLoopbackHost } from '../outage.utils.js';
+import { awakeTime, describeWait, isLocalHost } from '../outage.utils.js';
 
-describe('a loopback host', () => {
-  it.each(['localhost', 'LOCALHOST', '127.0.0.1', '127.1.2.3', '[::1]', '::1'])('is %s', (host) => {
-    expect(isLoopbackHost(host)).toBe(true);
+describe('a host on this machine or its own network', () => {
+  it.each([
+    'localhost',
+    'LOCALHOST',
+    'ollama',
+    '127.0.0.1',
+    '127.1.2.3',
+    '[::1]',
+    '::1',
+    '10.0.0.5',
+    '192.168.1.2',
+    '172.16.0.1',
+    '172.31.255.1',
+    '169.254.169.254',
+    'gpu-box.local',
+    'gateway.corp.internal',
+    '[fd12:3456::1]',
+    '[fe80::1]',
+  ])('is %s', (host) => {
+    expect(isLocalHost(host)).toBe(true);
   });
 
-  it.each(['api.openai.com', '10.0.0.5', '192.168.1.2', 'localhost.example.com', '1127.0.0.1'])(
-    'is not %s',
-    (host) => {
-      expect(isLoopbackHost(host)).toBe(false);
-    },
-  );
+  it.each([
+    'api.openai.com',
+    'resource.openai.azure.com',
+    '1.1.1.1',
+    '172.15.0.1',
+    '172.32.0.1',
+    '192.169.1.1',
+    '1127.0.0.1',
+    'localhost.example.com',
+    'locally.example',
+  ])('is not %s', (host) => {
+    expect(isLocalHost(host)).toBe(false);
+  });
 });
 
 describe('the time a step spent awake', () => {

@@ -7,11 +7,14 @@ import { streamChunks } from '../stream-chunks.helper.js';
 const bytes = (text: string) => new TextEncoder().encode(text);
 
 /** A body that sends `chunks`, then stays silent (or fails with `then`) until it is cancelled. */
-function body(params: { chunks: string[]; then?: 'silence' | Error }) {
-  const { chunks, then = 'silence' } = params;
+function body(params: { chunks: string[]; then?: 'silence' | Error; onCancel?: () => void }) {
+  const { chunks, then = 'silence', onCancel } = params;
   const pending = [...chunks];
 
   return new ReadableStream<Uint8Array>({
+    cancel() {
+      onCancel?.();
+    },
     pull(controller) {
       const next = pending.shift();
 
@@ -75,6 +78,43 @@ describe('the chunks of a reply', () => {
     expect(lost).toMatchObject({ reason: 'idle' });
   });
 
+  it('cancel a body that went silent, so its socket and its pending read are not kept', async () => {
+    let cancelled = false;
+
+    await listen(
+      body({
+        chunks: ['a'],
+        onCancel: () => {
+          cancelled = true;
+        },
+      }),
+      20,
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(cancelled).toBe(true);
+  });
+
+  it('cancel the body when the reader stops before its end', async () => {
+    let cancelled = false;
+    const chunks = streamChunks({
+      body: body({
+        chunks: ['a', 'b'],
+        onCancel: () => {
+          cancelled = true;
+        },
+      }),
+      idleMs: 1000,
+      signal: new AbortController().signal,
+    });
+
+    for await (const chunk of chunks) {
+      expect(chunk).toBeDefined();
+      break;
+    }
+
+    expect(cancelled).toBe(true);
+  });
+
   it('are not a lost connection when the caller interrupted: that goes up as it came', async () => {
     const controller = new AbortController();
     const stop = new Error('stop');
@@ -114,5 +154,29 @@ describe('readReply on a body that goes silent', () => {
 
     await expect(reading).rejects.toBeInstanceOf(ConnectionLostError);
     expect(events).toEqual(['par']);
+  });
+
+  it('keeps a reply whole that sent its end marker before the connection went silent', async () => {
+    const events: string[] = [];
+    const protocol = {
+      cutOffMessage: 'cut off',
+      parse: (raw: unknown) => raw as { text: string; end?: true },
+      step: (event: { text: string; end?: true }) => ({
+        events: [{ type: 'text_delta' as const, text: event.text }],
+        ...(event.end && { ended: true as const }),
+      }),
+      finish: () => [{ type: 'done' as const, stopReason: 'end_turn' as const }],
+    };
+
+    for await (const event of readReply({
+      body: body({ chunks: ['data: {"text":"all","end":true}\n\n'] }),
+      signal: new AbortController().signal,
+      protocol,
+      idleMs: 20,
+    })) {
+      events.push(event.type === 'text_delta' ? event.text : event.type);
+    }
+
+    expect(events).toEqual(['all', 'done']);
   });
 });

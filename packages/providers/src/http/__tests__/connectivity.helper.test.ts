@@ -41,12 +41,39 @@ describe('whether the internet is reachable', () => {
     await expect(internetReachable({ urls, fetch, signal: signal() })).resolves.toBe(false);
   });
 
-  it('asks every address for its headers only', async () => {
-    const { fetch, asked } = answering({});
+  it('asks every address for its headers only: no body, no headers of its own, no redirect followed', async () => {
+    const inits: RequestInit[] = [];
+    const fetch = ((_input: string, init?: RequestInit) => {
+      inits.push(init ?? {});
+
+      return Promise.reject(new TypeError('fetch failed'));
+    }) as typeof globalThis.fetch;
 
     await internetReachable({ urls, fetch, signal: signal() });
 
-    expect(asked).toEqual(urls.map((url) => ({ url, method: 'HEAD' })));
+    expect(inits).toHaveLength(urls.length);
+
+    for (const init of inits) {
+      expect(Object.keys(init).toSorted()).toEqual(['method', 'redirect', 'signal']);
+      expect(init).toMatchObject({ method: 'HEAD', redirect: 'manual' });
+    }
+  });
+
+  it('stops the addresses still waiting once one has answered', async () => {
+    const stopped: boolean[] = [];
+    const fetch = ((input: string, init?: RequestInit) => {
+      if (input === urls[0]) return Promise.resolve(new Response(null, { status: 204 }));
+
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          stopped.push(true);
+          reject(new DOMException('stopped', 'AbortError'));
+        });
+      });
+    }) as typeof globalThis.fetch;
+
+    await expect(internetReachable({ urls, fetch, signal: signal() })).resolves.toBe(true);
+    expect(stopped).toEqual([true]);
   });
 
   it('rejects with the signal’s reason when interrupted, not "offline"', async () => {

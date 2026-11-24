@@ -7,8 +7,10 @@ async function reached(params: {
   signal: AbortSignal;
 }): Promise<void> {
   const { url, fetch, signal } = params;
+  // A bare HEAD that follows no redirect: a 3xx is an answer too, and it must not send the probe on.
   const response = await fetch(url, {
     method: 'HEAD',
+    redirect: 'manual',
     signal: AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]),
   });
 
@@ -27,9 +29,11 @@ export async function internetReachable(params: {
   signal: AbortSignal;
 }): Promise<boolean> {
   const { urls, fetch, signal } = params;
+  const answered = new AbortController();
+  const probing = AbortSignal.any([signal, answered.signal]);
 
   try {
-    await Promise.any(urls.map((url) => reached({ url, fetch, signal })));
+    await Promise.any(urls.map((url) => reached({ url, fetch, signal: probing })));
 
     return true;
   } catch (caughtError) {
@@ -39,5 +43,8 @@ export async function internetReachable(params: {
     if (caughtError instanceof AggregateError) return false;
 
     throw caughtError;
+  } finally {
+    // One answer is enough: the probes still waiting are stopped, not left to time out.
+    answered.abort();
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useFixedClock } from '@sheavly/testing/clock/fixed-clock.fake';
 import { ModelApiError } from '../../errors/providers.errors.js';
 import { TEST_REQUEST } from '../../testing/request.constants.js';
@@ -83,12 +83,35 @@ const send = (params: {
 describe('a call with no connection to its provider', () => {
   const clock = useFixedClock();
 
+  // Only the timers are fake: every wait while offline is at least a second, and the clock a
+  // call reads is the fixed one, so a test decides how much time "passed".
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Lets every wait of `running` pass, and returns how it ended. */
+  async function settled(running: Promise<unknown>): Promise<unknown> {
+    const outcome = running.then(
+      (value) => value,
+      (caughtError: unknown) => caughtError,
+    );
+
+    await vi.runAllTimersAsync();
+
+    return outcome;
+  }
+
   it('waits for the connection and resumes, saying `offline` once and then `restored`', async () => {
     const { fetch, calls } = network({
       model: (call) => (call <= 3 ? 'unreachable' : 'ok'),
       probe: () => undefined,
     });
-    const { response, reports } = await send({ fetch });
+    const { response, reports } = (await settled(send({ fetch }))) as Awaited<
+      ReturnType<typeof send>
+    >;
 
     expect(await response.text()).toBe('ok');
     expect(calls.model).toBe(4);
@@ -103,8 +126,9 @@ describe('a call with no connection to its provider', () => {
       model: (call) => (call <= 6 ? 'unreachable' : 'ok'),
       probe: () => undefined,
     });
+    const outcome = await settled(send({ fetch, request: { retries: 1 } }));
 
-    await expect(send({ fetch, request: { retries: 1 } })).resolves.toBeDefined();
+    expect(outcome).toHaveProperty('response');
   });
 
   it('gives up once the time it was awake without a connection passes `offlineTimeoutMs`', async () => {
@@ -115,7 +139,7 @@ describe('a call with no connection to its provider', () => {
         clock.advance(20 * MINUTE_MS);
       },
     });
-    const failure = await send({ fetch }).catch((caughtError: unknown) => caughtError);
+    const failure = await settled(send({ fetch }));
 
     expect(failure).toBeInstanceOf(ModelApiError);
     expect(failure).toMatchObject({ reason: 'network' });
@@ -132,10 +156,48 @@ describe('a call with no connection to its provider', () => {
         clock.advance(10 * HOUR_MS);
       },
     });
-    const { reports } = await send({ fetch });
+    const { reports } = (await settled(send({ fetch }))) as Awaited<ReturnType<typeof send>>;
 
     expect(calls.model).toBe(6);
     expect(states(reports)).toEqual(['offline', 'restored']);
+  });
+
+  it('starts the budget over once the connection answered: an outage after a provider failure is a new one', async () => {
+    // 40 minutes offline, then the provider answers (503) while the probe is up, then 30 more
+    // offline: within an hour each, over an hour together.
+    const { fetch, calls } = network({
+      model: (call) => {
+        if (call === 3) return 'busy';
+
+        return call <= 4 ? 'unreachable' : 'ok';
+      },
+      probe: () => undefined,
+      onModelCall: (call) => {
+        clock.advance((call <= 2 ? 20 : 30) * MINUTE_MS);
+      },
+    });
+    const outcome = await settled(send({ fetch }));
+
+    expect(outcome).toHaveProperty('response');
+    expect(calls.model).toBe(5);
+  });
+
+  it('never spins, whatever `retryDelayMs` is: each wait while offline is a second at least', async () => {
+    const controller = new AbortController();
+    const { fetch, calls } = network({ model: () => 'unreachable', probe: () => undefined });
+    const running = send({
+      fetch,
+      request: { retryDelayMs: 0 },
+      signal: controller.signal,
+    }).catch((caughtError: unknown) => caughtError);
+
+    await vi.advanceTimersByTimeAsync(3500);
+    controller.abort(new Error('stop'));
+    await running;
+
+    // The first attempt, then one a second for three seconds and a half.
+    expect(calls.model).toBeLessThanOrEqual(5);
+    expect(calls.model).toBeGreaterThanOrEqual(3);
   });
 
   it('stops waiting when the run is interrupted, without renaming the interrupt', async () => {
@@ -147,9 +209,8 @@ describe('a call with no connection to its provider', () => {
       signal: controller.signal,
     }).catch((caughtError: unknown) => caughtError);
 
-    setTimeout(() => {
-      controller.abort(new Error('stop'));
-    }, 20);
+    await vi.advanceTimersByTimeAsync(10);
+    controller.abort(new Error('stop'));
 
     const failure = await running;
 
@@ -199,6 +260,8 @@ describe('a call to a provider that fails while the connection is up', () => {
 describe('when a lost connection cannot be told from a provider that is down', () => {
   it.each([
     ['a model on this machine', { url: new URL('http://localhost:11434/v1/chat') }],
+    ['a model on a private network', { url: new URL('http://192.168.1.20:8000/v1/chat') }],
+    ['a model on a .local name', { url: new URL('http://gpu-box.local/v1/chat') }],
     ['no probe addresses', { request: { probeUrls: [] } }],
     ['waiting switched off', { request: { offlineTimeoutMs: 0 } }],
   ])('never waits for %s: the retries are all there is', async (_name, variant) => {

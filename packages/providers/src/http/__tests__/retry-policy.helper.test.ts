@@ -74,9 +74,15 @@ describe('backoffMs', () => {
 describe('offlineBackoffMs', () => {
   const base = { retryDelayMs: 1000, random: () => 0.999 };
 
-  it('doubles like any retry at first', () => {
-    expect(offlineBackoffMs({ ...base, round: 0 })).toBeCloseTo(999.5);
+  it('doubles like any retry at first, from a second', () => {
+    expect(offlineBackoffMs({ ...base, round: 0 })).toBe(1000);
     expect(offlineBackoffMs({ ...base, round: 3 })).toBeCloseTo(7996);
+  });
+
+  it('is never under a second, even with no retry delay configured', () => {
+    expect(offlineBackoffMs({ retryDelayMs: 0, round: 0, random: () => 0 })).toBe(1000);
+    expect(offlineBackoffMs({ retryDelayMs: 0, round: 5, random: () => 0.7 })).toBe(1000);
+    expect(offlineBackoffMs({ retryDelayMs: 100, round: 1, random: () => 0 })).toBe(1000);
   });
 
   it('stops growing at 30 seconds, however many rounds have passed', () => {

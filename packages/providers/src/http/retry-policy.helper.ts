@@ -4,6 +4,7 @@ import {
   MS_PER_SECOND,
   OFFLINE_MAX_BACKOFF_ROUNDS,
   OFFLINE_MAX_DELAY_MS,
+  OFFLINE_MIN_DELAY_MS,
 } from './http.constants.js';
 
 /**
@@ -59,7 +60,8 @@ export function backoffMs(params: {
 /**
  * How long to wait before asking again while this machine has no connection: `backoffMs` with no
  * server to ask, its doubling stopped after `OFFLINE_MAX_BACKOFF_ROUNDS` and the whole cut to
- * `OFFLINE_MAX_DELAY_MS`, so a connection that is back is found within that, however long it was gone.
+ * `OFFLINE_MAX_DELAY_MS`, so a connection that is back is found within that, however long it was
+ * gone. Never under `OFFLINE_MIN_DELAY_MS`, even with a `retryDelayMs` of 0.
  */
 export function offlineBackoffMs(params: {
   round: number;
@@ -73,5 +75,5 @@ export function offlineBackoffMs(params: {
     random: params.random,
   });
 
-  return Math.min(delay, OFFLINE_MAX_DELAY_MS);
+  return Math.max(OFFLINE_MIN_DELAY_MS, Math.min(delay, OFFLINE_MAX_DELAY_MS));
 }
