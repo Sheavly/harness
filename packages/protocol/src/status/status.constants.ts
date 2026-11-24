@@ -52,13 +52,18 @@ export const NODE_STATE_OF_OUTCOME = {
   failed: 'failed',
 } as const satisfies Record<(typeof RUN_OUTCOMES)[number], 'completed' | 'failed' | 'cancelled'>;
 
-/** Why one turn ended: the model's reason, or `interrupted` when the run's signal aborted. */
+/**
+ * Why one turn ended: the model's reason, `interrupted` when the run's signal aborted, or
+ * `connection_lost` when the connection to the provider broke mid-reply (the run may go on from
+ * what arrived, or fail with the error).
+ */
 export const TURN_STOP_REASONS = [
   'end_turn',
   'tool_use',
   'max_tokens',
   'context_window_exceeded',
   'interrupted',
+  'connection_lost',
 ] as const;
 
 /** What a session snapshot is refused with when its state, last outcome and end disagree. */

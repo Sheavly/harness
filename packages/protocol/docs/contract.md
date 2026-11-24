@@ -274,8 +274,10 @@ count must be known. Used tokens are nonnegative whole numbers; the window is a 
 number within the model contract's bound. Zero usage and usage exceeding capacity are valid.
 
 `output-continuation` carries a positive integer `attempt` and optional positive integer
-`maxAttempts`. An absent maximum means recovery is not capped by a continuation allowance.
-Context and recovery notices each have their own ordered `harness_notice` event before the call.
+`maxAttempts`. An absent maximum means recovery is not capped by a continuation allowance. An
+optional `reason` says why the reply stopped: `output_limit` (also when absent) or `connection`,
+a lost connection to the provider, which has its own count (`attempt` is the loss's number) and
+spends none of the output limit's allowance. Context and recovery notices each have their own ordered `harness_notice` event before the call.
 There is no separate continuation event: a stream holding the old `output_continuation` entry no longer parses.
 
 `running-tasks` carries a bounded live snapshot: `{ kind: 'running-tasks', tasks, total, omitted }`.

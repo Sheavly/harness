@@ -61,6 +61,12 @@ const transientNoticeSchema = z.discriminatedUnion('kind', [
     kind: z.literal('output-continuation'),
     attempt: z.number().int().positive(),
     maxAttempts: z.number().int().positive().optional(),
+    /**
+     * Why the reply stopped: `output_limit` (the default, when unset) or `connection`, a lost
+     * connection to the provider. The model is told which, and a lost connection spends none of
+     * the output limit's allowance.
+     */
+    reason: z.enum(['output_limit', 'connection']).optional(),
   }),
 ]);
 

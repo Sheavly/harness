@@ -1155,7 +1155,8 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
-                  }
+                  },
+                  "reason": { "type": "string", "enum": ["output_limit", "connection"] }
                 },
                 "required": ["kind", "attempt"]
               }
@@ -2332,7 +2333,14 @@
       },
       "TurnStopReason": {
         "type": "string",
-        "enum": ["end_turn", "tool_use", "max_tokens", "context_window_exceeded", "interrupted"]
+        "enum": [
+          "end_turn",
+          "tool_use",
+          "max_tokens",
+          "context_window_exceeded",
+          "interrupted",
+          "connection_lost"
+        ]
       },
       "SessionRef": {
         "anyOf": [
