@@ -1,3 +1,4 @@
+import type { ModelConnection } from '@sheavly/protocol/connection/connection.types';
 import type {
   ReasoningItem,
   ToolCall,
@@ -20,4 +21,9 @@ export type StreamEvent =
    * Providers emit it live, may repeat a value, and send nothing when they can't observe it.
    */
   | { type: 'reasoning_activity'; active: boolean }
+  /**
+   * The call is waiting for the network or retrying an unreachable provider, as the provider can
+   * observe it; `restored` ends either. Sent before anything of the reply, never kept in history.
+   */
+  | ({ type: 'model_connection' } & ModelConnection)
   | { type: 'done'; stopReason: StopReason; usage?: ModelUsage };
