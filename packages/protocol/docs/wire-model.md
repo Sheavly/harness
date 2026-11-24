@@ -349,7 +349,7 @@ the caveat should say, and whether profiles are ever to be a boundary, is a deci
 
 ## Where each current entry goes
 
-Every entry the stream carries today, 39 in all, has a place in the model: see
+Every entry the stream carries today, 40 in all, has a place in the model: see
 [the mapping](wire-model-mapping.md). It also lists the three decisions the mapping leaves for the
 schema and registry work.
 
