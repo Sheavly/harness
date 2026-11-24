@@ -43,7 +43,7 @@ function prepareNoticeBody(notice: Exclude<HarnessNotice, { kind: 'extension-not
     case 'context-usage':
       return contextDescription(notice.context);
     case 'output-continuation':
-      return renderOutputContinuation();
+      return renderOutputContinuation({ connection: notice.reason === 'connection' });
     case 'agent-report':
       return formatAgentReport(notice);
     case 'task-finished':

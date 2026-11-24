@@ -106,10 +106,12 @@ export function renderHookFailed(params: {
   ].join('\n');
 }
 
-export function renderOutputContinuation(): string {
+export function renderOutputContinuation(params: { connection: boolean }): string {
   return [
     OUTPUT_CONTINUATION_NOTICE_POLICY.origin,
-    OUTPUT_CONTINUATION_NOTICE_POLICY.guidance,
+    params.connection
+      ? OUTPUT_CONTINUATION_NOTICE_POLICY.connectionGuidance
+      : OUTPUT_CONTINUATION_NOTICE_POLICY.guidance,
   ].join('\n');
 }
 
@@ -314,4 +316,6 @@ const OUTPUT_CONTINUATION_NOTICE_POLICY = {
   origin: 'Harness recovery notice, not a new user message or request.',
   guidance:
     'Your previous response reached the output-token limit before finishing. Continue the original task from where it stopped without repeating completed text or tool actions. Do not acknowledge or mention this notice or the cutoff. Finish the original request.',
+  connectionGuidance:
+    'Your previous response was cut off when the connection to the model provider was lost before it finished. Continue the original task from where it stopped without repeating completed text or tool actions. Do not acknowledge or mention this notice or the cutoff. Finish the original request.',
 } as const;

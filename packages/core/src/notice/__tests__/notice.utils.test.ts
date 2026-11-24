@@ -46,6 +46,19 @@ describe('formatHarnessNotice', () => {
     );
   });
 
+  it('says a lost connection cut the reply, not the output limit, when that is why it stopped', () => {
+    const text = formatHarnessNotice({
+      kind: 'output-continuation',
+      attempt: 1,
+      reason: 'connection',
+    });
+
+    expect(text).toContain('<harness-notice kind="output-continuation">');
+    expect(text).toContain('connection to the model provider was lost');
+    expect(text).not.toContain('output-token limit');
+    expect(text).toContain('without repeating completed text or tool actions');
+  });
+
   it('names where a finished task’s complete output is kept, and says a cut preview is not all of it', () => {
     const ref = outputRefSchema.parse('55555555-5555-4555-8555-555555555555');
     const task = {
