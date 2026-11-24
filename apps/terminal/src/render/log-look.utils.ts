@@ -47,8 +47,11 @@ export const logLook: Look = {
     return `\n… provider not responding, retry ${connection.attempt}/${connection.retries} (${connection.error})\n`;
   },
   extensionEvent: ({ extension, text }) => `\n⬡ ${extension}: ${text}\n`,
+  // `connection_lost` is drawn by the reconnect lines (`model_connection`), not by a stop line.
   turnEnd: ({ stopReason }) =>
-    stopReason === 'tool_use' || stopReason === 'max_tokens' ? '' : `\n\n[stop: ${stopReason}]\n`,
+    stopReason === 'tool_use' || stopReason === 'max_tokens' || stopReason === 'connection_lost'
+      ? ''
+      : `\n\n[stop: ${stopReason}]\n`,
   awaitingTasks: (count) => `… waiting for ${count} background task(s) · Ctrl+C to stop\n`,
   done: ({ reason, events, reasoning }) =>
     `[${reason} · ${events} events · reasoning items kept: ${reasoning}]\n`,
