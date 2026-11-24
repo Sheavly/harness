@@ -191,9 +191,13 @@ async function startTool(params: {
   // The registry is shared by the run's sessions, and a provider's call ids are only unique within
   // one: look among this session's tasks, never another's.
   const task = tasks?.byCallId({ callId: call.id, sessionId: session?.id });
+  // The node the call launched, which the child does not have when the call starts: the parent's
+  // card is joined to the child's channel with it. A task found above always has one (both read
+  // the registry's one map), so the check only narrows the type.
+  const nodeId = task && tasks?.nodeIdOf(task.id);
 
-  if (task && !message.isError) {
-    return { type: 'task_running', task, call, description, message, durationMs };
+  if (task && nodeId !== undefined && !message.isError) {
+    return { type: 'task_running', task, nodeId, call, description, message, durationMs };
   }
 
   return {
