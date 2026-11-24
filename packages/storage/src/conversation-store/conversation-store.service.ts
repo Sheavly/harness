@@ -110,7 +110,18 @@ export class FileConversationStore implements ConversationStore {
   }
 
   channel(params: { id: ConversationId; channel: string }): ChannelLog {
-    const { id, channel } = params;
+    return this.#channelsOf(params.id).logOf(params.channel);
+  }
+
+  async channels(id: ConversationId): Promise<string[]> {
+    try {
+      return await this.#channelsOf(id).names();
+    } catch (caughtError) {
+      throw asStoreError(caughtError);
+    }
+  }
+
+  #channelsOf(id: ConversationId): ConversationChannels {
     const known = this.#channels.get(id);
     const channels =
       known ??
@@ -118,7 +129,7 @@ export class FileConversationStore implements ConversationStore {
 
     this.#channels.set(id, channels);
 
-    return channels.logOf(channel);
+    return channels;
   }
 
   /**

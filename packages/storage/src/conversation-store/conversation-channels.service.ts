@@ -1,7 +1,10 @@
+import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { ChannelLimits } from '@sheavly/core/store/store.types';
 import { assertChannelName } from '@sheavly/core/store/store.utils';
 import { channelNameSchema } from '@sheavly/protocol/channel/channel.validator';
+import { isMissingPath } from '@sheavly/runtime/errors/errors.utils';
+import { StorageFileError } from '../errors/storage.errors.js';
 import { namedPath } from '../safe-path/safe-path.helper.js';
 import { ChannelFile } from './channel-file.service.js';
 import { ChannelQuota } from './channel-quota.service.js';
@@ -47,6 +50,27 @@ export class ConversationChannels {
     this.#files.set(channel, file);
 
     return file;
+  }
+
+  /**
+   * The channels the folder holds: a regular file `<channel>.jsonl` whose name is a node id or
+   * `tree`. Anything else in the folder (a marker, a link, a stray file) is not a channel the store
+   * made. A conversation with no folder has none.
+   */
+  async names(): Promise<string[]> {
+    let entries;
+
+    try {
+      entries = await readdir(this.#folder, { withFileTypes: true });
+    } catch (caughtError) {
+      if (isMissingPath(caughtError)) return [];
+      throw new StorageFileError({ file: this.#folder, cause: caughtError });
+    }
+
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(CHANNEL_LOG_SUFFIX))
+      .map((entry) => entry.name.slice(0, -CHANNEL_LOG_SUFFIX.length))
+      .filter((name) => channelNameSchema.safeParse(name).success);
   }
 
   /**
