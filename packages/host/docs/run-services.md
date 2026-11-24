@@ -160,6 +160,35 @@ sub-agent) sees them.
   services) rejects with a refusal, as the output contract says, instead of throwing before it
   has a promise.
 
+## The scopes and the node registry
+
+Every session and every task is a node of the run's node registry (`@sheavly/runtime`, nodes), and
+the scopes read and write it through the session and task registries, which are views of it: a
+sub-agent is one agent node, a command or service a node under the session that started it. The
+grants keep their meaning: they name what an extension may do to its own sessions and tasks, and
+`-any` what it may do to the sessions and tasks of a session id it names (the service cannot check that id, as above). No scope hands out the node
+registry, or a node id of someone else's: an extension that wants one for its own work asks for it
+through the scope that started the work (a scoped node service for extension kinds is #433's).
+
+**A release reaches an extension through `session-info`.** `onLifecycle` delivers
+`session_released` when the run releases a session: the loop does it for a sub-agent as its report
+is delivered (`releaseAgent`), and the registry releases the agent node, forgets the session's
+queues and then announces it, in one call. Coding's file reads rely on it (`forgetAgent`), so a
+release that skipped the announcement would leave a consumer holding what the session was shown.
+`session-info-release.test.ts` runs a real sub-agent through the real loop and asserts that the
+extension hears the release once, with the node gone. Release a session through
+`SessionRegistry.release` or `releaseAgent`, never `NodeRegistry.release` directly: only the
+former announces it.
+
+**What a node's writer controls is not printed to the model as it is.** A title, a status, a
+command or an error that a model, a tool or an extension wrote is printed through `escapedLine`, and
+a body (a task's output, a sub-agent's report) through `escapeTags`. The `data` an extension's node
+kind will carry (#433; no node has any today) is for front ends and must never be printed.
+`harness/no-unescaped-model-text` fails the direct cases of the fields above; the cases it does not
+see, and the text it does not cover (a tool's own error message, for one), are listed in
+[the rules](../../eslint-config/docs/rules.md), and a test that passes a closing tag and a newline
+through the place holds them.
+
 ## Testing a scope
 
 `@sheavly/host/testing/scope-run.fake` (`scopeRun`) builds a real harness with the services as an
