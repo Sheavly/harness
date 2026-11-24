@@ -12,6 +12,7 @@ import type {
   TaskResult,
 } from './tasks.types.js';
 import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunningTask } from '@sheavly/protocol/notice/notice.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId, TaskInfo, TaskStatus, TaskUpdate } from '@sheavly/protocol/task/task.types';
@@ -20,9 +21,8 @@ import { TaskError } from '../errors/tasks.errors.js';
 import { groupMemberError, unknownTaskError } from './group-member.helper.js';
 import { ReleasedAgents } from './released-agents.service.js';
 import { SettleWaiters } from './settle-waiters.service.js';
-import { runningTasksOf } from './running-tasks.helper.js';
+import { groupedPendingOf, hasPendingFiniteWork, runningTasksOf } from './running-tasks.helper.js';
 import { runTask } from './task-run.helper.js';
-import { WORK_IS_SUB_AGENT } from './tasks.constants.js';
 import { isIssued, runningInfo, settledStatus } from './tasks.utils.js';
 import { isFiniteKind } from './work.utils.js';
 
@@ -65,7 +65,15 @@ export class TaskRegistry {
   }: StartTask): TaskInfo {
     const id = taskIdSchema.parse(`t${this.#nextId++}`);
     const controller = new AbortController();
-    const info = runningInfo({ id, callId, command, description, kind, startedAt: now() });
+    const info = runningInfo({
+      id,
+      callId,
+      agentSessionId,
+      command,
+      description,
+      kind,
+      startedAt: now(),
+    });
     const entry = newTaskEntry({
       owners: this.#owners,
       entries: this.#tasks.values(),
@@ -204,15 +212,11 @@ export class TaskRegistry {
   hasPendingTasks(sessionId?: SessionId): boolean {
     return (
       this.hasDeliveries(sessionId) ||
-      [...this.#tasks.values()].some(
-        (entry) =>
-          this.#owns({ entry, sessionId }) &&
-          isFiniteKind(entry.backgroundKind) &&
-          (entry.info.status === 'running' ||
-            (entry.group !== undefined &&
-              !entry.group.delivered &&
-              this.#ownsDelivery({ delivery: entry.group, sessionId }))),
-      )
+      hasPendingFiniteWork({
+        entries: this.#tasks.values(),
+        owns: (entry) => this.#owns({ entry, sessionId }),
+        ownsDelivery: (delivery) => this.#ownsDelivery({ delivery, sessionId }),
+      })
     );
   }
 
@@ -221,13 +225,10 @@ export class TaskRegistry {
    * waits on `await_tasks`. Ungrouped tasks do not count.
    */
   groupedPendingCount(sessionId?: SessionId): number {
-    return [...this.#tasks.values()].filter(
-      ({ info, group }) =>
-        info.status === 'running' &&
-        group !== undefined &&
-        !group.delivered &&
-        this.#ownsDelivery({ delivery: group, sessionId }),
-    ).length;
+    return groupedPendingOf({
+      entries: this.#tasks.values(),
+      ownsDelivery: (delivery) => this.#ownsDelivery({ delivery, sessionId }),
+    });
   }
 
   /** Whether grouped work is still running: what `await_tasks` holds a main session open for. */
@@ -260,23 +261,21 @@ export class TaskRegistry {
     releaseTaskNode({ nodes: this.nodes, entry });
 
     // The session of a sub-agent is released by its owner (the loop), not here: it is left to be
-    // asked for, so a task released without a delivery (a silent cancel) still lets it go.
-    if (entry.agentSessionId !== undefined) {
-      this.#releasedAgents.add({ agent: entry.agentSessionId, owner: entry.sessionId });
+    // asked for, so a task released without a delivery (a silent cancel) still lets it go. Only
+    // sub-agent work has one (`TaskInfo.agentSessionId`).
+    if (entry.info.agentSessionId !== undefined) {
+      this.#releasedAgents.add({ agent: entry.info.agentSessionId, owner: entry.sessionId });
     }
 
     return this.#tasks.delete(id);
   }
 
   /**
-   * The sub-agent session a task runs, when `start` was told which. Gone with the task: ask before
-   * `release`.
+   * The node task `id` is: its own, or the agent node of the session a sub-agent runs. What a
+   * `task_running` event carries for the call that launched it. None once the task is released.
    */
-  agentSessionOf(id: TaskId): SessionId | undefined {
-    const entry = this.#tasks.get(id);
-
-    // Only sub-agent work runs a session: a command that was told one is not given a card for it.
-    return entry && WORK_IS_SUB_AGENT[entry.info.kind] ? entry.agentSessionId : undefined;
+  nodeIdOf(id: TaskId): NodeId | undefined {
+    return this.#tasks.get(id)?.nodeId;
   }
 
   /**

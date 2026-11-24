@@ -65,8 +65,6 @@ export type Entry = {
   settled: Promise<void>;
   silent: boolean;
   sessionId?: SessionId | undefined;
-  /** The sub-agent session this task runs, when `start` was told which (`StartTask`). */
-  agentSessionId?: SessionId | undefined;
   backgroundKind: TaskKind;
   /** Membership survives delivery until this entry is released. */
   group?: Delivery;

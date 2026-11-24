@@ -76,10 +76,10 @@ export function newTaskEntry(params: {
     kind,
   });
 
-  // The session is kept as told even when its node was not taken (a registry with no shared node
-  // owners has none to share): the loop cards and releases a sub-agent by it, and checks there that
-  // the session is a child of the task's owner, so a wrong one costs nothing.
-  return newEntry({ info, controller, sessionId, agentSessionId, backgroundKind: kind, ...node });
+  // The session is in `info` as told even when its node was not taken (a registry with no shared
+  // node owners has none to share): the loop cards and releases a sub-agent by it, and checks there
+  // that the session is a child of the task's owner, so a wrong one costs nothing.
+  return newEntry({ info, controller, sessionId, backgroundKind: kind, ...node });
 }
 
 /** The agent node of the session `agentSessionId`, when the work was told one and it is an agent. */

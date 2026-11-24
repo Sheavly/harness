@@ -110,6 +110,7 @@ describe('background work kinds', () => {
         return runningInfo({
           id: taskIdSchema.parse('t1'),
           callId: work.callId,
+          agentSessionId: work.agentSessionId,
           command: work.command,
           description: work.description,
           kind: work.backgroundKind,

@@ -52,8 +52,10 @@ session of the run.
 `TaskRegistry` and `BackgroundTaskScope` satisfy. It stays the only source file that calls
 `start`, so a work kind's policy is still decided by its factory (`harness/no-direct-task-start`).
 
-A task can be told the session it runs (`WorkDefinition.agentSessionId`), which pairs it with that
-sub-agent's node and has the loop release the session with the task. The harness's `start_agent`
+A sub-agent's task can be told the session it runs (`WorkDefinition.agentSessionId`), which pairs it
+with that sub-agent's node and has the loop release the session with the task; the task's snapshot
+carries it (`TaskInfo.agentSessionId`). Work of another kind that is told one runs none: it has
+neither a session in its snapshot nor one released with it. The harness's `start_agent`
 says it, and it starts the child and its task through one extension (`agents`), so
 `BackgroundTaskScope.start` keeps the field only for a session that extension's own
 `child-sessions` scope started, and drops it for any other: an extension cannot name another's
