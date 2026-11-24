@@ -24,6 +24,19 @@ export default [
     rules: { 'harness/no-handrolled-provider-policy': 'off' },
   },
   {
+    // A model call goes out through `sendRequest` (its retries, its wait for a lost connection, its
+    // timeout and signing), never through a `fetch` a protocol calls itself.
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/__tests__/**', 'src/testing/**'],
+    rules: { 'harness/no-handrolled-model-send': 'error' },
+  },
+  {
+    // The two places that call the injected `fetch`: `sendRequest`, and the connectivity probe,
+    // which sends a bare HEAD to an address that is not the provider's.
+    files: ['src/http/request.helper.ts', 'src/http/connectivity.helper.ts'],
+    rules: { 'harness/no-handrolled-model-send': 'off' },
+  },
+  {
     // The one reader of server-sent events: every protocol's reply goes through `readReply`.
     files: ['src/http/reply-reader.helper.ts'],
     rules: { 'harness/no-handrolled-reply-reader': 'off' },

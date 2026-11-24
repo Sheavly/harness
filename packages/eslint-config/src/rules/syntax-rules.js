@@ -287,6 +287,25 @@ export const SYNTAX_RULES = {
         'Do not read a reply\'s server-sent events yourself. Give `readReply` (`packages/providers/src/http/reply-reader.helper.ts`) the protocol\'s `parse`, `step` and `finish`: it owns the event loop, so unknown events, a cut-off stream, an abort and the final `done` behave the same in every protocol. See "Adding a backend" in packages/providers/docs/backends.md.',
     },
   ],
+  // A model call goes out through `sendRequest` (`http/request.helper.ts`): its retries, its wait
+  // for a lost connection (with the `model_connection` reports a provider streams), its response
+  // timeout and its signing. A protocol that calls the injected `fetch` itself fails the run on
+  // the first network error instead of waiting for the connection. Only the request helper (and
+  // the connectivity probe, which sends a bare HEAD) call it: `files:` overrides in the
+  // providers' eslint.config.js. Not covered: a `fetch` passed on and called elsewhere, or held
+  // in a variable under another name.
+  'no-handrolled-model-send': [
+    {
+      selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='fetch']",
+      message:
+        'Do not call `fetch` for a model API yourself. `sendRequest` (`packages/providers/src/http/request.helper.ts`) is the one way a model call goes out: its retries, its wait for a lost connection (the `model_connection` reports a provider streams), its response timeout and its signing. Read it with `yield*` in the provider\'s `stream`. See "Sending a call" in packages/providers/docs/backends.md.',
+    },
+    {
+      selector: "CallExpression[callee.name='fetch']",
+      message:
+        'Do not call `fetch` for a model API yourself. `sendRequest` (`packages/providers/src/http/request.helper.ts`) is the one way a model call goes out: its retries, its wait for a lost connection (the `model_connection` reports a provider streams), its response timeout and its signing. Read it with `yield*` in the provider\'s `stream`. See "Sending a call" in packages/providers/docs/backends.md.',
+    },
+  ],
   // Three decisions every model protocol shares live in `packages/providers/src/http/`: how a body
   // is read (`readReply`), when and how long a call waits (`retry-policy.helper.ts`), and which
   // stored reasoning a request may carry (`ownReplay`). A protocol that reads the body with
