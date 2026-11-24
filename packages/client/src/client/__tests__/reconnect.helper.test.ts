@@ -111,6 +111,39 @@ describe('reconnectingEntries', () => {
     expect(slept).toEqual([250, 500, 1000, 2000, 4000, RECONNECT_MAX_MS, RECONNECT_MAX_MS]);
   });
 
+  it('keeps trying for as long as the budget lasts, however many attempts that takes', async () => {
+    const down = new TypeError('fetch failed');
+    const { open } = opener([...Array.from({ length: 200 }, () => down), body({ seqs: [0, 1] })]);
+    const { wait, slept } = waits();
+    const seen = await seqsOf(
+      reconnectingEntries({ open, wait, signal: new AbortController().signal }),
+    );
+
+    expect(seen).toEqual([0, 1]);
+    expect(slept).toHaveLength(200);
+    expect(slept.at(-1)).toBe(RECONNECT_MAX_MS);
+  });
+
+  it('gives up once the attempts have failed for the whole budget, saying how many it made', async () => {
+    const down = new TypeError('fetch failed');
+    const { open } = opener(Array.from({ length: 50 }, () => down));
+    const { wait } = waits();
+    // Every attempt costs 4 s of time awake; a budget of 10 s is spent at the third failure.
+    let clock = 0;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => (clock += 4000));
+
+    try {
+      const lost = await seqsOf(
+        reconnectingEntries({ open, wait, budgetMs: 10_000, signal: new AbortController().signal }),
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(lost).toBeInstanceOf(StreamLostError);
+      expect(lost).toMatchObject({ attempts: 2, cause: down });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('counts only attempts in a row: an entry arriving starts the count again', async () => {
     const down = new TypeError('fetch failed');
     const { open } = opener([down, body({ seqs: [0], dropWith: down }), down, body({ seqs: [1] })]);

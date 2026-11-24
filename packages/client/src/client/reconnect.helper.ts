@@ -9,7 +9,7 @@ import {
 import type { ReconnectPolicy } from './client.types.js';
 import { readFrames } from './entries.helper.js';
 import {
-  RECONNECT_ATTEMPTS,
+  RECONNECT_BUDGET_MS,
   RECONNECT_INITIAL_MS,
   RECONNECT_MAX_MS,
   RECONNECT_STABLE_MS,
@@ -50,8 +50,11 @@ function canReconnectAfter(error: unknown): boolean {
  * order, because an entry at or before the last one seen is skipped. After a drop it waits, doubling
  * from `RECONNECT_INITIAL_MS` up to `RECONNECT_MAX_MS`, and tries again; an entry arriving, or a
  * connection that stayed up `RECONNECT_STABLE_MS`, resets the count. Ends when the stream ends cleanly or `signal` aborts, unless the stream is `endless`.
- * Throws `StreamLostError` once `attempts` reconnects in a row fail, and any error reconnecting
- * cannot help (a refusal) as it is.
+ * Throws `StreamLostError` once the attempts in a row (without an entry) have failed for
+ * `budgetMs` (`RECONNECT_BUDGET_MS`, an hour, unless given), or `attempts` in a row when it is
+ * given, and any error reconnecting cannot help (a refusal) as it is. The budget is read from
+ * `performance.now()`, which on Linux and macOS stops while the machine sleeps: a stream
+ * followed across a sleep is picked up again on waking, and the sleep is not spent.
  */
 export async function* reconnectingEntries(
   params: {
@@ -66,8 +69,9 @@ export async function* reconnectingEntries(
     endless?: boolean;
   } & ReconnectPolicy,
 ): AsyncGenerator<StreamEntry> {
-  const { open, signal, endless = false, attempts = RECONNECT_ATTEMPTS, wait = waitFor } = params;
-  const progress: Progress = { lastEventId: undefined, failures: 0 };
+  const { open, signal, endless = false, attempts, wait = waitFor } = params;
+  const budgetMs = params.budgetMs ?? RECONNECT_BUDGET_MS;
+  const progress: Progress = { lastEventId: undefined, failures: 0, failingSince: undefined };
 
   while (!signal.aborted) {
     // Set once the stream is open: time spent waiting for an answer is not a connection staying up.
@@ -87,18 +91,31 @@ export async function* reconnectingEntries(
 
       // A connection that stayed up was healthy even if no entry came: it starts the count again.
       if (openedAt !== undefined && performance.now() - openedAt >= RECONNECT_STABLE_MS) {
-        progress.failures = 0;
+        stopFailing(progress);
       }
 
-      const ms = backoffAfter({ error: caughtError, progress, attempts });
+      const ms = backoffAfter({ error: caughtError, progress, attempts, budgetMs });
 
       await wait({ ms, signal });
     }
   }
 }
 
-/** What a stream has delivered so far, and how many attempts in a row have failed since. */
-type Progress = { lastEventId: number | undefined; failures: number };
+/**
+ * What a stream has delivered so far, how many attempts in a row have failed since, and when (by
+ * `performance.now()`) the first of them did.
+ */
+type Progress = {
+  lastEventId: number | undefined;
+  failures: number;
+  failingSince: number | undefined;
+};
+
+/** The run of failed attempts is over: an entry arrived, or a connection stayed up. */
+function stopFailing(progress: Progress): void {
+  progress.failures = 0;
+  progress.failingSince = undefined;
+}
 
 /** The entries of one connection that are new: each one moves `progress` on and ends a failing run. */
 async function* newEntries(params: {
@@ -123,23 +140,32 @@ async function* newEntries(params: {
     if (progress.lastEventId !== undefined && entry.seq <= progress.lastEventId) continue;
 
     progress.lastEventId = entry.seq;
-    progress.failures = 0;
+    stopFailing(progress);
     yield entry;
   }
 }
 
 /**
  * Counts a failed attempt and returns how long to wait before the next. Throws the error when
- * reconnecting cannot help, and `StreamLostError` when `attempts` in a row have failed.
+ * reconnecting cannot help, and `StreamLostError` when `attempts` (when given) in a row have
+ * failed or they have failed for `budgetMs`.
  */
-function backoffAfter(params: { error: unknown; progress: Progress; attempts: number }): number {
-  const { error, progress, attempts } = params;
+function backoffAfter(params: {
+  error: unknown;
+  progress: Progress;
+  attempts: number | undefined;
+  budgetMs: number;
+}): number {
+  const { error, progress, attempts, budgetMs } = params;
 
   if (!canReconnectAfter(error)) throw error;
 
   progress.failures += 1;
+  progress.failingSince ??= performance.now();
 
-  if (progress.failures > attempts) {
+  const failedFor = performance.now() - progress.failingSince;
+
+  if ((attempts !== undefined && progress.failures > attempts) || failedFor >= budgetMs) {
     throw new StreamLostError({
       lastEventId: progress.lastEventId,
       attempts: progress.failures - 1,

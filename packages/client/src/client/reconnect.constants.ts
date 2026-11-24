@@ -11,5 +11,10 @@ export const RECONNECT_MAX_MS = 5000;
  */
 export const RECONNECT_STABLE_MS = 30_000;
 
-/** How many attempts in a row, without an entry arriving, before the stream is given up as lost. */
-export const RECONNECT_ATTEMPTS = 6;
+/**
+ * How long attempts in a row may fail, without an entry arriving, before the stream is given up
+ * as lost: an hour, so a connection that is gone for a while (a network that dropped, a computer
+ * that slept) is picked up again by the same stream when it returns. Time the machine slept does
+ * not count where `performance.now()` stops while it does (Linux, macOS).
+ */
+export const RECONNECT_BUDGET_MS = 3_600_000;
