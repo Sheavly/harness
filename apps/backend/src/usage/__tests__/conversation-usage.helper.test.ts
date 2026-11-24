@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { HistoryLog } from '@sheavly/core/store/store.types';
+import type { ChannelLog, HistoryLog } from '@sheavly/core/store/store.types';
 import type { ConversationStorage } from '@sheavly/host/conversations/conversations.types';
 import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
@@ -19,13 +19,16 @@ import { trackConversationUsage } from '../conversation-usage.helper.js';
 
 let root = '';
 
-/** A history log with nothing in it: these tests only read the stream, never the history. */
-const emptyLog: HistoryLog = {
-  append: async () => undefined,
-  read: () => ({
-    [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
-  }),
+/** What a log with nothing in it reads: no entry. */
+const nothing: AsyncIterable<never> = {
+  [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
 };
+
+/** A history log with nothing in it: these tests only read the stream, never the history. */
+const emptyLog: HistoryLog = { append: async () => undefined, read: () => nothing };
+
+/** A channel log that keeps nothing: these tests never run a node whose channel is stored. */
+const emptyChannel: ChannelLog = { append: async () => undefined, read: () => nothing };
 
 /** The storage a host hands a conversation, whose stream holds `entries` and resumes from `resume`. */
 function storageThatReads(params: {
@@ -36,6 +39,7 @@ function storageThatReads(params: {
     keepHistory: () => undefined,
     keepAgentHistory: () => undefined,
     logOf: () => emptyLog,
+    channels: { log: () => emptyChannel },
     shell: memoryShellStore(),
     outputs: new MemoryOutputStore(),
     resume: params.resume,

@@ -53,7 +53,7 @@ export type ModelSwitch = { switch: ProviderSwitch; choices: ModelChoice[] };
  */
 export type BackendHarnessOptions = Pick<
   HarnessOptions,
-  'instructions' | 'baseInstructions' | 'omitInstructionSections'
+  'instructions' | 'baseInstructions' | 'omitInstructionSections' | 'channels'
 > & {
   provider: Provider;
   subAgentProvider?: Parameters<typeof createSubAgentTool>[0]['selectProvider'];
