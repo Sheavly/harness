@@ -47,11 +47,15 @@ export const logLook: Look = {
     return `\n… provider not responding, retry ${connection.attempt}/${connection.retries} (${connection.error})\n`;
   },
   extensionEvent: ({ extension, text }) => `\n⬡ ${extension}: ${text}\n`,
-  // `connection_lost` is drawn by the reconnect lines (`model_connection`), not by a stop line.
-  turnEnd: ({ stopReason }) =>
-    stopReason === 'tool_use' || stopReason === 'max_tokens' || stopReason === 'connection_lost'
+  // A cut turn has no `model_connection` line of its own when the connection is back at once, and
+  // the log is the complete record, so it says so; the chat look draws nothing for it.
+  turnEnd: ({ stopReason }) => {
+    if (stopReason === 'connection_lost') return '\n\n… connection lost mid-reply, continuing\n';
+
+    return stopReason === 'tool_use' || stopReason === 'max_tokens'
       ? ''
-      : `\n\n[stop: ${stopReason}]\n`,
+      : `\n\n[stop: ${stopReason}]\n`;
+  },
   awaitingTasks: (count) => `… waiting for ${count} background task(s) · Ctrl+C to stop\n`,
   done: ({ reason, events, reasoning }) =>
     `[${reason} · ${events} events · reasoning items kept: ${reasoning}]\n`,

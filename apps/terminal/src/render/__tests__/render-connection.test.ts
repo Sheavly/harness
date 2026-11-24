@@ -64,6 +64,14 @@ describe('Renderer: the model connection', () => {
     expect(line).not.toContain('second');
   });
 
+  it('says in the log that a turn was cut and the run goes on, and writes nothing in the chat', () => {
+    const cut: EntryEvent = { seq: 4, type: 'turn_end', turn: 1, stopReason: 'connection_lost' };
+
+    expect(written(logLook, cut)).toContain('connection lost mid-reply, continuing');
+    expect(written(logLook, cut)).not.toContain('[stop:');
+    expect(written(chat, cut)).toBe('');
+  });
+
   it('does not touch the reply, the running tools or the reasoning indicator', () => {
     const write = vi.fn();
     const reply = { write: vi.fn(), end: vi.fn() };
