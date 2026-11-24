@@ -1545,15 +1545,16 @@
                     "type": "object",
                     "properties": {
                       "state": { "type": "string", "const": "offline" },
-                      "error": { "type": "string" }
+                      "error": { "type": "string", "maxLength": 1000 }
                     },
-                    "required": ["state", "error"]
+                    "required": ["state", "error"],
+                    "additionalProperties": false
                   },
                   {
                     "type": "object",
                     "properties": {
                       "state": { "type": "string", "const": "provider_unreachable" },
-                      "error": { "type": "string" },
+                      "error": { "type": "string", "maxLength": 1000 },
                       "attempt": {
                         "type": "integer",
                         "exclusiveMinimum": 0,
@@ -1565,12 +1566,14 @@
                         "maximum": 9007199254740991
                       }
                     },
-                    "required": ["state", "error", "attempt", "retries"]
+                    "required": ["state", "error", "attempt", "retries"],
+                    "additionalProperties": false
                   },
                   {
                     "type": "object",
                     "properties": { "state": { "type": "string", "const": "restored" } },
-                    "required": ["state"]
+                    "required": ["state"],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -1888,15 +1891,16 @@
                     "type": "object",
                     "properties": {
                       "state": { "type": "string", "const": "offline" },
-                      "error": { "type": "string" }
+                      "error": { "type": "string", "maxLength": 1000 }
                     },
-                    "required": ["state", "error"]
+                    "required": ["state", "error"],
+                    "additionalProperties": false
                   },
                   {
                     "type": "object",
                     "properties": {
                       "state": { "type": "string", "const": "provider_unreachable" },
-                      "error": { "type": "string" },
+                      "error": { "type": "string", "maxLength": 1000 },
                       "attempt": {
                         "type": "integer",
                         "exclusiveMinimum": 0,
@@ -1908,12 +1912,14 @@
                         "maximum": 9007199254740991
                       }
                     },
-                    "required": ["state", "error", "attempt", "retries"]
+                    "required": ["state", "error", "attempt", "retries"],
+                    "additionalProperties": false
                   },
                   {
                     "type": "object",
                     "properties": { "state": { "type": "string", "const": "restored" } },
-                    "required": ["state"]
+                    "required": ["state"],
+                    "additionalProperties": false
                   }
                 ]
               }

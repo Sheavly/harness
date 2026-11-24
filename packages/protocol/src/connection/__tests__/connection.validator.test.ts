@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_CONNECTION_ERROR_CHARS } from '../connection.constants.js';
 import { modelConnectionSchema } from '../connection.validator.js';
 
 describe('a model connection report', () => {
@@ -29,5 +30,25 @@ describe('a model connection report', () => {
 
     expect(modelConnectionSchema.safeParse({ ...report, attempt: 0 }).success).toBe(false);
     expect(modelConnectionSchema.safeParse({ ...report, attempt: 1.5 }).success).toBe(false);
+  });
+
+  it('refuses a field its state does not have, instead of dropping it', () => {
+    expect(modelConnectionSchema.safeParse({ state: 'restored', error: 'left over' }).success).toBe(
+      false,
+    );
+    expect(
+      modelConnectionSchema.safeParse({ state: 'offline', error: 'x', attempt: 1 }).success,
+    ).toBe(false);
+  });
+
+  it('takes an error up to its cap and no longer', () => {
+    const offline = (error: string) => ({ state: 'offline', error });
+
+    expect(
+      modelConnectionSchema.safeParse(offline('x'.repeat(MAX_CONNECTION_ERROR_CHARS))).success,
+    ).toBe(true);
+    expect(
+      modelConnectionSchema.safeParse(offline('x'.repeat(MAX_CONNECTION_ERROR_CHARS + 1))).success,
+    ).toBe(false);
   });
 });
