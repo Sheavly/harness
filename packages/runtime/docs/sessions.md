@@ -220,7 +220,11 @@ sub-agent that was still open when the process ended is closed as `lost` in its 
 only way a node becomes `lost`), reads as `interrupted` as a session (the nearest state a session
 has), and is announced in the stream: it is not run again, since what it was doing is gone. If its report never reached the
 parent's history, `Conversations.reopen` (host) appends an `agent-report` notice for it, read from
-the sub-agent's stored history and with no task id, so the next prompt tells the model once. Stored entries with a gap throw
+the sub-agent's stored history and with no task id, so the next prompt tells the model once. A
+report counts as delivered when a notice in the history names the sub-agent's session (an
+`agent-report`, or a `task-finished` whose task carries `agentSessionId`), never by the tool call
+that started it, which a provider repeats; a conversation stored before the task carried its
+session tells a failed sub-agent's end once more. Stored entries with a gap throw
 a `StoreError` instead of resuming a conversation with a hole in it.
 
 Sessions that were released come back as released (`StoredLog.released`), not live, so a long
