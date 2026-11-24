@@ -20,16 +20,18 @@ function waitFor(params: { ms: number; signal: AbortSignal }): Promise<void> {
   const { ms, signal } = params;
 
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
+    // A reconnecting stream waits many times on one signal: each wait takes its listener off when
+    // the timer fires, or an hour of attempts would pile up hundreds of them.
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
 
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 

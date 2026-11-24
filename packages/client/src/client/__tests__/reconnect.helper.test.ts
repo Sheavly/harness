@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { StreamLostError, RefusedError } from '../../errors/client.errors.js';
 import { sseBody, taskEntry as entry } from '../../testing/sse-body.fake.js';
@@ -139,6 +140,25 @@ describe('reconnectingEntries', () => {
       expect(lost).toMatchObject({ attempts: 2, cause: down });
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it('leaves no abort listener on the signal for each wait it made, however many', async () => {
+    const down = new TypeError('fetch failed');
+    const { open } = opener([...Array.from({ length: 30 }, () => down), body({ seqs: [0] })]);
+    const controller = new AbortController();
+
+    vi.useFakeTimers();
+
+    try {
+      const reading = seqsOf(reconnectingEntries({ open, signal: controller.signal }));
+
+      await vi.runAllTimersAsync();
+
+      expect(await reading).toEqual([0]);
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
     }
   });
 
