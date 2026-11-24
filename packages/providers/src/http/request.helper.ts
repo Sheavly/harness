@@ -120,7 +120,7 @@ export async function* sendRequest(
       type: 'model_connection',
       connection: {
         state: 'provider_unreachable',
-        error: outcome.failure.message,
+        error: providerErrorText(outcome.failure.message),
         attempt: tried + 1,
         retries: policy.retries,
       },

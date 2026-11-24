@@ -1,4 +1,5 @@
 import { now } from '@sheavly/core/clock/clock.helper';
+import { providerErrorText } from '@sheavly/core/text/diagnostic-text.utils';
 import { ModelApiError } from '../errors/providers.errors.js';
 import { internetReachable } from './connectivity.helper.js';
 import { PROBE_TIMEOUT_MS } from './http.constants.js';
@@ -99,7 +100,7 @@ export async function* waitForConnection(params: {
     standing.last = 'offline';
     yield {
       type: 'model_connection',
-      connection: { state: 'offline', error: failure.message },
+      connection: { state: 'offline', error: providerErrorText(failure.message) },
     };
   }
 
