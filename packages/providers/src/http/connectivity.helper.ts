@@ -1,3 +1,4 @@
+import { ignoreCancelFailure } from './cancel.utils.js';
 import { PROBE_TIMEOUT_MS } from './http.constants.js';
 
 /** Asks one address for its headers and drops the answer: any HTTP answer shows the path is up. */
@@ -14,13 +15,9 @@ async function reached(params: {
     signal: AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]),
   });
 
-  // The answer is what counts: a body that will not cancel does not make the path down.
-  await response.body?.cancel().catch(ignoreCancelFailure);
-}
-
-/** A failed cancel is an error about a body already answered; anything else is not that. */
-function ignoreCancelFailure(caughtError: unknown): void {
-  if (!(caughtError instanceof Error)) throw caughtError;
+  // The answer is what counts: a body that will not cancel (or never finishes cancelling) does
+  // not make the path down, and the probe does not wait for it.
+  void response.body?.cancel().catch(ignoreCancelFailure);
 }
 
 /**

@@ -9,7 +9,7 @@ import type { ModelUsage } from '@sheavly/protocol/usage/usage.types';
 // --- What a provider streams back ---
 
 /** Why the model ended a turn (a turn the run's signal aborted is `interrupted` instead). */
-export type StopReason = Exclude<TurnStopReason, 'interrupted'>;
+export type StopReason = Exclude<TurnStopReason, 'interrupted' | 'connection_lost'>;
 
 export type StreamEvent =
   | { type: 'text_delta'; text: string }

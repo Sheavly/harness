@@ -1,4 +1,5 @@
 import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
+import { ignoreCancelFailure } from './cancel.utils.js';
 import { describeWait } from './outage.utils.js';
 import { networkMessage } from './network-message.utils.js';
 
@@ -16,6 +17,8 @@ async function nextWithin(params: {
   signal: AbortSignal;
 }): Promise<Chunk> {
   const { reader, idleMs, signal } = params;
+  // No look at the signal first: `Promise.race` prefers a read that is already settled, so a reply
+  // that is whole in the buffer is still read after an abort, as `readReply` promises.
   let timer: NodeJS.Timeout | undefined;
   let onAbort: (() => void) | undefined;
   const aborted = new Promise<void>((resolve) => {
@@ -50,14 +53,6 @@ async function nextWithin(params: {
     clearTimeout(timer);
     if (onAbort) signal.removeEventListener('abort', onAbort);
   }
-}
-
-/**
- * Cancelling a body that is already closed or broken can reject with its own error, which says
- * nothing new: the read that failed has been reported. Anything that is not an error is not that.
- */
-function ignoreCancelFailure(caughtError: unknown): void {
-  if (!(caughtError instanceof Error)) throw caughtError;
 }
 
 /** One chunk, with a failed read turned into the loss of the connection. */

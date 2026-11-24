@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
 import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
@@ -7,13 +8,18 @@ import { streamChunks } from '../stream-chunks.helper.js';
 const bytes = (text: string) => new TextEncoder().encode(text);
 
 /** A body that sends `chunks`, then stays silent (or fails with `then`) until it is cancelled. */
-function body(params: { chunks: string[]; then?: 'silence' | Error; onCancel?: () => void }) {
+function body(params: {
+  chunks: string[];
+  then?: 'silence' | Error;
+  /** Runs when the body is cancelled; what it returns is how the cancel settles. */
+  onCancel?: () => void | Promise<void>;
+}) {
   const { chunks, then = 'silence', onCancel } = params;
   const pending = [...chunks];
 
   return new ReadableStream<Uint8Array>({
     cancel() {
-      onCancel?.();
+      return onCancel?.();
     },
     pull(controller) {
       const next = pending.shift();
@@ -104,6 +110,57 @@ describe('the chunks of a reply', () => {
     ).catch((caughtError: unknown) => caughtError);
 
     expect(cancelled).toBe(true);
+  });
+
+  it('do not wait for a cancel that never finishes, so the loss is reported at once', async () => {
+    const lost = await listen(
+      body({ chunks: ['a'], onCancel: () => new Promise<void>(() => undefined) }),
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(lost).toMatchObject({ reason: 'idle' });
+  });
+
+  it('raise no unhandled rejection when the cancel fails, whatever it fails with', async () => {
+    const failures: unknown[] = [new Error('socket gone'), 'a plain string'];
+
+    for (const failure of failures) {
+      const lost = await listen(
+        body({ chunks: ['a'], onCancel: () => Promise.reject(failure as Error) }),
+      ).catch((caughtError: unknown) => caughtError);
+
+      expect(lost).toMatchObject({ reason: 'idle' });
+    }
+
+    // An unhandled rejection is reported by the test runner once the event loop turns.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+
+  it('still hand on a chunk that is already waiting when the signal had aborted, as readReply keeps a whole reply', async () => {
+    const controller = new AbortController();
+
+    controller.abort(new Error('stop'));
+
+    const ended = new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(bytes('a'));
+        stream.close();
+      },
+    });
+    const chunks = await listen(ended, 5000, controller.signal);
+
+    expect(chunks.map((chunk) => new TextDecoder().decode(chunk))).toEqual(['a']);
+  });
+
+  it('leave no abort listener on the signal after any read', async () => {
+    const controller = new AbortController();
+    const chunks = await listen(
+      body({ chunks: ['a', 'b'], then: new Error('end') }),
+      1000,
+      controller.signal,
+    ).catch((caughtError: unknown) => caughtError);
+
+    expect(chunks).toBeInstanceOf(ConnectionLostError);
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
   });
 
   it('cancel the body when the reader stops before its end', async () => {
