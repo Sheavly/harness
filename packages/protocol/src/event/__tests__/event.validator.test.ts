@@ -248,6 +248,53 @@ describe('agentEventSchema', () => {
     expect(event).toMatchObject({ artifacts: [artifact] });
   });
 
+  describe('task_running', () => {
+    const RUNNING = {
+      seq: 4,
+      type: 'task_running',
+      ...CALL,
+      task: {
+        id: 't1',
+        kind: 'agent',
+        command: 'sub-agent: Check docs',
+        description: 'checking docs',
+        status: 'running',
+        startedAt: 1,
+        output: '',
+      },
+      nodeId: '4f0c2a9e-1d3b-4e57-8a61-0c9d7b2e5f13',
+      message: { role: 'tool', toolCallId: 'call-1', content: 'started', isError: false },
+      durationMs: 1,
+    };
+
+    it('carries the node the call launched, which the child does not have until it exists', () => {
+      expect(agentEventSchema.parse(RUNNING)).toMatchObject({ nodeId: RUNNING.nodeId });
+      expect(entryEventSchema.parse(RUNNING)).toMatchObject({ nodeId: RUNNING.nodeId });
+    });
+
+    it('still reads an event stored before the node id existed, so that conversation reopens', () => {
+      const { nodeId: _nodeId, ...stored } = RUNNING;
+
+      expect(entryEventSchema.parse(stored)).not.toHaveProperty('nodeId');
+      expect(agentEventSchema.parse(stored)).toMatchObject({ type: 'task_running' });
+    });
+
+    it('is refused with a node id a node cannot have', () => {
+      // Capitals, a space, an over-long id and the tree channel's name are not node ids.
+      for (const nodeId of ['', 'T1', 'tree', 'with space', 'x'.repeat(129)]) {
+        expect(agentEventSchema.safeParse({ ...RUNNING, nodeId }).success).toBe(false);
+      }
+    });
+
+    it('keeps the session a sub-agent task runs, the stable key to its agent', () => {
+      const withAgent = { ...RUNNING, task: { ...RUNNING.task, agentSessionId: 'child-1' } };
+
+      expect(agentEventSchema.parse(withAgent)).toMatchObject({
+        task: { agentSessionId: 'child-1' },
+      });
+    });
+  });
+
   it('rejects an event without seq, with a negative seq, or of an unknown kind', () => {
     expect(agentEventSchema.safeParse({ type: 'text_delta', text: 'hi' }).success).toBe(false);
     expect(agentEventSchema.safeParse({ seq: -1, type: 'text_delta', text: 'hi' }).success).toBe(

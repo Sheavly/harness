@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { callIdSchema } from '../message/message.validator.js';
 import { outputLogSchema } from '../output/output.validator.js';
+import { sessionIdSchema } from '../session/session.validator.js';
 import { TASK_STATUSES } from '../status/status.constants.js';
 import { timestampSchema } from '../time/time.validator.js';
 
@@ -24,6 +25,12 @@ export const taskInfoSchema = z.object({
   id: taskIdSchema,
   /** The tool call that started it, so the loop can tie the launch to its call. */
   callId: callIdSchema.exactOptional(),
+  /**
+   * For a sub-agent (`kind: 'agent'`): the session it runs, which is the stable key to the agent
+   * the task is about. A tool call id is a provider's and repeats, so nothing joins a task to its
+   * agent by it. A task that runs no session has none.
+   */
+  agentSessionId: sessionIdSchema.exactOptional(),
   command: z.string(),
   description: z.string(),
   kind: taskKindSchema,

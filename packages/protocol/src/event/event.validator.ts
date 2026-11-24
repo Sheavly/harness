@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { modelUsageSchema } from '../usage/usage.validator.js';
 import { inboxMessageSchema, sessionRefSchema } from '../session/session.validator.js';
 import { taskInfoSchema } from '../task/task.validator.js';
+import { nodeIdSchema } from '../node/node.validator.js';
 import { harnessNoticeSchema } from '../notice/notice.validator.js';
 import {
   messageSchema,
@@ -133,10 +134,19 @@ const stepEventSchemas = [
     durationMs: z.number(),
     artifacts: z.array(toolArtifactSchema).readonly().exactOptional(),
   }),
-  /** In place of `tool_result` when the call launched a background task: it's still running. */
+  /**
+   * In place of `tool_result` when the call launched a background task: it's still running.
+   * `nodeId` is the node the call launched (a command, a service, or the agent node of a
+   * sub-agent), which does not exist yet when `tool_call_started` is sent, so a front end joins
+   * the parent's card to the child's channel with it. It is the node's id in the tree, not the
+   * task's counter id. Every event the loop sends carries it; it is optional only so that a
+   * conversation stored before it existed still reads. A reader checks the id against the node
+   * tree before acting on it.
+   */
   describedCallSchema.extend({
     type: z.literal('task_running'),
     task: taskInfoSchema,
+    nodeId: nodeIdSchema.exactOptional(),
     message: messageSchema,
     durationMs: z.number(),
   }),
