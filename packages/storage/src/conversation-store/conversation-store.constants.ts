@@ -47,3 +47,22 @@ export const QUEUE_FILE = 'queue.json';
 
 /** The folder in a conversation's folder that holds each sub-agent's history. */
 export const AGENTS_FOLDER = 'agents';
+
+/** The folder in a conversation's folder that holds each channel's log, `<channel>.jsonl`. */
+export const CHANNELS_FOLDER = 'channels';
+
+/** A channel's log is `channels/<channel>.jsonl`: an entry a line, in the channel's own order. */
+export const CHANNEL_LOG_SUFFIX = '.jsonl';
+
+/** What a channel that refused an entry for a limit leaves beside its log: `<channel>.full`. */
+export const CHANNEL_FULL_SUFFIX = '.full';
+
+/**
+ * What a conversation's channels may hold unless the app says otherwise, the same as its command
+ * output may: 128 MiB for one channel, 1 GiB for all of them, and 5,000 channels.
+ */
+export const DEFAULT_CHANNEL_LIMITS = {
+  channelBytes: 128 * 1024 * 1024,
+  conversationBytes: 1024 * 1024 * 1024,
+  conversationChannels: 5000,
+} as const;
