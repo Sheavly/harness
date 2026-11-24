@@ -121,6 +121,14 @@ is a document, such as a sub-agent's report, returns it as `report` from `run`. 
 it whole, outside `OutputBuffer` and outside `TaskInfo`, so no limit applies and no task event
 carries it; `TaskRegistry.report(id)` reads it, and `formatTask` shows it in place of the output.
 
+`formatTask` prints what the model reads of a task through `task_status` and `cancel_task`. The
+command and the error are lines written by whoever started the task (an
+extension names its own work), so each prints as one escaped line (`escapedLine`, as a notice does):
+no tag that closes an envelope and no line break that starts a header of its own. That makes a
+multi-line command print on one line, joined by spaces. The output and the report are bodies and
+print as data, like any tool result: they are not escaped here, and the notices fence them. A list
+(`outputChars: 0`) prints headers only.
+
 The loop releases finished tasks itself: before each model call (so once per model step, not once
 per prompt), after the notices are in history, it calls `releaseFinished(sessionId)`, so a long-lived conversation's `TaskRegistry` does not grow.
 A released id is unknown to `get`, `report` and `list`; `isReleased(id)` tells it from one that
