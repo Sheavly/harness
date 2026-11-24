@@ -207,6 +207,14 @@ update lines it already wrote (a terminal) can hold a call's title until its res
 (`done.messages`, `GET /messages`) keeps the results in call order, which is what the model is
 sent next. `event-order.test.ts` and `parallel.test.ts` in the loop pin both orders.
 
+A `task_running` event carries `nodeId`, the node the call launched (a command, a service or the
+agent node of a sub-agent), next to the task's `TaskInfo`. The child does not exist when
+`tool_call_started` is sent, so a front end joins the parent's card to the child's channel with it.
+Every event the loop sends has it; it is optional in the schema only so that a conversation stored
+before it existed still reads. A reader treats the id as a hint for linking a card to a channel, and
+checks it against the node tree before acting on it. A sub-agent's `TaskInfo` also carries
+`agentSessionId`, the session it runs, which is checked the same way.
+
 ## Reasoning activity
 
 `reasoning_activity` (`{ active: boolean }`) says live that the model started or stopped
@@ -285,7 +293,9 @@ read it from either and decides whether and how to show it.
   root, depth, model, last reported status, times), `taskId` the background task it ran as,
   `outcome` how it ended (`RunOutcome`) and `report` what it wrote, whole and unbounded.
 - `task-finished`: a background task finished. `task` is its `TaskInfo`, whose `output` is still
-  the bounded preview.
+  the bounded preview. A sub-agent that failed or was stopped has no report, so this is its notice,
+  and `task.agentSessionId` names the agent it ran, so that notice can be tied to its agent without
+  the tool call id, which a provider repeats.
 - `tasks-finished`: one completion delivery, with an agent-authored `reason` string and a nonempty
   ordered `notices` array of `agent-report` and/or `task-finished` snapshots. Nested groups and
   transient notices are rejected. The reason is retained as data, not a model instruction; reports

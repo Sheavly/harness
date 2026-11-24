@@ -68,8 +68,8 @@ at the next prompt; grouping a service does not turn it into finite work.
 `task_completed` (the snapshot), then a `harness_notice` carrying a typed notice, and stores the
 same notice in history as a `notice` entry (`finishedTaskNotice`, `stream-agent/`). A sub-agent,
 found by the session its task runs (`start_agent` records it as the task's `agentSessionId`, and
-the loop reads it with `TaskRegistry.agentSessionOf`, never by the tool call id, which a provider
-may repeat), is an `agent-report`: its card (id, title, parent,
+the loop reads it from the task's snapshot, never by the tool call id, which a provider may
+repeat), is an `agent-report`: its card (id, title, parent,
 depth, model, status, how it ended) and the report it wrote, whole. Any other task is a
 `task-finished`, with its bounded output preview. The model is sent the notice as a user-role
 message holding the core formatter's text inside the `<harness-notice>` envelope, never as a

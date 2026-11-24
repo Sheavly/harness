@@ -30,12 +30,13 @@ const task = (extra: Record<string, unknown> = {}) =>
     ...extra,
   });
 
-/** The registries a notice reads: the task's report and the session it runs, the sessions by id. */
-const registries = (params: { report: string | undefined; sessions: object[]; runs?: string }) => ({
-  tasks: {
-    report: () => params.report,
-    agentSessionOf: () => params.runs,
-  } as unknown as TaskRegistry,
+/** A sub-agent's task: it runs the session `CHILD`, which the task's snapshot says. */
+const agentTask = (extra: Record<string, unknown> = {}) =>
+  task({ kind: 'agent', callId: 'call-1', agentSessionId: 'sub-1', ...extra });
+
+/** The registries a notice reads: the task's report, and the sessions by id. */
+const registries = (params: { report: string | undefined; sessions: object[] }) => ({
+  tasks: { report: () => params.report } as unknown as TaskRegistry,
   sessions: {
     get: (id: string) => params.sessions.find((session) => 'id' in session && session.id === id),
   } as unknown as SessionRegistry,
@@ -45,9 +46,9 @@ const registries = (params: { report: string | undefined; sessions: object[]; ru
 describe('finishedTaskNotice', () => {
   it('is an agent-report with the whole report when the task runs a sub-agent session', () => {
     const notice = finishedTaskNotice({
-      task: task({ callId: 'call-1' }),
+      task: agentTask(),
       parent: PARENT,
-      ...registries({ report: 'THE WHOLE REPORT', sessions: [CHILD], runs: 'sub-1' }),
+      ...registries({ report: 'THE WHOLE REPORT', sessions: [CHILD] }),
     });
 
     expect(notice).toMatchObject({
@@ -58,28 +59,27 @@ describe('finishedTaskNotice', () => {
   });
 
   it('is a task-finished when the task runs no session, it has no report, or the session is not its own', () => {
-    const withCall = task({ callId: 'call-1' });
     const stranger = { ...CHILD, parentId: sessionIdSchema.parse('main-2') };
 
     expect(
       finishedTaskNotice({
-        task: withCall,
+        task: task({ callId: 'call-1' }),
         parent: PARENT,
-        ...registries({ report: 'r', sessions: [] }),
+        ...registries({ report: 'r', sessions: [CHILD] }),
       }).kind,
     ).toBe('task-finished');
     expect(
       finishedTaskNotice({
-        task: withCall,
+        task: agentTask(),
         parent: PARENT,
-        ...registries({ report: undefined, sessions: [CHILD], runs: 'sub-1' }),
+        ...registries({ report: undefined, sessions: [CHILD] }),
       }).kind,
     ).toBe('task-finished');
     expect(
       finishedTaskNotice({
-        task: withCall,
+        task: agentTask(),
         parent: PARENT,
-        ...registries({ report: 'r', sessions: [stranger], runs: 'sub-1' }),
+        ...registries({ report: 'r', sessions: [stranger] }),
       }).kind,
     ).toBe('task-finished');
   });
@@ -88,9 +88,9 @@ describe('finishedTaskNotice', () => {
     const noOutcome = { ...CHILD, lastOutcome: undefined };
     const outcomeFor = (status: string) => {
       const notice = finishedTaskNotice({
-        task: task({ callId: 'call-1', status }),
+        task: agentTask({ status }),
         parent: PARENT,
-        ...registries({ report: 'r', sessions: [noOutcome], runs: 'sub-1' }),
+        ...registries({ report: 'r', sessions: [noOutcome] }),
       });
 
       return notice.kind === 'agent-report' ? notice.outcome : undefined;

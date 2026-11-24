@@ -50,11 +50,12 @@ compatibility is not a constraint.
 Every node, of any kind, has the same common fields: an `id`, a `parent` (none for the root), a
 `kind`, a `title`, a `state`, its times, and a link to the tool call that spawned it. The parent's
 result entry for that call carries the child's node id, since the child does not exist yet when
-the call starts, so the two are joined from both sides. Today `task_running` carries a `TaskInfo`
-whose task id is a counter, and a sub-agent's session id appears only in the tool's result text.
-Carrying the node id in that entry changes an agent-channel event, whose entries the issues that
-serve agent channels define and whose id the loop supplies, so it is #424's, not the schema
-work's.
+the call starts, so the two are joined from both sides. `task_running` carries that node id
+(`nodeId`) next to its `TaskInfo`, whose `id` is only the task's counter, and a sub-agent's task
+carries the session it runs (`TaskInfo.agentSessionId`). The node id is the node's address in the
+tree; the session id is the key that stays the same when a conversation is reopened, so it names a
+task's agent without the tool call id, which a provider repeats. `nodeId` is optional in the schema
+only so that a stream stored before it existed still reads.
 
 - **Kinds.** `agent`, `command` and `service` are built in. An extension can contribute kinds named
   `<extension>.<name>`. A front end that does not know a kind renders it from the common fields and

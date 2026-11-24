@@ -277,7 +277,8 @@ describe('a sub-agent', () => {
 
     // No node was opened: the task took the real one, and the first child is left alone.
     expect(world.tasks.nodes.list().length).toBe(before);
-    expect(world.tasks.agentSessionOf(task.id)).toBe(real.id);
+    expect(task.agentSessionId).toBe(real.id);
+    expect(world.tasks.get(task.id)?.agentSessionId).toBe(real.id);
   });
 
   it('takes a session once: a second task for it gets a node of its own', () => {
@@ -335,10 +336,10 @@ describe('the sub-agent sessions of released tasks', () => {
     // Cancelled on request: never notified, so nothing delivers it, and the loop releases it silently.
     await world.tasks.cancel(silent.id);
 
-    expect(world.tasks.agentSessionOf(silent.id)).toBe(world.child.id);
+    expect(world.tasks.get(silent.id)?.agentSessionId).toBe(world.child.id);
     expect(world.tasks.releaseFinished(world.main.id)).toBe(1);
     // The task is gone, and so is what it knew; the owner is handed the session to release.
-    expect(world.tasks.agentSessionOf(silent.id)).toBeUndefined();
+    expect(world.tasks.get(silent.id)).toBeUndefined();
     expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([world.child.id]);
     expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([]);
   });
@@ -369,8 +370,25 @@ describe('the sub-agent sessions of released tasks', () => {
   });
 });
 
+describe('the node a task is', () => {
+  it('is the one a command opens, and the session’s own for a sub-agent, until the task is released', async () => {
+    const world = conversation();
+    const agent = await reportedSubAgent(world);
+    const command = startWork({ world, kind: 'task' });
+
+    expect(world.tasks.nodeIdOf(agent.id)).toBe(world.sessions.nodeIdOf(world.child.id));
+    expect(world.tasks.nodeIdOf(command.task.id)).toBe(nodeOf({ world, id: 'work' })?.id);
+    expect(world.tasks.nodeIdOf(command.task.id)).not.toBe(world.sessions.nodeIdOf(world.main.id));
+
+    world.tasks.release(agent.id);
+
+    expect(world.tasks.nodeIdOf(agent.id)).toBeUndefined();
+    command.finish(0);
+  });
+});
+
 describe('the session a task runs', () => {
-  it('is answered for sub-agent work only: a command that was told one runs none', () => {
+  it('is in the snapshot of sub-agent work only: a command that was told one runs none, and releases none', async () => {
     const world = conversation();
     const agent = startHeldTask({
       tasks: world.tasks,
@@ -384,8 +402,15 @@ describe('the session a task runs', () => {
       agentSessionId: world.child.id,
     });
 
-    expect(world.tasks.agentSessionOf(agent.id)).toBe(world.child.id);
-    expect(world.tasks.agentSessionOf(command.id)).toBeUndefined();
+    expect(agent.agentSessionId).toBe(world.child.id);
+    expect(command).not.toHaveProperty('agentSessionId');
+    expect(world.tasks.get(command.id)).not.toHaveProperty('agentSessionId');
+
+    await world.tasks.cancelAll();
+    world.tasks.releaseFinished(world.main.id);
+
+    // The session is handed to its owner once, for the sub-agent's task and not for the command's.
+    expect(world.tasks.takeReleasedAgents(world.main.id)).toEqual([world.child.id]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { DEFAULT_TASK_OUTPUT_CHARS } from './tasks.constants.js';
+import { DEFAULT_TASK_OUTPUT_CHARS, WORK_IS_SUB_AGENT } from './tasks.constants.js';
 import { outputReferenceLines } from '@sheavly/core/output/output.utils';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
@@ -27,16 +27,19 @@ export function missingTaskMessage(id: TaskId): string {
 export function runningInfo(params: {
   id: TaskId;
   callId: CallId | undefined;
+  /** The session the work runs. Kept only on sub-agent work: a command that named one runs none. */
+  agentSessionId: SessionId | undefined;
   command: string;
   description: string;
   kind: TaskKind;
   startedAt: number;
 }): TaskInfo {
-  const { id, callId, command, description, kind, startedAt } = params;
+  const { id, callId, agentSessionId, command, description, kind, startedAt } = params;
 
   return {
     id,
     ...(callId ? { callId } : {}),
+    ...(agentSessionId !== undefined && WORK_IS_SUB_AGENT[kind] && { agentSessionId }),
     command,
     description,
     kind,
@@ -51,7 +54,6 @@ export function newEntry(params: {
   info: TaskInfo;
   controller: AbortController;
   sessionId: SessionId | undefined;
-  agentSessionId: SessionId | undefined;
   backgroundKind: TaskKind;
   nodeId: NodeId;
   sharesNode: boolean;

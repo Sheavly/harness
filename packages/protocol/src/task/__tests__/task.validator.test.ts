@@ -41,6 +41,17 @@ describe('taskInfoSchema', () => {
     expect(taskInfoSchema.safeParse({ ...TASK, kind: undefined }).success).toBe(false);
   });
 
+  it('keeps the session a sub-agent task runs, and has none for a task that runs no session', () => {
+    expect(taskInfoSchema.parse(TASK)).not.toHaveProperty('agentSessionId');
+    expect(
+      taskInfoSchema.parse({ ...TASK, kind: 'agent', agentSessionId: 'session-1' }).agentSessionId,
+    ).toBe('session-1');
+  });
+
+  it.each([undefined, null, 7, {}])('rejects a present agent session that is %j', (value) => {
+    expect(taskInfoSchema.safeParse({ ...TASK, agentSessionId: value }).success).toBe(false);
+  });
+
   it('rejects an unknown status', () => {
     expect(taskInfoSchema.safeParse({ ...TASK, status: 'paused' }).success).toBe(false);
   });

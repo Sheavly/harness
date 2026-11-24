@@ -108,6 +108,13 @@ describe('background tasks in the loop', () => {
       callId: 'c1',
       status: 'running',
     });
+    // The node the call launched, which the child does not have when the call starts: the node
+    // registry's, not the task's counter id.
+    const nodeId = tasks.nodeIdOf(t1);
+
+    expect(nodeId).toBeDefined();
+    expect(running?.type === 'task_running' && running.nodeId).toBe(nodeId);
+    expect(nodeId).not.toBe(t1);
     expect(events.at(-1)).toMatchObject({ type: 'done', reason: 'completed' });
     expect(tasks.get(t1)?.status).toBe('running'); // outlives the run
   });

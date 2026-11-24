@@ -1587,6 +1587,7 @@
               "description": { "type": "string" },
               "type": { "type": "string", "const": "task_running" },
               "task": { "$ref": "#/components/schemas/TaskInfo" },
+              "nodeId": { "$ref": "#/components/schemas/NodeId" },
               "message": { "$ref": "#/components/schemas/Message" },
               "durationMs": { "type": "number" }
             },
@@ -1890,6 +1891,7 @@
               "description": { "type": "string" },
               "type": { "type": "string", "const": "task_running" },
               "task": { "$ref": "#/components/schemas/TaskInfo" },
+              "nodeId": { "$ref": "#/components/schemas/NodeId" },
               "message": { "$ref": "#/components/schemas/Message" },
               "durationMs": { "type": "number" }
             },
@@ -2467,6 +2469,7 @@
         "properties": {
           "id": { "$ref": "#/components/schemas/TaskId" },
           "callId": { "$ref": "#/components/schemas/CallId" },
+          "agentSessionId": { "$ref": "#/components/schemas/SessionId" },
           "command": { "type": "string" },
           "description": { "type": "string" },
           "kind": { "type": "string", "enum": ["task", "agent", "service"] },
