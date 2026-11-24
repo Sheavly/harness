@@ -19,10 +19,12 @@ async function nextWithin(params: {
   let timer: NodeJS.Timeout | undefined;
   let onAbort: (() => void) | undefined;
   const aborted = new Promise<void>((resolve) => {
-    onAbort = resolve;
+    onAbort = () => {
+      resolve();
+    };
 
     if (signal.aborted) resolve();
-    else signal.addEventListener('abort', resolve, { once: true });
+    else signal.addEventListener('abort', onAbort, { once: true });
   });
   // Rejects with the signal's own reason, as `throwIfAborted` throws it, so an interrupt goes up
   // as the caller wrote it. Never settles while the signal has not aborted.
