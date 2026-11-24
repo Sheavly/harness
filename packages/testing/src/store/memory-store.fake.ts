@@ -1,11 +1,14 @@
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { OutputStore } from '@sheavly/core/output/output.types';
 import type {
+  ChannelLimits,
+  ChannelLog,
   ConversationStore,
   DocumentStore,
   EntryStore,
   HistoryLog,
 } from '@sheavly/core/store/store.types';
+import { MemoryChannels } from './memory-channels.fake.js';
 import { MemoryOutputStore } from './memory-output.fake.js';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { HistoryRecord } from '@sheavly/protocol/history/history.types';
@@ -27,11 +30,24 @@ export class MemoryConversationStore implements ConversationStore {
   readonly #queues = new Map<ConversationId, unknown>();
   /** Durable history logs by `<conversation>/<session>`. */
   readonly #logs = new Map<string, HistoryRecord[]>();
+  readonly #channels: MemoryChannels;
   #failure: Error | undefined;
+
+  /** `limits` are what a conversation's channels may hold, as a real store's; none by default. */
+  constructor(params: { limits?: Partial<ChannelLimits> } = {}) {
+    this.#channels = new MemoryChannels({
+      limits: params.limits,
+      assertWritable: () => this.#assertWritable(),
+    });
+  }
 
   /** Every following write rejects with a `StoreError` caused by `error`; `undefined` mends it. */
   failWith(error: Error | undefined): void {
     this.#failure = error;
+  }
+
+  channel(params: { id: ConversationId; channel: string }): ChannelLog {
+    return this.#channels.logOf(params);
   }
 
   entries(id: ConversationId): EntryStore {
@@ -116,6 +132,7 @@ export class MemoryConversationStore implements ConversationStore {
   async delete(id: ConversationId): Promise<void> {
     this.#assertWritable();
     this.#entries.delete(id);
+    this.#channels.delete(id);
     this.#shells.delete(id);
     this.#outputs.delete(id);
     this.#queues.delete(id);

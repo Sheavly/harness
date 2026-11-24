@@ -55,6 +55,13 @@ history for each of its sub-agents (kept apart from each other), a `StoreError` 
 `failWith(error)` makes every following write reject, as a full disk does, for a test of what a
 host does when storage fails.
 
+It keeps each node's channel as its own log too (`channel({ id, channel })`), by the same rules a
+file store applies (`channelAppendProblem`, and `quota` at the limits it is given:
+`new MemoryConversationStore({ limits })`). `describeChannelLog` and `describeChannelLimits` are the
+contract tests of that: a test file calls them with a `make` that returns an empty store, so the
+fake and a real store are held to one behaviour (`describeConversationStore` does the same for the
+rest of the store).
+
 ## Not here
 
 A package's fakes for its own services stay in its `src/testing/`, exported as `./testing/*`
