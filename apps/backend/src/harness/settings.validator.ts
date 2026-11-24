@@ -38,9 +38,17 @@ const count = (fallback: number) =>
     .transform((value) => (value === undefined || value === '' ? fallback : Number(value)))
     .pipe(z.number().int().min(0));
 
-/** Whether `entry` is an http or https address a probe can ask. */
-const isProbeUrl = (entry: string): boolean =>
-  URL.canParse(entry) && ['http:', 'https:'].includes(new URL(entry).protocol);
+/**
+ * Whether `entry` is an http or https address a probe can ask, with no user name or password in
+ * it (the provider's `requestPolicySchema` refuses the same).
+ */
+function isProbeUrl(entry: string): boolean {
+  if (!URL.canParse(entry)) return false;
+
+  const { protocol, username, password } = new URL(entry);
+
+  return ['http:', 'https:'].includes(protocol) && username === '' && password === '';
+}
 
 /**
  * How the backend sends a model call: `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES`,
@@ -71,7 +79,9 @@ export function parseRequestEnv(env: Record<string, string | undefined>) {
     retries: parsed.MODEL_RETRIES,
     retryDelayMs: parsed.MODEL_RETRY_DELAY_MS,
     offlineTimeoutMs: parsed.MODEL_OFFLINE_TIMEOUT_MS,
-    probeUrls: parsed.MODEL_PROBE_URLS.length > 0 ? parsed.MODEL_PROBE_URLS : REQUEST.probeUrls,
+    // A copy: a caller that changes the list must not change the default for the next call.
+    probeUrls:
+      parsed.MODEL_PROBE_URLS.length > 0 ? parsed.MODEL_PROBE_URLS : [...REQUEST.probeUrls],
   };
 }
 

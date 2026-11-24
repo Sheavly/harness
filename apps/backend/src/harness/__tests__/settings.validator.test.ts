@@ -255,6 +255,18 @@ describe('parseRequestEnv', () => {
     expect(parseRequestEnv({ MODEL_PROBE_URLS: '' }).probeUrls).toEqual(REQUEST.probeUrls);
     expect(() => parseRequestEnv({ MODEL_PROBE_URLS: 'probe.example' })).toThrow('http or https');
     expect(() => parseRequestEnv({ MODEL_PROBE_URLS: 'ftp://probe.example' })).toThrow();
+    expect(() =>
+      parseRequestEnv({ MODEL_PROBE_URLS: 'https://user:secret@probe.example' }),
+    ).toThrow('http or https');
+  });
+
+  it('hands out the default probe addresses as a copy, so changing it changes no later call', () => {
+    const first = parseRequestEnv({});
+
+    first.probeUrls.push('https://changed.example');
+
+    expect(parseRequestEnv({}).probeUrls).toEqual(REQUEST.probeUrls);
+    expect(REQUEST.probeUrls).not.toContain('https://changed.example');
   });
 
   it('rejects a value that is not a whole number, and a timeout of zero', () => {
