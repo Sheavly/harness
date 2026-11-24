@@ -1,3 +1,4 @@
+import type { ModelConnection } from '@sheavly/protocol/connection/connection.types';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
@@ -82,6 +83,8 @@ export type Look = {
   runFailed: (error: string) => string;
   hookFailed: (params: { hook: string; handler: string; error: string }) => string;
   storageFailed: (error: string) => string;
+  /** A model call waiting for the network or retrying its provider, or through again (`restored`). */
+  modelConnection: (connection: ModelConnection) => string;
   /** An extension's event as its plain-text fallback, one line; never chosen by the event's kind. */
   extensionEvent: (params: { extension: string; text: string }) => string;
   turnEnd: (params: {

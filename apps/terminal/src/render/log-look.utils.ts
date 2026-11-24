@@ -37,6 +37,15 @@ export const logLook: Look = {
   runFailed: (error) => `\n✗ Model run failed: ${error}\n`,
   hookFailed: ({ hook, handler, error }) => `\n✗ hook ${hook} failed in ${handler}: ${error}\n`,
   storageFailed: (error) => `\n✗ chat could not be saved: ${error}\n`,
+  modelConnection: (connection) => {
+    if (connection.state === 'restored') return '\n✓ reconnected\n';
+
+    if (connection.state === 'offline') {
+      return `\n… reconnecting: no internet connection, waiting for it (${connection.error})\n`;
+    }
+
+    return `\n… provider not responding, retry ${connection.attempt}/${connection.retries} (${connection.error})\n`;
+  },
   extensionEvent: ({ extension, text }) => `\n⬡ ${extension}: ${text}\n`,
   turnEnd: ({ stopReason }) =>
     stopReason === 'tool_use' || stopReason === 'max_tokens' ? '' : `\n\n[stop: ${stopReason}]\n`,

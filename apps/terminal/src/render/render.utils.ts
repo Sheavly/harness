@@ -3,6 +3,7 @@ import { COMMAND_TOOL_NAMES } from '@sheavly/coding/run-command/run-command.cons
 import { stripVTControlCharacters } from 'node:util';
 import { z } from 'zod';
 import { FIRST_LINE_MAX } from './render.constants.js';
+import type { ModelConnection } from '@sheavly/protocol/connection/connection.types';
 import type { ToolCall } from '@sheavly/protocol/message/message.types';
 import type { ConversationDetails } from '@sheavly/protocol/server/server.types';
 import { plainTerminalText } from './terminal-text.utils.js';
@@ -26,6 +27,13 @@ export function firstLine(text: string): string {
       .find((l) => l.trim()) ?? '';
 
   return line.length > FIRST_LINE_MAX ? `${line.slice(0, FIRST_LINE_MAX)}…` : line;
+}
+
+/** A connection report whose error text, a provider's own words, is one plain line. */
+export function terminalConnection(connection: ModelConnection): ModelConnection {
+  if (connection.state === 'restored') return connection;
+
+  return { ...connection, error: firstLine(connection.error) };
 }
 
 /**
