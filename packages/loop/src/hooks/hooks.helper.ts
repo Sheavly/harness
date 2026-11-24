@@ -16,6 +16,7 @@ import { parseSentMessages } from '../history/history.validator.js';
 import { mergeSections, viewOf } from '../summary/summary.utils.js';
 import { parseSummaryChange } from './summary-change.validator.js';
 import { redactDiagnosticText } from '@sheavly/core/text/diagnostic-text.utils';
+import { escapedLine } from '@sheavly/core/text/text.utils';
 import { guarded, withTimeout } from './guarded.helper.js';
 import { SESSION_END_TIMEOUT_MS } from './hooks.constants.js';
 import type { OnHookError } from './hooks.types.js';
@@ -412,13 +413,19 @@ export async function runToolCall(params: {
     if (!result.ok) {
       const { error } = result;
 
+      // This reaches the model as the result of someone else's call, and the hook's code (an
+      // extension's or a project's) wrote the message: one escaped line, like the hook-failed notice.
+      const reason = redactDiagnosticText(error instanceof Error ? error.message : String(error));
+
       return {
-        content: `Hook ${hook.name} failed: ${redactDiagnosticText(error instanceof Error ? error.message : String(error))}`,
+        content: `Hook ${escapedLine(hook.name)} failed: ${escapedLine(reason)}`,
         isError: true,
       };
     }
 
-    return result.value ?? { content: `Hook ${hook.name} was interrupted`, isError: true };
+    return (
+      result.value ?? { content: `Hook ${escapedLine(hook.name)} was interrupted`, isError: true }
+    );
   };
 
   const { content, isError, artifacts } = await runFrom(0, call);
