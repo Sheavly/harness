@@ -107,7 +107,7 @@ export async function* sendRequest(
     const outcome = await attempt(params);
 
     if ('response' in outcome) {
-      if (standing.last) yield { type: 'model_connection', state: 'restored' };
+      if (standing.last) yield { type: 'model_connection', connection: { state: 'restored' } };
 
       return outcome.response;
     }
@@ -125,10 +125,12 @@ export async function* sendRequest(
     standing.last = 'provider_unreachable';
     yield {
       type: 'model_connection',
-      state: 'provider_unreachable',
-      error: outcome.failure.message,
-      attempt: tried + 1,
-      retries: policy.retries,
+      connection: {
+        state: 'provider_unreachable',
+        error: outcome.failure.message,
+        attempt: tried + 1,
+        retries: policy.retries,
+      },
     };
 
     await wait({

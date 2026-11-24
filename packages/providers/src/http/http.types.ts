@@ -55,7 +55,7 @@ export type SendRequestParams = {
  * what a lost connection has cost so far: time awake without one, and the rounds of waiting.
  */
 export type Standing = {
-  last: ConnectionReport['state'] | undefined;
+  last: ConnectionReport['connection']['state'] | undefined;
   offlineAwakeMs: number;
   offlineRounds: number;
 };

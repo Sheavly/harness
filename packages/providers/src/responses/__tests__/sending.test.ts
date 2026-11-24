@@ -85,8 +85,8 @@ describe('sending a Responses call', () => {
     });
 
     expect(events.slice(0, 2)).toMatchObject([
-      { type: 'model_connection', state: 'offline' },
-      { type: 'model_connection', state: 'restored' },
+      { type: 'model_connection', connection: { state: 'offline' } },
+      { type: 'model_connection', connection: { state: 'restored' } },
     ]);
     expect(events.at(-1)).toMatchObject({ type: 'done' });
   });

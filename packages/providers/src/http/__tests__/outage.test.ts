@@ -62,6 +62,9 @@ function answer(how: Answer): Promise<Response> {
   );
 }
 
+const states = (reports: { connection: { state: string } }[]) =>
+  reports.map((report) => report.connection.state);
+
 const send = (params: {
   fetch: typeof globalThis.fetch;
   request?: Partial<RequestPolicy>;
@@ -89,8 +92,10 @@ describe('a call with no connection to its provider', () => {
 
     expect(await response.text()).toBe('ok');
     expect(calls.model).toBe(4);
-    expect(reports.map((report) => report.state)).toEqual(['offline', 'restored']);
-    expect(reports[0]).toMatchObject({ error: expect.stringContaining('ENOTFOUND') as string });
+    expect(states(reports)).toEqual(['offline', 'restored']);
+    expect(reports[0]?.connection).toMatchObject({
+      error: expect.stringContaining('ENOTFOUND') as string,
+    });
   });
 
   it('does not use the provider’s retries up while it waits', async () => {
@@ -130,7 +135,7 @@ describe('a call with no connection to its provider', () => {
     const { reports } = await send({ fetch });
 
     expect(calls.model).toBe(6);
-    expect(reports.map((report) => report.state)).toEqual(['offline', 'restored']);
+    expect(states(reports)).toEqual(['offline', 'restored']);
   });
 
   it('stops waiting when the run is interrupted, without renaming the interrupt', async () => {
@@ -173,7 +178,7 @@ describe('a call to a provider that fails while the connection is up', () => {
     });
     const { reports } = await send({ fetch });
 
-    expect(reports.map((report) => report.state)).toEqual(['provider_unreachable', 'restored']);
+    expect(states(reports)).toEqual(['provider_unreachable', 'restored']);
   });
 
   it('reports each retry with its number, and never says `offline`', async () => {
@@ -183,10 +188,10 @@ describe('a call to a provider that fails while the connection is up', () => {
     });
     const { reports } = await send({ fetch });
 
-    expect(reports).toEqual([
+    expect(reports.map((report) => report.connection)).toEqual([
       expect.objectContaining({ state: 'provider_unreachable', attempt: 1, retries: 2 }),
       expect.objectContaining({ state: 'provider_unreachable', attempt: 2, retries: 2 }),
-      { type: 'model_connection', state: 'restored' },
+      { state: 'restored' },
     ]);
   });
 });

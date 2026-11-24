@@ -92,7 +92,10 @@ export async function* waitForConnection(params: {
 
   if (standing.last !== 'offline') {
     standing.last = 'offline';
-    yield { type: 'model_connection', state: 'offline', error: failure.message };
+    yield {
+      type: 'model_connection',
+      connection: { state: 'offline', error: failure.message },
+    };
   }
 
   const delayMs = offlineBackoffMs({
