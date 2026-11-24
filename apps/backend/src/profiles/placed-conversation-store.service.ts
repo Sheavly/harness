@@ -93,6 +93,13 @@ export class PlacedConversationStore implements ConversationStore {
     };
   }
 
+  /** The channels a conversation has stored, wherever it is kept; none for one nobody kept. */
+  async channels(id: ConversationId): Promise<string[]> {
+    const home = await this.#homeOf(id);
+
+    return home ? home.store.channels(id) : [];
+  }
+
   async *#readChannel(params: {
     id: ConversationId;
     channel: string;

@@ -85,6 +85,16 @@ describe('a conversation’s channels through the placed store', () => {
     expect(cursors).toEqual(['s1']);
   });
 
+  it('are listed from where the conversation is kept, and none for one nobody kept', async () => {
+    const placed = placedOver(kept());
+
+    expect(await placed.channels(ID)).toEqual([]);
+
+    await placed.decide({ id: ID, asked: {} });
+    await placed.channel({ id: ID, channel: 'main' }).append(opened);
+    expect(await placed.channels(ID)).toEqual(['main']);
+  });
+
   it('refuse a name that is not a node id or the tree at once, placed or not', async () => {
     const placed = placedOver(kept());
 
