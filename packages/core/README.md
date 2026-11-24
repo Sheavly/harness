@@ -33,7 +33,7 @@ import type { Provider } from '@sheavly/core/provider/provider.types';
 | `message/`             | `StreamEvent` and what a provider streams                                                                                                    |
 | `environment/`         | `Environment`: settings an app passes in, since packages never read env                                                                      |
 | `validation/`          | `parseOrThrow` / `validate`, which turn zod failures into an area's error                                                                    |
-| `errors/`              | `DefinitionError`, `ToolCallError`, `StoreError`, `InstructionSourceError`                                                                   |
+| `errors/`              | `DefinitionError`, `ToolCallError`, `StoreError`, `InstructionSourceError`, `ConnectionLostError`                                            |
 
 Completion notices render timing, intervening user-message counts and an optional starting tool
 call ID alongside a fenced agent-authored reason; grouped completions keep one wrapper wait-reason
