@@ -115,11 +115,9 @@ describe('reconnectingEntries', () => {
     const down = new TypeError('fetch failed');
     const { open } = opener([...Array.from({ length: 200 }, () => down), body({ seqs: [0, 1] })]);
     const { wait, slept } = waits();
-    const seen = await seqsOf(
-      reconnectingEntries({ open, wait, signal: new AbortController().signal }),
-    );
+    const stream = reconnectingEntries({ open, wait, signal: new AbortController().signal });
 
-    expect(seen).toEqual([0, 1]);
+    expect(await seqsOf(stream)).toEqual([0, 1]);
     expect(slept).toHaveLength(200);
     expect(slept.at(-1)).toBe(RECONNECT_MAX_MS);
   });
