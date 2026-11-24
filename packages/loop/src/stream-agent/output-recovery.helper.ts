@@ -7,27 +7,35 @@ import {
 import type { TurnContext } from './stream-agent.types.js';
 
 /**
- * A reply cut short by a lost connection is the same as one cut short by the output limit: what
- * arrived is valid, and the model is asked for the unfinished work only, with the same bounds
- * (`maxOutputContinuations`, `MAX_FRUITLESS_CONTINUATIONS`) and one of its own: no more than
- * `MAX_LOST_CONNECTIONS_IN_A_ROW` calls in a row, however much each kept. True when the run goes
- * on; false for any other error, or when a bound is reached, and the run fails with the error.
- * Counts the loss in `context.connectionLosses`.
+ * A reply cut short by a lost connection leaves what arrived valid, as the output limit does, and
+ * the model is asked for the unfinished work only, with a notice that says why. It has a count of
+ * its own and spends none of the output limit's (`maxOutputContinuations` is for replies that
+ * hit the limit): no more than `MAX_LOST_CONNECTIONS_IN_A_ROW` calls in a row, however much each
+ * kept, and never past `maxTurns`. True when the run goes on; false for any other error, or when a
+ * bound is reached, and the run fails with the error. Counts the loss in
+ * `context.connectionLosses`.
  */
 export function continueAfterLostConnection(params: {
   context: TurnContext;
   error: unknown;
-  progressed: boolean;
 }): boolean {
-  const { context, error, progressed } = params;
+  const { context, error } = params;
+  const { options, turn, connectionLosses, outputRecovery } = context;
 
   if (!(error instanceof ConnectionLostError)) return false;
 
-  context.connectionLosses.inARow += 1;
+  connectionLosses.inARow += 1;
 
-  if (context.connectionLosses.inARow > MAX_LOST_CONNECTIONS_IN_A_ROW) return false;
+  if (connectionLosses.inARow > MAX_LOST_CONNECTIONS_IN_A_ROW) return false;
+  if (turn >= (options.maxTurns ?? Infinity)) return false;
 
-  return continueAfterOutputLimit({ context, progressed }) === undefined;
+  outputRecovery.pending = {
+    kind: 'output-continuation',
+    attempt: connectionLosses.inARow,
+    reason: 'connection',
+  };
+
+  return true;
 }
 
 /**

@@ -120,7 +120,7 @@ export async function sample(context: SampleContext) {
     type: 'usage',
     usage: window === undefined ? reported : { ...reported, contextWindow: window },
   });
-  if (signal.aborted || failure) stopReason = 'interrupted';
+  if (signal.aborted || failure) stopReason = stopReasonOfFailure({ signal, failure });
 
   const message: Message = {
     role: 'assistant',
@@ -146,6 +146,21 @@ function failedWith(params: { error: unknown; stopTools: AbortController }): Sam
   if (!(error instanceof ConnectionLostError)) stop();
 
   return { error, stopTools: stop };
+}
+
+/**
+ * How a turn that did not finish ended: `connection_lost` for a lost connection (when the run was
+ * not interrupted, which outranks it), otherwise `interrupted`, as any other failure ends it.
+ */
+function stopReasonOfFailure(params: {
+  signal: AbortSignal;
+  failure: SampleFailure | undefined;
+}): TurnStopReason {
+  const { signal, failure } = params;
+
+  if (!signal.aborted && failure?.error instanceof ConnectionLostError) return 'connection_lost';
+
+  return 'interrupted';
 }
 
 /**

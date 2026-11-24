@@ -50,10 +50,11 @@ const slow = defineTool({
   },
 });
 
-async function run(model: Provider) {
+async function run(model: Provider, options: { maxOutputContinuations?: number } = {}) {
   const events: AgentEvent[] = [];
   const failure = await (async () => {
     for await (const event of streamAgent({
+      ...options,
       provider: model,
       tools: [slow],
       messages: [{ role: 'user', content: 'go' }],
@@ -93,8 +94,46 @@ describe('a reply cut by a lost connection', () => {
       expect.objectContaining({ kind: 'output-continuation' }),
     );
     expect(requests[1]?.notices).toContainEqual(
-      expect.objectContaining({ kind: 'output-continuation' }),
+      expect.objectContaining({ kind: 'output-continuation', reason: 'connection' }),
     );
+  });
+
+  it('ends the cut turn as `connection_lost`, not as an interrupt', async () => {
+    const { model } = provider([
+      { events: [{ type: 'text_delta', text: 'par' }], drops: true },
+      { events: [{ type: 'text_delta', text: 'tial' }, done] },
+    ]);
+    const { events } = await run(model);
+    const stops = events.flatMap((event) => (event.type === 'turn_end' ? [event.stopReason] : []));
+
+    expect(stops).toEqual(['connection_lost', 'end_turn']);
+  });
+
+  it('spends none of the output limit’s allowance, even one set to zero', async () => {
+    const { model } = provider([
+      { events: [{ type: 'text_delta', text: 'par' }], drops: true },
+      { events: [{ type: 'text_delta', text: 'tial' }, done] },
+    ]);
+    const { events, failure } = await run(model, { maxOutputContinuations: 0 });
+
+    expect(failure).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({ type: 'done', reason: 'completed' });
+  });
+
+  it('drops a reply that kept only its reasoning, which a provider would not take back alone', async () => {
+    const reasoning: StreamEvent = {
+      type: 'reasoning',
+      item: { source: 'test:model', data: { opaque: 'x' } },
+    };
+    const { model } = provider([
+      { events: [reasoning], drops: true },
+      { events: [{ type: 'text_delta', text: 'hi' }, done] },
+    ]);
+    const { failure, history } = await run(model);
+
+    expect(failure).toBeUndefined();
+    expect(history.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(history[1]).toMatchObject({ content: 'hi' });
   });
 
   it('leaves no empty reply in history when the connection was lost before anything arrived', async () => {
@@ -130,8 +169,8 @@ describe('a reply cut by a lost connection', () => {
     const outcome = await run(model);
 
     expectFailedWithLostConnection(outcome);
-    // Three in a row that kept nothing end it, the bound the output limit has too.
-    expect(requests).toHaveLength(3);
+    // The same bound as any other loss: the sixth in a row fails the run.
+    expect(requests).toHaveLength(6);
   });
 
   const piece = (text: string): StreamEvent => ({ type: 'text_delta', text });

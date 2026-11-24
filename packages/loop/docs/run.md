@@ -169,15 +169,20 @@ The same notice is emitted as `harness_notice` before the model call, with its a
 optional explicit maximum. Each UI chooses its own presentation; the terminal shows no interruption.
 Exhausting an explicit allowance ends with `max_tokens`, not `completed`.
 A reply cut by a lost connection (a provider's `ConnectionLostError`: the body broke, or sent
-nothing for minutes, after the reply started) is recovered the same way, by the `dropped`
-contribution `continue-after-lost-connection`, with the same bounds and one of its own (at most
-`MAX_LOST_CONNECTIONS_IN_A_ROW` calls in a row, however much each kept; a call that completes
-starts the count again): the text and whole tool calls that arrived are kept, the tools the model already called are left to finish (not stopped as
-a failed call's are), and the next request carries the same notice. A drop before anything arrived
-leaves no empty reply behind and the call is made again. A turn that was cut does not run
-`afterTurn` or the limits, and a later call that waits for the network says so with
-`model_connection`. Once a bound is reached the run fails with the `ConnectionLostError`, and
-every other provider failure still fails it at once.
+nothing for minutes, after the reply started) is recovered in the same spirit, by the `dropped`
+contribution `continue-after-lost-connection`, but it is not an output-limit recovery and shares
+none of its counters: it has a count of its own (at most `MAX_LOST_CONNECTIONS_IN_A_ROW` calls in
+a row, however much each kept; a call that completes starts the count again) and never spends
+`maxOutputContinuations`. The text and whole tool calls that arrived are kept, the tools the model
+already called are left to finish (not stopped as a failed call's are), and the next request
+carries an `output-continuation` notice with `reason: 'connection'`, which tells the model its
+reply was cut by the connection, not by the token limit. A drop before anything arrived leaves no
+empty reply behind and the call is made again, and a reply that kept only reasoning is dropped
+too (a provider does not take a reasoning item back with nothing after it). The cut turn ends
+with `turn_end` `connection_lost` (not `interrupted`) and does not run `afterTurn` or the limits,
+and a later call that waits for the network says so with `model_connection`. Once a bound is
+reached the run fails with the `ConnectionLostError`, and every other provider failure still
+fails it at once.
 Context exhaustion ends with `context_window_exceeded` without
 retrying: a larger output budget cannot repair a full context window. Without the `summary`
 option the loop does not summarize history or discard messages; with it, see below.

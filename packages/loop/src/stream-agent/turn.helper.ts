@@ -118,11 +118,13 @@ async function settleModelCall(params: {
     return undefined;
   }
 
-  // An interrupt before the model said anything leaves no trace in history, nor does a lost
-  // connection before it did.
-  const empty = !message.content && message.toolCalls.length === 0 && !message.reasoning;
+  // An interrupt before the model said anything leaves no trace in history. A recovered reply with
+  // no text and no tool call leaves none either, reasoning included: the next call starts that
+  // thinking again, and a reasoning item with nothing after it is not one a provider accepts back.
+  const unsaid = !message.content && message.toolCalls.length === 0;
+  const empty = unsaid && !message.reasoning;
 
-  if (!(empty && (signal.aborted || recovered))) messages.push(message);
+  if (!((signal.aborted && empty) || (recovered && unsaid))) messages.push(message);
 
   events.enqueue({ type: 'turn_end', turn, stopReason });
 
@@ -251,7 +253,7 @@ async function recoverOrStopTools(params: {
   sampled: Sampled;
 }): Promise<boolean> {
   const { context, sampled } = params;
-  const { message, running, failure } = sampled;
+  const { failure } = sampled;
 
   if (!failure) {
     context.connectionLosses.inARow = 0;
@@ -260,11 +262,7 @@ async function recoverOrStopTools(params: {
   }
 
   try {
-    const recovered = await recoverFromLostConnection({
-      context,
-      error: failure.error,
-      progressed: message.content !== '' || running.length > 0,
-    });
+    const recovered = await recoverFromLostConnection({ context, error: failure.error });
 
     if (!recovered) failure.stopTools();
 
@@ -284,7 +282,6 @@ async function recoverOrStopTools(params: {
 async function recoverFromLostConnection(params: {
   context: TurnContext;
   error: unknown;
-  progressed: boolean;
 }): Promise<boolean> {
   const { context } = params;
 

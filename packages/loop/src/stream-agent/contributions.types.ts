@@ -31,11 +31,8 @@ export type OverflowInput = {
   started: boolean;
 };
 
-/**
- * A model call that failed after its reply started: a contribution returns true when it can go
- * on from what was kept. `progressed`: the reply kept any text or tool call.
- */
-export type DropInput = { context: TurnContext; error: unknown; progressed: boolean };
+/** A model call that failed after its reply started: a contribution returns true when it can go on from what was kept. */
+export type DropInput = { context: TurnContext; error: unknown };
 
 /** What a finished turn knows: a contribution returns why the run ends, or undefined to go on. */
 export type LimitInput = {
