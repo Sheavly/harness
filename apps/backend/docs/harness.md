@@ -331,8 +331,15 @@ What stays in the environment is how this process runs, not who the user is. `se
   back, counting only time the computer was awake (sleep never counts, and a call resumes when it
   wakes); `0` switches the wait off. A provider that is down while the internet is up is not
   waited for, only retried and reported: `MODEL_PROBE_URLS` (comma-separated http or https
-  addresses, default `REQUEST.probeUrls`) are what it asks to tell the two apart, and any answer from one
-  means the internet is up. See
+  addresses, at most five, with no user name or password, default `REQUEST.probeUrls`) are what it
+  asks to tell the two apart, and any answer from one means the internet is up. By default that is a
+  bare `HEAD` (no body, no headers of its own, no redirect followed) to `gstatic.com` and `1.1.1.1`
+  from the user's own address, after a model call fails with no HTTP answer. Name addresses you
+  trust in `MODEL_PROBE_URLS` to ask others, or set `MODEL_OFFLINE_TIMEOUT_MS=0` to ask none and
+  never wait. Where those addresses are blocked (an egress-restricted network) a provider that is
+  down reads as "offline" and is waited for, so set one of the two. A model on this machine or
+  its own network (`localhost`, a private address, a `.local` name) is never probed or waited for.
+  See
   [sending a call](../../../packages/providers/docs/backends.md#sending-a-call-timeouts-and-retries).
 - `parseServerEnv` and `parseRunEnv`: where it listens, and how each conversation runs
   ([serve.md](serve.md#settings)).
