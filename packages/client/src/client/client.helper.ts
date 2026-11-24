@@ -44,7 +44,11 @@ export function createClient(options: ClientOptions) {
     async send<N extends EmptyRoute>(name: N, call: CallParams<N>): Promise<void> {
       await send({ name, call });
     },
-    /** Opens a route's server-sent event stream: its body, raw, for a UI to save or read. */
+    /**
+     * Opens a route's server-sent event stream: its body, raw, for a UI to save or read. The
+     * caller ends it: read it to its end, cancel it, or pass a `signal` that aborts. A stream
+     * dropped with none of these stays open until the server ends it.
+     */
     async open<N extends StreamRoute>(
       name: N,
       call: CallParams<N>,
@@ -53,7 +57,12 @@ export function createClient(options: ClientOptions) {
 
       if (!response.body) throw new AnswerError({ route: name, cause: 'no body' });
 
-      return response.body;
+      // Only the body leaves this function, and the caller may not read it for a while (a prompt
+      // opens its stream, sends, and reads after). Node's fetch cancels the body of a response that
+      // is collected while it is still unread and unlocked, which ends the stream with nothing
+      // wrong on the wire: the reader sees a clean end and misses what the server sent. Piping it
+      // locks the original body now; the pipe moves only as fast as the caller reads.
+      return response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>());
     },
     /** A route's stream as entries, each parsed with the protocol's schema, to its end. */
     async *stream<N extends StreamRoute>(
