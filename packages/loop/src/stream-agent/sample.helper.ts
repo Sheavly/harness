@@ -85,6 +85,8 @@ export async function sample(context: SampleContext) {
         case 'reasoning_activity':
           activity.set(event.active);
           break;
+        case 'model_connection':
+          break;
 
         case 'tool_call': {
           const described = { call: event.call, description: describeCall(event.call) };
