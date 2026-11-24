@@ -25,5 +25,5 @@ export type StreamEvent =
    * The call is waiting for the network or retrying an unreachable provider, as the provider can
    * observe it; `restored` ends either. Sent before anything of the reply, never kept in history.
    */
-  | ({ type: 'model_connection' } & ModelConnection)
+  | { type: 'model_connection'; connection: ModelConnection }
   | { type: 'done'; stopReason: StopReason; usage?: ModelUsage };
