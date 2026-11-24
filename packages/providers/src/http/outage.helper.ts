@@ -2,7 +2,7 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import { ModelApiError } from '../errors/providers.errors.js';
 import { internetReachable } from './connectivity.helper.js';
 import { PROBE_TIMEOUT_MS } from './http.constants.js';
-import type { ConnectionReport, SendParams, Standing } from './http.types.js';
+import type { ConnectionReport, SendRequestParams, Standing } from './http.types.js';
 import { awakeTime, describeWait, isLoopbackHost } from './outage.utils.js';
 import { offlineBackoffMs } from './retry-policy.helper.js';
 import { waitAwake } from './wait.helper.js';
@@ -15,7 +15,7 @@ import { waitAwake } from './wait.helper.js';
  * Rejects with the signal's reason when interrupted.
  */
 export async function isOutage(params: {
-  send: SendParams;
+  send: SendRequestParams;
   failure: ModelApiError;
 }): Promise<boolean> {
   const { send, failure } = params;
@@ -72,7 +72,7 @@ function outageError(params: { failure: ModelApiError; waitedMs: number }): Mode
  * without it, or when `signal` aborts.
  */
 export async function* waitForConnection(params: {
-  send: SendParams;
+  send: SendRequestParams;
   failure: ModelApiError;
   standing: Standing;
   startedAt: number;

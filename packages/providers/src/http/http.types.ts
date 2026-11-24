@@ -40,7 +40,7 @@ export type RequestPolicy = z.infer<typeof requestPolicySchema>;
 export type ConnectionReport = Extract<StreamEvent, { type: 'model_connection' }>;
 
 /** What `sendRequest` is given: the call, how to send it, and the signal that interrupts it. */
-export type SendParams = {
+export type SendRequestParams = {
   api: string;
   fetch: typeof fetch;
   url: URL;

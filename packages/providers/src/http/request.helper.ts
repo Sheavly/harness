@@ -1,7 +1,7 @@
 import { providerErrorText } from '@sheavly/core/text/diagnostic-text.utils';
 import { ModelApiError, ModelFetchError } from '../errors/providers.errors.js';
 import { now } from '@sheavly/core/clock/clock.helper';
-import type { ConnectionReport, SendParams, Standing } from './http.types.js';
+import type { ConnectionReport, SendRequestParams, Standing } from './http.types.js';
 import { isOutage, waitForConnection } from './outage.helper.js';
 import { withSignature } from './signing.utils.js';
 import {
@@ -27,7 +27,7 @@ function networkMessage(caughtError: unknown): string {
 type Attempt =
   { response: Response } | { failure: ModelApiError; retryable: boolean; waitMs: number };
 
-async function attempt(params: SendParams): Promise<Attempt> {
+async function attempt(params: SendRequestParams): Promise<Attempt> {
   const { api, fetch, url, policy, signal, sign } = params;
   // Signed afresh for each attempt: a signature carries the time, and one is good for minutes.
   const init = sign ? withSignature({ init: params.init, url, sign }) : params.init;
@@ -95,7 +95,9 @@ async function attempt(params: SendParams): Promise<Attempt> {
  * retry of the provider's own failures, and `restored` when a call that reported got through.
  * The generator returns the response, so a caller reads it with `yield*`.
  */
-export async function* sendRequest(params: SendParams): AsyncGenerator<ConnectionReport, Response> {
+export async function* sendRequest(
+  params: SendRequestParams,
+): AsyncGenerator<ConnectionReport, Response> {
   const { policy, signal } = params;
   const standing: Standing = { last: undefined, offlineAwakeMs: 0, offlineRounds: 0 };
 

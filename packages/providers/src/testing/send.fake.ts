@@ -1,5 +1,5 @@
 /** Test-only: runs `sendRequest` to its end. */
-import type { ConnectionReport, SendParams } from '../http/http.types.js';
+import type { ConnectionReport, SendRequestParams } from '../http/http.types.js';
 import { sendRequest } from '../http/request.helper.js';
 
 /**
@@ -7,7 +7,7 @@ import { sendRequest } from '../http/request.helper.js';
  * generator's return value is only reachable by driving it by hand, which `for await` can't do.
  */
 export async function sendCollecting(
-  params: SendParams,
+  params: SendRequestParams,
 ): Promise<{ response: Response; reports: ConnectionReport[] }> {
   const reports: ConnectionReport[] = [];
   const call = sendRequest(params);
