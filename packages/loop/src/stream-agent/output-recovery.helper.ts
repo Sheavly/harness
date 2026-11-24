@@ -1,6 +1,25 @@
+import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
 import type { DoneReason } from '@sheavly/protocol/event/event.types';
 import { MAX_FRUITLESS_CONTINUATIONS } from './stream-agent.constants.js';
 import type { TurnContext } from './stream-agent.types.js';
+
+/**
+ * A reply cut short by a lost connection is the same as one cut short by the output limit: what
+ * arrived is valid, and the model is asked for the unfinished work only, with the same bounds
+ * (`maxOutputContinuations`, `MAX_FRUITLESS_CONTINUATIONS`). True when the run goes on; false
+ * for any other error, or when a bound is reached, and the run fails with the error.
+ */
+export function continueAfterLostConnection(params: {
+  context: TurnContext;
+  error: unknown;
+  progressed: boolean;
+}): boolean {
+  const { context, error, progressed } = params;
+
+  if (!(error instanceof ConnectionLostError)) return false;
+
+  return continueAfterOutputLimit({ context, progressed }) === undefined;
+}
 
 /**
  * Preserve partial replies and completed tool results, then ask for the unfinished work only.

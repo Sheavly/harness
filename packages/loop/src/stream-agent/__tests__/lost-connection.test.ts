@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
+import { defineTool } from '@sheavly/core/tool/tool.utils';
+import type { StreamEvent } from '@sheavly/core/message/message.types';
+import type { Provider, ProviderRequest } from '@sheavly/core/provider/provider.types';
+import type { AgentEvent } from '@sheavly/protocol/event/event.types';
+import type { ToolCall } from '@sheavly/protocol/message/message.types';
+import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import { STOPPED_BY_FAILURE } from '../stream-agent.constants.js';
+import { streamAgent } from '../stream-agent.helper.js';
+
+const lost = () =>
+  new ConnectionLostError({ reason: 'dropped', message: 'the connection dropped' });
+const done: StreamEvent = { type: 'done', stopReason: 'end_turn' };
+const call: ToolCall = {
+  id: callIdSchema.parse('call-1'),
+  name: 'slow',
+  input: { description: 'x' },
+};
+
+/** One scripted model call: what it streams, then either `lost` or its end. */
+type Step = { events: StreamEvent[]; drops?: boolean };
+
+/** A provider that plays `steps` in turn, and keeps what each call was sent. */
+function provider(steps: Step[]) {
+  const requests: ProviderRequest[] = [];
+  const model: Provider = {
+    async *stream(request) {
+      const step = steps[requests.length] ?? { events: [done] };
+
+      requests.push(request);
+      yield* step.events;
+
+      if (step.drops) throw lost();
+    },
+  };
+
+  return { model, requests };
+}
+
+const slow = defineTool({
+  name: 'slow',
+  description: 'Finishes after a moment',
+  inputSchema: z.object({}),
+  execute: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    return 'finished';
+  },
+});
+
+async function run(model: Provider) {
+  const events: AgentEvent[] = [];
+  const failure = await (async () => {
+    for await (const event of streamAgent({
+      provider: model,
+      tools: [slow],
+      messages: [{ role: 'user', content: 'go' }],
+    })) {
+      events.push(event);
+    }
+  })().then(
+    () => undefined,
+    (caughtError: unknown) => caughtError,
+  );
+  const end = events.at(-1);
+
+  return { events, failure, history: end?.type === 'done' ? end.messages : [] };
+}
+
+describe('a reply cut by a lost connection', () => {
+  it('keeps the text that arrived and asks the model to go on, without failing the run', async () => {
+    const { model, requests } = provider([
+      { events: [{ type: 'text_delta', text: 'par' }], drops: true },
+      { events: [{ type: 'text_delta', text: 'tial' }, done] },
+    ]);
+    const { events, failure, history } = await run(model);
+
+    expect(failure).toBeUndefined();
+    expect(events.map((event) => event.type)).not.toContain('run_failed');
+    expect(events.at(-1)).toMatchObject({ type: 'done', reason: 'completed' });
+    expect(history.map((message) => message.role)).toEqual(['user', 'assistant', 'assistant']);
+    expect(history[1]).toMatchObject({ content: 'par' });
+    expect(history[2]).toMatchObject({ content: 'tial' });
+    expect(requests[0]?.notices ?? []).not.toContainEqual(
+      expect.objectContaining({ kind: 'output-continuation' }),
+    );
+    expect(requests[1]?.notices).toContainEqual(
+      expect.objectContaining({ kind: 'output-continuation' }),
+    );
+  });
+
+  it('leaves no empty reply in history when the connection was lost before anything arrived', async () => {
+    const { model } = provider([
+      { events: [], drops: true },
+      { events: [{ type: 'text_delta', text: 'hi' }, done] },
+    ]);
+    const { failure, history } = await run(model);
+
+    expect(failure).toBeUndefined();
+    expect(history.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(history[1]).toMatchObject({ content: 'hi' });
+  });
+
+  it('lets a tool the model already called finish, and records its real result', async () => {
+    const { model } = provider([
+      { events: [{ type: 'tool_call', call }], drops: true },
+      { events: [{ type: 'text_delta', text: 'ok' }, done] },
+    ]);
+    const { failure, history } = await run(model);
+    const result = history.find((message) => message.role === 'tool');
+
+    expect(failure).toBeUndefined();
+    expect(result).toMatchObject({ content: 'finished', isError: false });
+    expect(JSON.stringify(history)).not.toContain(STOPPED_BY_FAILURE);
+    expect(history.at(-1)).toMatchObject({ role: 'assistant', content: 'ok' });
+  });
+
+  it('fails the run with the error once replies keep being lost with nothing kept', async () => {
+    const { model, requests } = provider(
+      Array.from({ length: 10 }, () => ({ events: [], drops: true })),
+    );
+    const { events, failure } = await run(model);
+
+    expect(failure).toBeInstanceOf(ConnectionLostError);
+    expect(events.map((event) => event.type)).toContain('run_failed');
+    // Three in a row that kept nothing end it, the bound the output limit has too.
+    expect(requests).toHaveLength(3);
+  });
+
+  it('keeps going while each lost reply kept something', async () => {
+    const piece = (text: string): StreamEvent => ({ type: 'text_delta', text });
+    const steps: Step[] = [
+      ...Array.from({ length: 6 }, (_, index): Step => ({
+        events: [piece(`${index}`)],
+        drops: true,
+      })),
+      { events: [piece('end'), done] },
+    ];
+    const { model, requests } = provider(steps);
+    const { failure, history } = await run(model);
+
+    expect(failure).toBeUndefined();
+    expect(requests).toHaveLength(7);
+    expect(history.filter((message) => message.role === 'assistant')).toHaveLength(7);
+  });
+
+  it('is not recovered when it is any other failure of the provider', async () => {
+    const broken: Provider = {
+      async *stream() {
+        yield { type: 'text_delta', text: 'par' };
+        throw new Error('the model refused');
+      },
+    };
+    const { failure } = await run(broken);
+
+    expect(failure).toMatchObject({ message: 'the model refused' });
+  });
+});

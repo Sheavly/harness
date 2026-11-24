@@ -74,7 +74,7 @@ export async function runTurn(context: TurnContext): Promise<DoneReason | undefi
   const continuation = context.outputRecovery.pending;
 
   context.outputRecovery.pending = undefined;
-  const { message, stopReason, running, failure } = await sample({
+  const sampled = await sample({
     ...options,
     instructions: joinInstructions([options.instructions, ...instructions]),
     session: session.ref,
@@ -87,8 +87,38 @@ export async function runTurn(context: TurnContext): Promise<DoneReason | undefi
     onHookError: context.hookFailures.report,
   });
 
+  return settleModelCall({ context, sampled });
+}
+
+/** What one model call left behind: its reply, the tools it started, and how it ended. */
+type Sampled = Awaited<ReturnType<typeof sample>>;
+
+/**
+ * Records the model call's reply and tool results, recovers from a failure or fails the run with
+ * it, and otherwise finishes the turn. Returns why the run ends, or undefined to keep going.
+ */
+async function settleModelCall(params: {
+  context: TurnContext;
+  sampled: Sampled;
+}): Promise<DoneReason | undefined> {
+  const { context, sampled } = params;
+  const { message, stopReason, running, failure } = sampled;
+  const { options, turn, messages, signal, events } = context;
+
+  // A reply cut by a lost connection is kept as it arrived, and the turn goes on from it.
+  const recovered =
+    failure !== undefined &&
+    (await recoverFromLostConnection({
+      context,
+      error: failure.error,
+      progressed: message.content !== '' || running.length > 0,
+    }));
+
+  // Tools a lost connection spared run on only when the turn goes on.
+  if (failure && !recovered) failure.stopTools();
+
   // A failed model call that started no tools fails the turn as it is, with nothing to record.
-  if (failure && running.length === 0) throw failure.error;
+  if (failure && !recovered && running.length === 0) throw failure.error;
 
   if (await retryAfterOverflow({ context, stopReason, started: running.length > 0 })) {
     // The rejected reply is dropped from history, but a UI that saw the call start sees it end.
@@ -97,17 +127,21 @@ export async function runTurn(context: TurnContext): Promise<DoneReason | undefi
     return undefined;
   }
 
-  // An interrupt before the model said anything leaves no trace in history.
+  // An interrupt before the model said anything leaves no trace in history, nor does a lost
+  // connection before it did.
   const empty = !message.content && message.toolCalls.length === 0 && !message.reasoning;
 
-  if (!(signal.aborted && empty)) messages.push(message);
+  if (!(empty && (signal.aborted || recovered))) messages.push(message);
 
   events.enqueue({ type: 'turn_end', turn, stopReason });
 
   if (running.length > 0) messages.push(...(await releaseResults({ running, events })));
 
   // The failed model call's tools are stopped and recorded; now the run fails with its error.
-  if (failure) throw failure.error;
+  if (failure && !recovered) throw failure.error;
+
+  // The turn did not finish: no `afterTurn`, no limits. The next one asks the model to go on.
+  if (recovered) return undefined;
 
   await runAfterTurn({
     hooks: options.hooks ?? [],
@@ -202,6 +236,34 @@ async function retryAfterOverflow(params: {
   const { context } = params;
 
   for (const contribution of context.contributions.overflow) {
+    const { value } = await runContribution({
+      contribution,
+      input: params,
+      signal: context.signal,
+      report: reportContribution(context),
+    });
+
+    if (value) return true;
+  }
+
+  return false;
+}
+
+/**
+ * A model call that failed with its reply half sent: the `dropped` contributions may go on from
+ * what arrived. True when one did (the first wins), and the next turn asks the model to continue.
+ * With none, or for any other error, the run fails with the error.
+ */
+async function recoverFromLostConnection(params: {
+  context: TurnContext;
+  error: unknown;
+  progressed: boolean;
+}): Promise<boolean> {
+  const { context } = params;
+
+  if (context.signal.aborted) return false;
+
+  for (const contribution of context.contributions.dropped) {
     const { value } = await runContribution({
       contribution,
       input: params,

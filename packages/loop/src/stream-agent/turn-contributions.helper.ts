@@ -1,7 +1,7 @@
 import type { SummaryOptions } from '@sheavly/core/summary/summary.types';
 import { summarizeAtThreshold, summarizeHistory } from '../summary/summarize.helper.js';
 import { maskOldToolOutput } from '../summary/mask.utils.js';
-import { continueAfterOutputLimit } from './output-recovery.helper.js';
+import { continueAfterLostConnection, continueAfterOutputLimit } from './output-recovery.helper.js';
 import { orderContributions } from './contributions.helper.js';
 import { awaitTask, yieldEnds } from './completion.helper.js';
 import { deliverExtensionNotices, deliverMessages, runDeliveryHooks } from './delivery.helper.js';
@@ -180,6 +180,14 @@ export function buildContributions(options: AgentOptions): TurnContributions {
           ]
         : [],
     ),
+    dropped: orderContributions([
+      {
+        name: 'continue-after-lost-connection',
+        onFailure: 'fail-run' as const,
+        abort: 'wait' as const,
+        run: continueAfterLostConnection,
+      },
+    ]),
     limit: orderContributions([
       {
         name: 'window-exceeded',

@@ -165,5 +165,9 @@ export type SampleContext = ToolStart & {
   events: AgentEvents;
 };
 
-/** A failed model call: the error to fail the run with, after its started tools are recorded. */
-export type SampleFailure = { error: unknown };
+/**
+ * A failed model call: the error to fail the run with, after its started tools are recorded.
+ * `stopTools` stops them: already done for any failure but a lost connection, whose tools are
+ * left running in case the turn goes on from what arrived.
+ */
+export type SampleFailure = { error: unknown; stopTools: () => void };
