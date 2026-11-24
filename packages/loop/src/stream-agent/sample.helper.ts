@@ -86,6 +86,7 @@ export async function sample(context: SampleContext) {
           activity.set(event.active);
           break;
         case 'model_connection':
+          events.enqueue(event);
           break;
 
         case 'tool_call': {

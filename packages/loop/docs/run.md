@@ -22,7 +22,11 @@ update; the original exception still ends iteration. Diagnostics never enter mod
    the messages this one call sends), then the model is called. Text and reasoning stream out as
    they arrive. A provider's `reasoning_activity` signal goes out through the same queue as
    deduplicated start and end transitions, and the loop ends one a cut stream, abort or failure
-   left open. It never enters history.
+   left open. It never enters history. A provider that cannot reach its backend says so with
+   `model_connection` (`offline`, `provider_unreachable`, `restored`) before anything of the
+   reply, and the loop sends it on as it comes, in order, without it ever entering history: the
+   call is only slow, so the run, its tools and its sub-agents go on as soon as the provider gets
+   through, and fail only when the provider gives up.
 3. Tool calls start the moment the model asks for them, each wrapped by `aroundToolCall` hooks.
    Their results are released after the turn ends (`tool_batch`, then one `tool_result` per call),
    each as its tool finishes, so a fast tool is not held behind a slow one called before it.
