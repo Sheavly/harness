@@ -292,16 +292,13 @@ export const SYNTAX_RULES = {
   // timeout and its signing. A protocol that calls the injected `fetch` itself fails the run on
   // the first network error instead of waiting for the connection. Only the request helper (and
   // the connectivity probe, which sends a bare HEAD) call it: `files:` overrides in the
-  // providers' eslint.config.js. Not covered: a `fetch` passed on and called elsewhere, or held
-  // in a variable under another name.
+  // providers' eslint.config.js. Matches `fetch(…)`, `x.fetch(…)`, `x['fetch'](…)` and
+  // `fetch.call/apply/bind(…)` (also on `x.fetch`). Not covered: a `fetch` passed on and called
+  // elsewhere, or held in a variable under another name.
   'no-handrolled-model-send': [
     {
-      selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='fetch']",
-      message:
-        'Do not call `fetch` for a model API yourself. `sendRequest` (`packages/providers/src/http/request.helper.ts`) is the one way a model call goes out: its retries, its wait for a lost connection (the `model_connection` reports a provider streams), its response timeout and its signing. Read it with `yield*` in the provider\'s `stream`. See "Sending a call" in packages/providers/docs/backends.md.',
-    },
-    {
-      selector: "CallExpression[callee.name='fetch']",
+      selector:
+        ":matches(CallExpression[callee.type='MemberExpression'][callee.property.name='fetch'], CallExpression[callee.name='fetch'], CallExpression[callee.computed=true][callee.property.value='fetch'], CallExpression[callee.property.name=/^(call|apply|bind)$/][callee.object.property.name='fetch'], CallExpression[callee.property.name=/^(call|apply|bind)$/][callee.object.name='fetch'])",
       message:
         'Do not call `fetch` for a model API yourself. `sendRequest` (`packages/providers/src/http/request.helper.ts`) is the one way a model call goes out: its retries, its wait for a lost connection (the `model_connection` reports a provider streams), its response timeout and its signing. Read it with `yield*` in the provider\'s `stream`. See "Sending a call" in packages/providers/docs/backends.md.',
     },

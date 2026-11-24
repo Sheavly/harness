@@ -22,8 +22,18 @@ sendTester.run(RULE_NAME, harnessPlugin.rules[RULE_NAME], {
     },
     {
       code: 'const { fetch } = config; const response = await fetch(url, init);',
-      errors: [{ messageId: 'm1' }],
+      errors: [{ messageId: 'm0' }],
     },
+    { code: "const response = await deps['fetch'](url, init);", errors: [{ messageId: 'm0' }] },
+    {
+      code: 'const response = await deps.fetch.call(deps, url, init);',
+      errors: [{ messageId: 'm0' }],
+    },
+    {
+      code: 'const response = await fetch.apply(undefined, [url, init]);',
+      errors: [{ messageId: 'm0' }],
+    },
+    { code: 'const send = deps.fetch.bind(deps); void send;', errors: [{ messageId: 'm0' }] },
   ],
 });
 
