@@ -166,6 +166,16 @@ export function baseConfig(params) {
       ignores: testFiles,
       rules: { 'harness/no-direct-task-start': 'error' },
     },
+    // --- Free text of a task or session reaches the model through `escapedLine`, not as it is ---
+    ...(isApp
+      ? []
+      : [
+          {
+            files: SOURCE_FILES,
+            ignores: testFiles,
+            rules: { 'harness/no-unescaped-model-text': 'error' },
+          },
+        ]),
     // --- A task kind's meaning is `isFiniteKind`'s, not a comparison; an app may show kinds apart ---
     ...(isApp
       ? []

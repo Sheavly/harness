@@ -26,6 +26,7 @@ import { noLogAndThrow } from './rules/no-log-and-throw.js';
 import { noLoggerInPureKind } from './rules/no-logger-in-pure-kind.js';
 import { noRawError } from './rules/no-raw-error.js';
 import { noSilentCatch } from './rules/no-silent-catch.js';
+import { noUnescapedModelText } from './rules/no-unescaped-model-text.js';
 import { permissionStoreRoot } from './rules/permission-store-root.js';
 import { SYNTAX_RULES, syntaxRule } from './rules/syntax-rules.js';
 import { pureImports } from './rules/pure-imports.js';
@@ -76,6 +77,7 @@ const RULES = {
   'no-direct-task-start': noDirectTaskStart,
   'no-raw-error': noRawError,
   'no-silent-catch': noSilentCatch,
+  'no-unescaped-model-text': noUnescapedModelText,
   'permission-store-root': permissionStoreRoot,
   'pure-imports': pureImports,
   'prompt-location': promptLocation,

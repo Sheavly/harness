@@ -351,6 +351,34 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   the shared config's ignores. A registry typed `any`, cast to another shape, assigned to a
   structural type that re-declares `start` or extended through a mixin is left to review, and so
   is whether reads of the shared registry pass the caller's session.
+- **Free text is escaped for the model** (`harness/no-unescaped-model-text`, type-aware, source
+  files of packages, not apps): a template literal piece, a `+` or `+=` operand, or an element of
+  an array given to `.join(...)`, that prints `title`, `command`, `description`, `error`,
+  `status` or `reason` straight in fails when the field is a plain `string` declared by the
+  protocol's task, session, node, notice, approval or output types, or by the runtime's own node,
+  task or session types (`NodeRecord`, ...). It looks through what only passes a field along: an
+  optional chain, `??` and `||`, the right side of `&&` (its left only decides), a conditional, a
+  non-null assertion, `as` and `satisfies`; and, for `.join`, through `.filter(...)`, `.flat()` and
+  `.slice(...)` to the array literal, unless the joined text is handed whole to a call
+  (`escapeTags([a.error, a.output].join('\n'))`, as the task-finished notice does). So
+  `${session?.title ?? id}`, which is how `message_agent` printed a title, fails like
+  `${task.command}`. A union of literals the harness chose (`TaskInfo.status`) is not a plain
+  string. Those fields are written by a model, a tool or an extension (an extension names its own
+  work and children), and what is printed is read by the model, so a closing tag or a line that
+  looks like a header would pass for the harness's own. The fix is `escapedLine(...)` (one line, no
+  tag, no control character), or `escapeTags(...)` for a body whose line breaks are content
+  (`@sheavly/core/text/text.utils`). A tool's own input (`input.title`, the model's words handed
+  back) and a local shape are not declared by those types and are not touched; tests and
+  `src/testing` files are exempt through the shared config's ignores. **Left to review and to tests
+  that pass a closing tag and a newline through each place a field is printed**: a field assigned
+  to a variable or destructured first, an object spread into a renderer, `JSON.stringify(task)`, a
+  computed key, any call that is not an escaper (`String(...)`, `.trim()`, `.concat(...)` hide a
+  field from the rule), an array mapped before `.join` or built elsewhere, text that reaches the
+  model by another path than those above, fields with other names (`output`, `report`, a hook's or
+  tool's error `message`), types the rule does not name (an extension's skill `description`), and
+  everything in an app. It checks developer messages too: an `Error` message that prints such a
+  field fails and is fixed the same way. The rule is a guardrail for the common shapes, not proof
+  that no unescaped text reaches the model.
 - **A task kind is not compared by hand** (`harness/no-adhoc-task-kind`, type-aware, source files
   of packages, not apps): a comparison (`===`, `!==`, `==`, `!=`, either side) or a `switch` on a
   value whose type is a union of two or more of `'task'`, `'agent'` and `'service'` fails. It reads
