@@ -246,6 +246,11 @@ prompt with `storage_failed` unless a retry (`recover`) has stored what was lost
 file or conversation and never what it holds. It is not history and not model input. A UI shows it
 and does not treat the run as over: `done` still ends the run.
 
+One exception to the refusal: a failure to store a node's channel (or to close one when a
+conversation is reopened) is also announced as `storage_failed`, but the stream is still the
+record, so the conversation takes its next prompt and there is nothing to `recover`. That channel
+takes no more entries and reads as lost; the rest carry on.
+
 ## Harness notices
 
 `HarnessNotice` (`@sheavly/protocol/notice/notice.types`) is defined by `harnessNoticeSchema` in
