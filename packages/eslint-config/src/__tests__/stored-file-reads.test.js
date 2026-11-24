@@ -12,8 +12,12 @@ const INDEX_SCHEMA =
   "import { storedConversationSchema } from '@sheavly/protocol/store/store.validator';";
 const STREAM_SCHEMA =
   "import { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';";
+const CHANNEL_LOG_SCHEMA =
+  "import { channelLogSchema } from '@sheavly/protocol/channel/channel.validator';";
+const CHANNEL_BOUNDARY_SCHEMA =
+  "import { channelBoundarySchema } from '@sheavly/protocol/channel/channel.validator';";
 const OTHER_NAMES =
-  "import { profileIdSchema } from '@sheavly/protocol/profile/profile.validator'; import { storedConversationsResponseSchema } from '@sheavly/protocol/store/store.validator';";
+  "import { profileIdSchema } from '@sheavly/protocol/profile/profile.validator'; import { storedConversationsResponseSchema } from '@sheavly/protocol/store/store.validator'; import { channelNameSchema, cursorSchema } from '@sheavly/protocol/channel/channel.validator';";
 
 /** The ids of the rules `code` breaks, linted with the rules the storage package has for `file`. */
 async function broken(params) {
@@ -44,7 +48,11 @@ describe('reading a stored profile, conversation index or stream in the storage 
     expect(storedFileReads.rules['no-restricted-imports'][0]).toBe('error');
     expect(storedFileReads.files).toEqual(['src/**/*.ts']);
     expect(storedFileReads.ignores).toEqual(
-      expect.arrayContaining(['src/legacy-effort/**', 'src/**/__tests__/**']),
+      expect.arrayContaining([
+        'src/legacy-effort/**',
+        'src/conversation-store/channel-entry.validator.ts',
+        'src/**/__tests__/**',
+      ]),
     );
   });
 
@@ -54,6 +62,10 @@ describe('reading a stored profile, conversation index or stream in the storage 
     ['src/conversation-store/conversation-store.service.ts', INDEX_SCHEMA],
     ['src/conversation-store/history-file.service.ts', INDEX_SCHEMA],
     ['src/conversation-store/entry-file.service.ts', STREAM_SCHEMA],
+    ['src/conversation-store/channel-file.service.ts', CHANNEL_LOG_SCHEMA],
+    ['src/conversation-store/channel-file.service.ts', CHANNEL_BOUNDARY_SCHEMA],
+    ['src/conversation-store/conversation-store.service.ts', CHANNEL_LOG_SCHEMA],
+    ['src/output-store/output-store.service.ts', CHANNEL_LOG_SCHEMA],
   ])('refuses the plain schema in %s', async (file, code) => {
     expect(await broken({ code, file })).toEqual(['no-restricted-imports']);
   });
@@ -73,5 +85,20 @@ describe('reading a stored profile, conversation index or stream in the storage 
     expect(
       await broken({ code: `${PROFILE_SCHEMA} ${INDEX_SCHEMA} ${STREAM_SCHEMA}`, file }),
     ).toEqual([]);
+  });
+
+  it('leaves the module that derives the stored channel entry free to use the whole-log schema, and no other', async () => {
+    expect(
+      await broken({
+        code: `${CHANNEL_LOG_SCHEMA} ${CHANNEL_BOUNDARY_SCHEMA}`,
+        file: 'src/conversation-store/channel-entry.validator.ts',
+      }),
+    ).toEqual([]);
+    expect(
+      await broken({
+        code: CHANNEL_LOG_SCHEMA,
+        file: 'src/conversation-store/channel-entry-copy.validator.ts',
+      }),
+    ).toEqual(['no-restricted-imports']);
   });
 });

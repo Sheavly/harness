@@ -1,11 +1,14 @@
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { OutputStore } from '@sheavly/core/output/output.types';
 import type {
+  ChannelFrom,
+  ChannelLog,
   ConversationStore,
   DocumentStore,
   EntryStore,
   HistoryLog,
 } from '@sheavly/core/store/store.types';
+import { assertChannelName } from '@sheavly/core/store/store.utils';
 import type { LogSink } from '@sheavly/logger/logger/logger.types';
 import type { FileConversationStore } from '@sheavly/storage/conversation-store/conversation-store.service';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
@@ -73,6 +76,32 @@ export class PlacedConversationStore implements ConversationStore {
       append: async (entry) => (await this.#placed(id)).store.entries(id).append(entry),
       read: (from) => this.#readEntries({ id, from }),
     };
+  }
+
+  /** A channel's log, wherever its conversation is kept: written once it is placed, read when kept. */
+  channel(params: { id: ConversationId; channel: string }): ChannelLog {
+    const { id, channel } = params;
+
+    // At once, as every store does, and not on the first write: a read of a conversation nobody
+    // placed would otherwise never look at the name.
+    assertChannelName(channel);
+
+    return {
+      append: async (entry) =>
+        (await this.#placed(id)).store.channel({ id, channel }).append(entry),
+      read: (from) => this.#readChannel({ id, channel, from }),
+    };
+  }
+
+  async *#readChannel(params: {
+    id: ConversationId;
+    channel: string;
+    from: ChannelFrom | undefined;
+  }) {
+    const { id, channel, from } = params;
+    const home = await this.#homeOf(id);
+
+    if (home) yield* home.store.channel({ id, channel }).read(from);
   }
 
   /**

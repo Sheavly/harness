@@ -11,16 +11,16 @@ import { routedProvider, say } from '@sheavly/testing/provider/routed-provider.f
 const provider = routedProvider({ hi: [say('hello')] });
 ```
 
-| Module      | What it holds                                                                      |
-| ----------- | ---------------------------------------------------------------------------------- |
-| `provider/` | `scriptedProvider`, `callOnceProvider`, `routedProvider`, the `Script` type        |
-| `fetch/`    | `fakeFetch`, `fakeFetchSequence`, `collect`, `requestSentBy`                       |
-| `tool/`     | `toolRunner`, which runs tools the way the loop does                               |
-| `wait/`     | `until`, which polls a condition                                                   |
-| `files/`    | `filesHolding` (the files under a folder that hold some text), `useTempFolders`    |
-| `store/`    | `MemoryConversationStore`, a conversation store in memory that can be made to fail |
-| `clock/`    | `useFixedClock`, which freezes the time `now()` reads for each test                |
-| `notice/`   | `NOTICE_SAMPLES`: one valid notice of every kind, for suites that run all kinds    |
+| Module      | What it holds                                                                           |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `provider/` | `scriptedProvider`, `callOnceProvider`, `routedProvider`, the `Script` type             |
+| `fetch/`    | `fakeFetch`, `fakeFetchSequence`, `collect`, `requestSentBy`                            |
+| `tool/`     | `toolRunner`, which runs tools the way the loop does                                    |
+| `wait/`     | `until`, which polls a condition                                                        |
+| `files/`    | `filesHolding` (the files under a folder that hold some text), `useTempFolders`         |
+| `store/`    | `MemoryConversationStore` (in memory, can be made to fail) and the store contract tests |
+| `clock/`    | `useFixedClock`, which freezes the time `now()` reads for each test                     |
+| `notice/`   | `NOTICE_SAMPLES`: one valid notice of every kind, for suites that run all kinds         |
 
 It depends on `@sheavly/core` and `@sheavly/protocol`, so core's own tests can't use it; a
 package's own fakes stay in its `src/testing/`.

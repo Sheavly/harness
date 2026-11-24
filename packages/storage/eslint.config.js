@@ -16,13 +16,15 @@ export default defineConfig([
     files: ['src/server-runtime/**', 'src/discovery-file/**', 'src/server-finder/testing/**'],
     rules: { 'harness/no-discovery-path': 'off' },
   },
-  // A bare `SerialQueue` orders one process only. These three own a queue on purpose: the
-  // primitive itself, the append-only logs (one writer per conversation, so no lock), and the
-  // profile queue that orders a check with a delete, whose config writes lock through the store.
+  // A bare `SerialQueue` orders one process only. These own a queue on purpose: the primitive
+  // itself, the append-only logs (one writer per conversation, so no lock; a channel's log is one,
+  // and reads nothing back to write) and the profile queue that orders a check with a delete, whose
+  // config writes lock through the store.
   {
     files: [
       'src/serial-queue/locked-change.service.ts',
       'src/conversation-store/append-log.service.ts',
+      'src/conversation-store/channel-file.service.ts',
       'src/profile-registry/profile-registry.service.ts',
     ],
     rules: { 'harness/no-raw-serial-queue': 'off' },

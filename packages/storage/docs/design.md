@@ -56,6 +56,83 @@ append-only file is an `AppendLog` with its schema, not a copy of this logic.
 A whole-file `history.json` or `agents/<session-id>.history.json` beside the logs is not read,
 written or removed.
 
+## Channel logs
+
+`FileConversationStore.channel({ id, channel })` is the durable log of one channel of a
+conversation (the wire model's channels, #438): the entries of a node, or of the conversation's
+`tree`. It is `channels/<channel>.jsonl`, an entry a line, in the order they were written, each with
+the channel's own cursor: the entry's number in a channel that numbers its entries (`s0`, `s1`, …),
+or an offset in bytes in a command's or a service's (`b0`, `b40`). A channel is named for a node id
+(lowercase, so two names cannot differ by case on a disk that ignores it) or is `tree`, and no
+other name becomes a file (`namedPath` with the channel name schema).
+
+What may be appended, and what is kept, is one function, `channelAppendEntry` (`@sheavly/core`),
+which the memory store applies too, so the two cannot disagree. An entry has to be one the store
+can read back (`storedChannelEntry`: JSON, at most `MAX_CHANNEL_ENTRY_CHARS` of it, 64 KiB, far
+under the longest line a file is read back with, and the shape a stored line is read as), or it is
+`invalid` and not written. What is kept is that JSON parsed again, a plain copy, and everything
+after is done to that copy: its order below is checked on it and it is what is written, so a
+`toJSON` or a getter on the caller's object cannot pass at one cursor and be stored at another, and
+a line holds its keys in the schema's order, not the caller's. Then it has to be the next one
+(`channelAppendProblem`): the first entry is `opened` at
+cursor 0; a sequence goes on by one and a byte offset never goes back, in one kind of cursor;
+nothing opens twice, nothing follows `closed`, and an entry of another channel is not this one's;
+or it is `out_of_order` and not written. Which kind of cursor a node's channel uses is the
+writer's: the store keeps one kind, it does not look at the node. The last entry is read from the
+file once (after a line cut off by a crash is trimmed), then kept, and appends go one at a time
+through a queue; a channel's file is not locked, since a conversation belongs to the one process
+serving it, as the stream does. That read holds every line to the same rule, so a file edited by
+hand into a log with a gap, a repeat or another channel's line is refused when it is next appended
+to, naming the file, as the stream's and the histories' gaps are. Entries are never rewritten or
+removed, and go with the conversation. A write that arrives after `delete` recreates the folder,
+as the other files' do (#241). A write that failed may have reached the file: the channel reads it
+again before the next, so a sequence cursor is refused a second time, and a byte cursor, which may
+repeat, can be stored twice if the writer sends it again.
+
+A read starts at `start`, at the last `n` entries (`{ tail }`) or after a cursor the reader kept
+(`{ after }`). A cursor the channel does not hold or that is not a cursor, or a tail that is not a
+whole number from 0 to `MAX_TAIL` (1,000), is `cursor_out_of_range`. `start` and `after` stream
+the file and never hold it whole, an `after` that the channel does not hold reads it all before it
+says so, and a tail keeps about twice its `n` as it goes. Several entries of a byte channel can
+share an offset, and an `after` that offset starts after the first of them. A byte channel's bytes
+are not here: the output store serves them, by offset, and its log holds only the entries it was
+given (the `opened` and `closed` around them).
+A line that is not an entry of a channel, or is damaged, fails the read naming the file and the
+line, never showing what was on it. The stored line is the protocol's own entry, derived once as
+`storedChannelEntrySchema` (`channel-entry.validator.ts`); the storage package's lint
+(`storedFileReads`, from `@sheavly/eslint-config`, with its tests) refuses source that imports the
+protocol's whole-log schemas (`channelLogSchema`, `channelBoundarySchema`) anywhere else, so a log is
+read a line at a time through one definition and never as the array those schemas check. Reading
+what an entry's type holds is for the code that knows the type, after the store has handed it over.
+
+**Limits.** A channel keeps at most 128 MiB, a conversation's channels at most 1 GiB together, and
+a conversation at most 5,000 channels (`DEFAULT_CHANNEL_LIMITS`; an app may pass others to the
+store). An entry counts as its line, its JSON and the line break. They are counted from the files
+once, so a conversation that is reopened carries on from what it holds, and kept by every append; an
+entry is held for before it is written, with nothing awaited between the check and the hold, so
+channels written at once cannot together pass a limit that each passes alone. An entry past a limit
+is `quota` and is not written, after the files are counted again, since a write that failed in
+another channel may still be held. That count is of what is on disk, so for that moment a line that
+another channel has reserved and not yet written is not counted, and the limit can be passed by
+the lines still being written, at most one per channel; it is only at a refusal that is about to
+last. A channel that already holds entries then refuses every later
+one, for good: it leaves a marker beside its log, `<channel>.full`, which a later process reads, so
+a writer cannot leave a log that is missing an entry and go on (a byte channel's offset may jump,
+so nothing else would stop it). The marker is read first when a channel is loaded. Until the marker
+is written, every append tries again and fails if it cannot, so nothing is stored while the
+process lives; if the disk never lets it be written and the process ends, the next finds no
+marker, and the writer has been told `failed`. A channel with no entries has none missing: it
+refuses that entry and leaves no marker, so refused names cannot pile up files. A reader is not
+told that a channel is full: it reads what the channel holds. To take a channel up again, raise
+its limits, delete its `<channel>.full` and restart: a running process keeps its refusal. A failed
+write may have reached the file, so the channel reads it again, and the quota is set to what the
+file really has, so a disk that keeps failing does not fill a channel's room with entries that were
+never written. Only regular files are counted: a link is not a log the store made.
+
+`FileConversationStore` and the in-memory fake in `@sheavly/testing` run one shared contract test
+(`describeChannelLog`, `describeChannelLimits`), so a store that follows it follows the contract
+another engine (a SQLite database, #246) is held to.
+
 ## Concurrency and crashes
 
 - **One change at a time, in and across processes.** Every read-modify-write of a file (config,
@@ -129,6 +206,7 @@ replaced is decided once.
         shell.json                            # working root shared by the agents
         queue.json                            # lines queued behind a running prompt
         outputs/                              # complete command output logs
+        channels/<channel>.jsonl              # one channel's log: a node's, or the tree's
         agents/<session-id>.history.jsonl     # a sub-agent's history log
 ```
 

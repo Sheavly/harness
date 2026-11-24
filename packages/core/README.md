@@ -28,7 +28,7 @@ import type { Provider } from '@sheavly/core/provider/provider.types';
 | `instruction-context/` | `createInstructionHook`, `registerInstructionHooks`: the one factory for instruction sources; `appendInstructionContext` dedups from history |
 | `adapter/`             | `Adapter` types and `defineAdapter`, for model backends                                                                                      |
 | `output/`              | `OutputStore` (`OutputReader` + `OutputCapture`): a conversation's complete command output, and the lines that tell the model where it is    |
-| `store/`               | `ConversationStore` and `EntryStore` (where past conversations are kept), `toStoreError`                                                     |
+| `store/`               | `ConversationStore`, `EntryStore` and `ChannelLog` (where past conversations are kept), `channelAppendEntry`, `toStoreError`                 |
 | `clock/`               | `now()`: the one place a package reads the time, as epoch milliseconds                                                                       |
 | `message/`             | `StreamEvent` and what a provider streams                                                                                                    |
 | `environment/`         | `Environment`: settings an app passes in, since packages never read env                                                                      |

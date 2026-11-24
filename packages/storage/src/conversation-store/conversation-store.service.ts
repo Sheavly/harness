@@ -1,6 +1,8 @@
 import path from 'node:path';
 import type { OutputStore } from '@sheavly/core/output/output.types';
 import type {
+  ChannelLimits,
+  ChannelLog,
   ConversationStore,
   DocumentStore,
   EntryStore,
@@ -22,6 +24,7 @@ import { assertSafeRoot, removeFolder } from '../safe-path/safe-path.helper.js';
 import { FileOutputStore } from '../output-store/output-store.service.js';
 import {
   CONVERSATIONS_FOLDER,
+  DEFAULT_CHANNEL_LIMITS,
   INDEX_FILE,
   LOG_FILE,
   OUTPUTS_FOLDER,
@@ -29,13 +32,15 @@ import {
   SHELL_FILE,
 } from './conversation-store.constants.js';
 import { asStoreError, conversationFolder, historyLogFile } from './conversation-store.utils.js';
+import { ConversationChannels } from './conversation-channels.service.js';
 import { documentStoreOf } from './document-store.helper.js';
 import { EntryFile } from './entry-file.service.js';
 import { HistoryFile } from './history-file.service.js';
 
 /**
  * A workspace's conversations on disk: `<workspace folder>/conversations/<conversation-id>/`, one
- * folder each, holding `index.json`, `stream.jsonl`, `history.jsonl` and `agents/<session-id>.history.jsonl`.
+ * folder each, holding `index.json`, `stream.jsonl`, `history.jsonl`, `agents/<session-id>.history.jsonl`
+ * and `channels/<channel>.jsonl`.
  * Everything is named by an id, so no title or path from a person reaches a file name, and
  * deleting a conversation deletes its folder and nothing else.
  *
@@ -56,15 +61,24 @@ export class FileConversationStore implements ConversationStore {
   readonly #deleted = new Set<ConversationId>();
   /** Each session's history log, by `<conversation>/<session>`, so one queue orders its appends. */
   readonly #logs = new Map<string, HistoryFile>();
+  /** Each conversation's channel logs, held to one set of limits. */
+  readonly #channels = new Map<ConversationId, ConversationChannels>();
+  readonly #channelLimits: ChannelLimits;
 
   /**
    * `folder` is the workspace's folder (`<profile folder>/workspaces/<workspace-key>`), which an
    * app passes in. `onProblem` is told about each conversation `list` could not use, since the
    * list itself has no place for it: a typo in one index must not hide the others, nor vanish.
+   * `limits` is what a conversation's channels may hold; what is not given is `DEFAULT_CHANNEL_LIMITS`.
    */
-  constructor(params: { folder: string; onProblem: (problem: FileProblem) => void }) {
+  constructor(params: {
+    folder: string;
+    onProblem: (problem: FileProblem) => void;
+    limits?: Partial<ChannelLimits>;
+  }) {
     this.#folder = path.join(assertSafeRoot(params.folder), CONVERSATIONS_FOLDER);
     this.#onProblem = params.onProblem;
+    this.#channelLimits = { ...DEFAULT_CHANNEL_LIMITS, ...params.limits };
   }
 
   entries(id: ConversationId): EntryStore {
@@ -93,6 +107,18 @@ export class FileConversationStore implements ConversationStore {
     this.#logs.set(key, log);
 
     return log;
+  }
+
+  channel(params: { id: ConversationId; channel: string }): ChannelLog {
+    const { id, channel } = params;
+    const known = this.#channels.get(id);
+    const channels =
+      known ??
+      new ConversationChannels({ folder: this.#folderOf(id), limits: this.#channelLimits });
+
+    this.#channels.set(id, channels);
+
+    return channels.logOf(channel);
   }
 
   /**
@@ -199,9 +225,11 @@ export class FileConversationStore implements ConversationStore {
       // First: a command still printing must not recreate the folder that is about to go.
       await outputs.retire();
       await this.#streams.get(id)?.forget();
+      await this.#channels.get(id)?.forget();
       await removeFolder({ root: this.#folder, folder });
       await this.#forgetLogs(id);
       this.#streams.delete(id);
+      this.#channels.delete(id);
       this.#shells.delete(id);
       this.#queues.delete(id);
       // The retired store stays: a new `outputs(id)` must not hand out a store that could make

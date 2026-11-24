@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import { MemoryConversationStore } from '../memory-store.fake.js';
+import { describeChannelLimits, describeChannelLog } from '../channel-contract.fake.js';
 import {
   CONVERSATION as id,
   READER as session,
@@ -14,7 +15,30 @@ describeConversationStore({
   make: () => new MemoryConversationStore(),
 });
 
+describeChannelLog({ name: 'MemoryConversationStore', make: () => new MemoryConversationStore() });
+describeChannelLimits({
+  name: 'MemoryConversationStore',
+  make: (limits) => new MemoryConversationStore({ limits }),
+});
+
 describe('MemoryConversationStore', () => {
+  it('hands out copies of a channel’s entries, and fails its writes while told to', async () => {
+    const store = new MemoryConversationStore();
+    const log = store.channel({ id, channel: 'main' });
+    const opened = { channel: 'main', cursor: 's0', type: 'opened', at: 0, node: { id: 'main' } };
+
+    await log.append(opened);
+
+    for await (const each of log.read()) each.node = 'changed';
+
+    for await (const each of log.read()) expect(each).toEqual(opened);
+
+    store.failWith(new Error('ENOSPC'));
+    await expect(log.append({ ...opened, type: 'updated', cursor: 's1' })).rejects.toMatchObject({
+      reason: 'failed',
+    });
+  });
+
   it('hands out copies of its entries, so a reader cannot change what is stored', async () => {
     const store = new MemoryConversationStore();
 

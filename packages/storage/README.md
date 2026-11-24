@@ -19,7 +19,7 @@ const config = await readJsonFile({ file: path.join(root, 'config.json'), schema
 | `credential-store/`   | `CredentialStore`: a profile's keys in one private file; never in an error, never read if open to others                    |
 | `config-store/`       | `ConfigStore`: profile bindings and global terminal preferences; `workspaceKey` hashes a real path                          |
 | `permission-store/`   | `PermissionStore`: what `run_command` may do in each workspace, a file each under `permissions/`                            |
-| `conversation-store/` | `FileConversationStore`: a workspace's conversations, a folder each with its stream, history and index                      |
+| `conversation-store/` | `FileConversationStore`: a workspace's conversations, a folder each with its stream, history, index and channel logs        |
 | `output-store/`       | `FileOutputStore`: a conversation's complete command output, one private log file per command                               |
 | `server-log/`         | `serverLogSink`: where failures with no conversation go, `<home>/logs/backend.jsonl`                                        |
 | `document-file/`      | `DocumentFile`: one JSON document in one file for an owner with its own schema; changes go one at a time                    |
