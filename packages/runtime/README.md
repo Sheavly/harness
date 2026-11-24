@@ -125,9 +125,11 @@ carries it; `TaskRegistry.report(id)` reads it, and `formatTask` shows it in pla
 command and the error are lines written by whoever started the task (an
 extension names its own work), so each prints as one escaped line (`escapedLine`, as a notice does):
 no tag that closes an envelope and no line break that starts a header of its own. That makes a
-multi-line command print on one line, joined by spaces. The output and the report are bodies and
-print as data, like any tool result: they are not escaped here, and the notices fence them. A list
-(`outputChars: 0`) prints headers only.
+multi-line command print on one line, joined by spaces. The output and the report are bodies whose
+line breaks are content, so they keep their lines and have their tags swapped (`escapeTags`), as
+`read_output` and the notices do: what a command printed or a sub-agent wrote cannot close an
+envelope. The notices also fence them; a tool result needs no fence, since it is already data. A
+list (`outputChars: 0`) prints headers only.
 
 The loop releases finished tasks itself: before each model call (so once per model step, not once
 per prompt), after the notices are in history, it calls `releaseFinished(sessionId)`, so a long-lived conversation's `TaskRegistry` does not grow.

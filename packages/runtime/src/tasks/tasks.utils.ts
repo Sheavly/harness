@@ -1,6 +1,6 @@
 import { DEFAULT_TASK_OUTPUT_CHARS, WORK_IS_SUB_AGENT } from './tasks.constants.js';
 import { outputReferenceLines } from '@sheavly/core/output/output.utils';
-import { escapedLine } from '@sheavly/core/text/text.utils';
+import { escapedLine, escapeTags } from '@sheavly/core/text/text.utils';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunningTask } from '@sheavly/protocol/notice/notice.types';
@@ -123,7 +123,10 @@ export function formatTask(params: {
   parts.push(`${elapsed.toFixed(1)}s`);
 
   const preview = previewOf({ output: task.output, chars: outputChars });
-  const output = report ?? preview;
+  // The output and the report are bodies whose line breaks are content, so only their tags are
+  // swapped: what a command printed or a sub-agent wrote cannot close the envelope the same text
+  // is fenced in when a notice carries it.
+  const output = escapeTags(report ?? preview);
   // A task's own preview is cut to `outputChars`, so the reference is compared with what is shown.
   // A list asks for none (`outputChars` 0) and gets headers only, so it carries no reference.
   const reference =
