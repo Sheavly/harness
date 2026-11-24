@@ -97,4 +97,9 @@ core package", then "updating ESLint rules". It's the sub-agent saying what it d
 harness watching its tool calls.
 
 Each report updates the session in the registry, which tells its listeners
-(`sessions.subscribe`) and adds a `[status] …` line to the task's output for the parent.
+(`sessions.subscribe`) and adds a `[status] …` line to the task's output for the parent, which reads
+it through `task_status` and a finished sub-agent's notice. A status is written by a model or by an
+extension, so the line is one escaped line (`escapedLine`): no tag, no line break, no control
+character. A steering message sent to the sub-agent is copied the same way as a `[message] …` line
+with its tags escaped and its line breaks kept. `message_agent` prints the target's title as one
+escaped line as well.

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { now } from '@sheavly/core/clock/clock.helper';
+import { escapedLine, escapeTags } from '@sheavly/core/text/text.utils';
 import type { Tool } from '@sheavly/core/tool/tool.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { messageIdSchema } from '@sheavly/protocol/message/message.validator';
@@ -31,9 +32,16 @@ export async function runSubAgent(params: {
   const stopListening = children.onUpdate((update) => {
     if (update.session.id !== child.id) return;
 
-    if (update.type === 'session_status') onOutput(`[status] ${update.session.status ?? ''}\n`);
+    // These lines reach the parent as the task's output, and what a sub-agent reports about itself
+    // or is sent is written by a model or an extension: a status is one line, a message keeps its
+    // line breaks, and neither may carry a tag that closes the parent's envelope.
+    if (update.type === 'session_status') {
+      onOutput(`[status] ${escapedLine(update.session.status ?? '')}\n`);
+    }
 
-    if (update.type === 'session_message') onOutput(`[message] ${update.message.content}\n`);
+    if (update.type === 'session_message') {
+      onOutput(`[message] ${escapeTags(update.message.content)}\n`);
+    }
   });
 
   // An id marks the one message the sub-agent's own work is asked for: the agent that started
