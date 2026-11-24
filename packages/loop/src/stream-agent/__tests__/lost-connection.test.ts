@@ -69,6 +69,12 @@ async function run(model: Provider) {
   return { events, failure, history: end?.type === 'done' ? end.messages : [] };
 }
 
+/** The run ended with `run_failed`, and the error it failed with is the lost connection. */
+function expectFailedWithLostConnection(outcome: { events: AgentEvent[]; failure: unknown }) {
+  expect(outcome.failure).toBeInstanceOf(ConnectionLostError);
+  expect(outcome.events.map((event) => event.type)).toContain('run_failed');
+}
+
 describe('a reply cut by a lost connection', () => {
   it('keeps the text that arrived and asks the model to go on, without failing the run', async () => {
     const { model, requests } = provider([
@@ -121,10 +127,9 @@ describe('a reply cut by a lost connection', () => {
     const { model, requests } = provider(
       Array.from({ length: 10 }, () => ({ events: [], drops: true })),
     );
-    const { events, failure } = await run(model);
+    const outcome = await run(model);
 
-    expect(failure).toBeInstanceOf(ConnectionLostError);
-    expect(events.map((event) => event.type)).toContain('run_failed');
+    expectFailedWithLostConnection(outcome);
     // Three in a row that kept nothing end it, the bound the output limit has too.
     expect(requests).toHaveLength(3);
   });
@@ -147,10 +152,8 @@ describe('a reply cut by a lost connection', () => {
 
   it('fails the run with the error at the sixth in a row, however much each one kept', async () => {
     const { model, requests } = provider([...losing(8), { events: [done] }]);
-    const { events, failure } = await run(model);
 
-    expect(failure).toBeInstanceOf(ConnectionLostError);
-    expect(events.map((event) => event.type)).toContain('run_failed');
+    expectFailedWithLostConnection(await run(model));
     expect(requests).toHaveLength(6);
   });
 

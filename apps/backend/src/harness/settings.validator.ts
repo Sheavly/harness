@@ -67,7 +67,10 @@ const requestEnvSchema = z.object({
     message:
       'Give each MODEL_PROBE_URLS entry as an http or https address, such as https://1.1.1.1',
     valid: isProbeUrl,
-  }),
+  }).pipe(
+    // The provider's `requestPolicySchema` holds the same limit: every failed call asks them all.
+    z.array(z.string()).max(5, 'Give at most 5 addresses in MODEL_PROBE_URLS'),
+  ),
 });
 
 /** The request policy from `env`. */

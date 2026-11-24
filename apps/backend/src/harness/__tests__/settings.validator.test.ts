@@ -260,6 +260,16 @@ describe('parseRequestEnv', () => {
     ).toThrow('http or https');
   });
 
+  it('takes at most five probe addresses, since every failed call asks them all', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => `https://probe${String(index)}.example`).join(
+        ',',
+      );
+
+    expect(parseRequestEnv({ MODEL_PROBE_URLS: many(5) }).probeUrls).toHaveLength(5);
+    expect(() => parseRequestEnv({ MODEL_PROBE_URLS: many(6) })).toThrow('at most 5');
+  });
+
   it('hands out the default probe addresses as a copy, so changing it changes no later call', () => {
     const first = parseRequestEnv({});
 
