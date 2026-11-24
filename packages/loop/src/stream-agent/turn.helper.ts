@@ -106,16 +106,7 @@ async function settleModelCall(params: {
   const { options, turn, messages, signal, events } = context;
 
   // A reply cut by a lost connection is kept as it arrived, and the turn goes on from it.
-  const recovered =
-    failure !== undefined &&
-    (await recoverFromLostConnection({
-      context,
-      error: failure.error,
-      progressed: message.content !== '' || running.length > 0,
-    }));
-
-  // Tools a lost connection spared run on only when the turn goes on.
-  if (failure && !recovered) failure.stopTools();
+  const recovered = await recoverOrStopTools({ context, sampled });
 
   // A failed model call that started no tools fails the turn as it is, with nothing to record.
   if (failure && !recovered && running.length === 0) throw failure.error;
@@ -247,6 +238,42 @@ async function retryAfterOverflow(params: {
   }
 
   return false;
+}
+
+/**
+ * Whether the turn goes on from a model call that failed with a lost connection. A call that
+ * completed starts the count of lost connections again. The tools a lost connection spared are
+ * left running only when the turn goes on: otherwise (or if a contribution throws) they are
+ * stopped here, as any other failure stops them.
+ */
+async function recoverOrStopTools(params: {
+  context: TurnContext;
+  sampled: Sampled;
+}): Promise<boolean> {
+  const { context, sampled } = params;
+  const { message, running, failure } = sampled;
+
+  if (!failure) {
+    context.connectionLosses.inARow = 0;
+
+    return false;
+  }
+
+  try {
+    const recovered = await recoverFromLostConnection({
+      context,
+      error: failure.error,
+      progressed: message.content !== '' || running.length > 0,
+    });
+
+    if (!recovered) failure.stopTools();
+
+    return recovered;
+  } catch (caughtError) {
+    failure.stopTools();
+
+    throw caughtError;
+  }
 }
 
 /**

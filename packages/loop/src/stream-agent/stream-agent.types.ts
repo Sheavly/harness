@@ -114,6 +114,8 @@ export type TurnContext = RunContext & {
     fruitless: number;
     pending: Extract<HarnessNotice, { kind: 'output-continuation' }> | undefined;
   };
+  /** Model calls in a row a lost connection cut, whatever each kept (`MAX_LOST_CONNECTIONS_IN_A_ROW`). */
+  connectionLosses: { inARow: number };
   /** The run's stored history; the turn appends to it, and a summary appends a checkpoint. */
   messages: HistoryMessage[];
   /**

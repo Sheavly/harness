@@ -129,21 +129,48 @@ describe('a reply cut by a lost connection', () => {
     expect(requests).toHaveLength(3);
   });
 
-  it('keeps going while each lost reply kept something', async () => {
-    const piece = (text: string): StreamEvent => ({ type: 'text_delta', text });
-    const steps: Step[] = [
-      ...Array.from({ length: 6 }, (_, index): Step => ({
-        events: [piece(`${index}`)],
-        drops: true,
-      })),
-      { events: [piece('end'), done] },
-    ];
-    const { model, requests } = provider(steps);
+  const piece = (text: string): StreamEvent => ({ type: 'text_delta', text });
+  const losing = (count: number): Step[] =>
+    Array.from({ length: count }, (_, index): Step => ({
+      events: [piece(`${index}`)],
+      drops: true,
+    }));
+
+  it('keeps going while each lost reply kept something, up to five calls in a row', async () => {
+    const { model, requests } = provider([...losing(5), { events: [piece('end'), done] }]);
     const { failure, history } = await run(model);
 
     expect(failure).toBeUndefined();
-    expect(requests).toHaveLength(7);
-    expect(history.filter((message) => message.role === 'assistant')).toHaveLength(7);
+    expect(requests).toHaveLength(6);
+    expect(history.filter((message) => message.role === 'assistant')).toHaveLength(6);
+  });
+
+  it('fails the run with the error at the sixth in a row, however much each one kept', async () => {
+    const { model, requests } = provider([...losing(8), { events: [done] }]);
+    const { events, failure } = await run(model);
+
+    expect(failure).toBeInstanceOf(ConnectionLostError);
+    expect(events.map((event) => event.type)).toContain('run_failed');
+    expect(requests).toHaveLength(6);
+  });
+
+  it('starts the count again after a call that completed', async () => {
+    const turn: Step = {
+      events: [
+        { type: 'tool_call', call },
+        { type: 'done', stopReason: 'tool_use' },
+      ],
+    };
+    const { model, requests } = provider([
+      ...losing(4),
+      turn,
+      ...losing(4),
+      { events: [piece('end'), done] },
+    ]);
+    const { failure } = await run(model);
+
+    expect(failure).toBeUndefined();
+    expect(requests).toHaveLength(10);
   });
 
   it('is not recovered when it is any other failure of the provider', async () => {

@@ -170,8 +170,9 @@ optional explicit maximum. Each UI chooses its own presentation; the terminal sh
 Exhausting an explicit allowance ends with `max_tokens`, not `completed`.
 A reply cut by a lost connection (a provider's `ConnectionLostError`: the body broke, or sent
 nothing for minutes, after the reply started) is recovered the same way, by the `dropped`
-contribution `continue-after-lost-connection`, with the same bounds: the text and whole tool
-calls that arrived are kept, the tools the model already called are left to finish (not stopped as
+contribution `continue-after-lost-connection`, with the same bounds and one of its own (at most
+`MAX_LOST_CONNECTIONS_IN_A_ROW` calls in a row, however much each kept; a call that completes
+starts the count again): the text and whole tool calls that arrived are kept, the tools the model already called are left to finish (not stopped as
 a failed call's are), and the next request carries the same notice. A drop before anything arrived
 leaves no empty reply behind and the call is made again. A turn that was cut does not run
 `afterTurn` or the limits, and a later call that waits for the network says so with
