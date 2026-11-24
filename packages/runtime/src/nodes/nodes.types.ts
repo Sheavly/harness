@@ -1,3 +1,5 @@
+import type { StoreError } from '@sheavly/core/errors/store.errors';
+import type { ChannelLog } from '@sheavly/core/store/store.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
@@ -68,6 +70,33 @@ export type NodeEntry = {
   type: 'opened' | 'updated' | 'closed';
   node: NodeRecord;
 };
+
+/**
+ * Where a conversation's node channels are kept, when they are: the log of a channel by name (a
+ * node's id), and who to tell, once, when a write fails. A failed write leaves that channel as it
+ * was (it takes no more entries, so a log never reads as whole with an entry missing) and the run
+ * goes on: reopening the conversation closes the channel as `lost`.
+ */
+export type NodeChannelStorage = {
+  log: (channel: string) => ChannelLog;
+  onFailure?: ((failure: StoreError) => void) | undefined;
+};
+
+/** What `closeLostChannels` did: the channels it closed, and the ones it could not. */
+export type LostChannels = {
+  /** Channels that had no `closed` entry and now end as `lost`. */
+  closed: string[];
+  /** Channels with no `closed` entry that the store refused one for, being at a limit. */
+  full: string[];
+  /**
+   * Channels the store could not read or close (a damaged or unreadable file, a disk that failed),
+   * each with why. They were left as they were, and the others were repaired.
+   */
+  failed: { channel: string; failure: StoreError }[];
+};
+
+/** Where a stored channel stood: the channel and the cursor of its newest entry. */
+export type ChannelPosition = { channel: string; cursor: string };
 
 /** Where to start reading a channel: its first entry, only what comes, or a position. */
 export type ChannelStart = 'start' | 'now' | number;
