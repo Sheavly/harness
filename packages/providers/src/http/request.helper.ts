@@ -10,18 +10,8 @@ import {
   isWorthWaiting,
   retryAfterMs,
 } from './retry-policy.helper.js';
+import { networkMessage } from './network-message.utils.js';
 import { wait } from './wait.helper.js';
-
-/** What the failed request's error says, with Node's real reason (on `cause`) named. */
-function networkMessage(caughtError: unknown): string {
-  const cause = caughtError instanceof Error ? caughtError.cause : undefined;
-  const code = (cause as { code?: unknown } | undefined)?.code;
-  const detail = cause instanceof Error ? cause.message : undefined;
-  const reason = [typeof code === 'string' ? code : undefined, detail].filter(Boolean).join(': ');
-  const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-
-  return providerErrorText(reason ? `${message} (${reason})` : message);
-}
 
 /** One attempt's outcome: the response, or a failure and whether another attempt may help. */
 type Attempt =

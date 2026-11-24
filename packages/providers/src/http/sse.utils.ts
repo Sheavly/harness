@@ -8,7 +8,7 @@ import { LINE_BREAK } from './http.constants.js';
  * body ends without a blank line after is still yielded, so a final event isn't lost.
  * Payloads are returned as `unknown`; callers validate them with zod.
  */
-export async function* readServerSentEvents(body: ReadableStream<Uint8Array>): AsyncGenerator {
+export async function* readServerSentEvents(body: AsyncIterable<Uint8Array>): AsyncGenerator {
   let data: string[] = [];
 
   for await (const line of readLines(body)) {
@@ -50,7 +50,7 @@ function* parseData(params: { data: string[]; atEnd?: boolean }): Generator {
   yield parsed;
 }
 
-async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+async function* readLines(body: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
   const reader = createLineReader();
 
   for await (const bytes of body) yield* reader.read(bytes);

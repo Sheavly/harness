@@ -266,8 +266,14 @@ and types without including text, arguments or signatures.
   `retries` more times, waiting `retryDelayMs`, doubled each time and cut by jitter to between
   half and all of it (or the server's `retry-after`, in seconds or as an HTTP date, if longer).
   The policy is `http/retry-policy.helper.ts`. It retries a request that never reached the server, one that timed out, HTTP 429
-  and 5xx; any other HTTP error fails at once. Once an event has streamed it never retries, since
-  the turn may have started tools: a stream cut off mid-reply fails the run.
+  and 5xx; any other HTTP error fails at once. Once an event has streamed the provider never
+  retries, since the turn may have started tools. What it does throw is `ConnectionLostError`
+  (`@sheavly/core/errors/connection.errors`) when the body of a started reply breaks (a reset, a
+  timeout) or sends nothing for `STREAM_IDLE_MS` (five minutes, `http/stream-chunks.helper.ts`: a
+  connection that died without saying so, as one does across a sleep), carrying what had been
+  streamed: the loop recovers from it by keeping that partial reply and asking the model to go on.
+  A reply that is wrong (an error event, a payload that is not JSON) or ends without its end
+  marker (`cut_off`) is a `ModelApiError` and fails the run.
 - An interrupt (the run's `signal`) stops the wait and every attempt, and is never retried.
 - `offlineTimeoutMs` and `probeUrls`: a call that gets no HTTP answer at all (a network error or a
   timeout) is either this machine having lost its connection or the provider being down, and

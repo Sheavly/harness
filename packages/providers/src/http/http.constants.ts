@@ -26,6 +26,13 @@ export const OFFLINE_MAX_DELAY_MS = 30_000;
 /** Doublings of the retry delay while offline stop here, so `2 ** round` never grows without bound. */
 export const OFFLINE_MAX_BACKOFF_ROUNDS = 8;
 
+/**
+ * How long a started reply may send nothing before its connection is taken for lost. Long, because
+ * a model may think a while without streaming a byte, and only a connection that died without
+ * saying so (a sleep, a dead route) is stopped by it.
+ */
+export const STREAM_IDLE_MS = 300_000;
+
 /** A wait while offline is cut into slices this long, so a machine that slept is noticed at its first. */
 export const WAKE_CHECK_MS = 1000;
 
