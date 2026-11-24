@@ -55,6 +55,13 @@ export class MemoryChannels {
     };
   }
 
+  /** The channels conversation `id` has stored: each exists from its first stored entry. */
+  namesOf(id: ConversationId): string[] {
+    return [...this.#logs.keys()]
+      .filter((key) => key.startsWith(`${id}/`))
+      .map((key) => key.slice(id.length + 1));
+  }
+
   /** Forgets every channel of conversation `id`. */
   delete(id: ConversationId): void {
     for (const key of [...this.#logs.keys()]) {

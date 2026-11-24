@@ -50,6 +50,10 @@ export class MemoryConversationStore implements ConversationStore {
     return this.#channels.logOf(params);
   }
 
+  async channels(id: ConversationId): Promise<string[]> {
+    return this.#channels.namesOf(id);
+  }
+
   entries(id: ConversationId): EntryStore {
     return {
       append: async (entry) => this.#append({ id, entry }),
