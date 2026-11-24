@@ -16,6 +16,20 @@ const optionalSetting = z
   .optional()
   .transform((value) => (value === '' ? undefined : value));
 
+/**
+ * A comma-separated setting as a list: blanks around an entry and empty entries are dropped, and
+ * every entry must satisfy `valid`, or the setting is refused with `message`. Unset is empty.
+ */
+const list = (params: { message: string; valid: (entry: string) => boolean }) =>
+  optionalSetting
+    .transform((value) =>
+      (value ?? '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== ''),
+    )
+    .pipe(z.array(z.string().refine(params.valid, { error: params.message })));
+
 /** A whole number of milliseconds or retries from env, or the default when it is unset. */
 const count = (fallback: number) =>
   z
@@ -24,9 +38,15 @@ const count = (fallback: number) =>
     .transform((value) => (value === undefined || value === '' ? fallback : Number(value)))
     .pipe(z.number().int().min(0));
 
+/** Whether `entry` is an http or https address a probe can ask. */
+const isProbeUrl = (entry: string): boolean =>
+  URL.canParse(entry) && ['http:', 'https:'].includes(new URL(entry).protocol);
+
 /**
- * How the backend sends a model call: `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES` and
- * `MODEL_RETRY_DELAY_MS`, each defaulting to `REQUEST`.
+ * How the backend sends a model call: `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES`,
+ * `MODEL_RETRY_DELAY_MS` and `MODEL_OFFLINE_TIMEOUT_MS` (how long to wait for a lost connection,
+ * 0 for never), each defaulting to `REQUEST`, and `MODEL_PROBE_URLS` (comma-separated addresses
+ * that tell a lost connection from a provider that is down), defaulting to `REQUEST.probeUrls`.
  */
 const requestEnvSchema = z.object({
   MODEL_RESPONSE_TIMEOUT_MS: count(REQUEST.responseTimeoutMs).pipe(z.number().positive()),
@@ -34,6 +54,12 @@ const requestEnvSchema = z.object({
     z.number().max(MAX_RETRIES, `Set MODEL_RETRIES to at most ${String(MAX_RETRIES)}`),
   ),
   MODEL_RETRY_DELAY_MS: count(REQUEST.retryDelayMs),
+  MODEL_OFFLINE_TIMEOUT_MS: count(REQUEST.offlineTimeoutMs),
+  MODEL_PROBE_URLS: list({
+    message:
+      'Give each MODEL_PROBE_URLS entry as an http or https address, such as https://1.1.1.1',
+    valid: isProbeUrl,
+  }),
 });
 
 /** The request policy from `env`. */
@@ -44,6 +70,8 @@ export function parseRequestEnv(env: Record<string, string | undefined>) {
     responseTimeoutMs: parsed.MODEL_RESPONSE_TIMEOUT_MS,
     retries: parsed.MODEL_RETRIES,
     retryDelayMs: parsed.MODEL_RETRY_DELAY_MS,
+    offlineTimeoutMs: parsed.MODEL_OFFLINE_TIMEOUT_MS,
+    probeUrls: parsed.MODEL_PROBE_URLS.length > 0 ? parsed.MODEL_PROBE_URLS : REQUEST.probeUrls,
   };
 }
 

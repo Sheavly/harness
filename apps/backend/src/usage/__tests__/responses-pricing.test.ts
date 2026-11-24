@@ -30,7 +30,13 @@ async function priceOf(inputTokensDetails: Record<string, number>) {
     model,
     provider: createResponsesProvider({
       endpoint: { baseUrl: 'https://example.test/v1', model: 'm', headers: {} },
-      request: { responseTimeoutMs: 5000, retries: 0, retryDelayMs: 0 },
+      request: {
+        responseTimeoutMs: 5000,
+        retries: 0,
+        retryDelayMs: 0,
+        offlineTimeoutMs: 0,
+        probeUrls: [],
+      },
       fetch,
     }),
   });

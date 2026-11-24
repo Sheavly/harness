@@ -29,7 +29,15 @@ describe('model-first setup catalogue', () => {
           registry.validateDefinition({
             kind: host.adapter,
             definition: { ...typed, ...host.defaults, ...host.fixed },
-            host: { request: { responseTimeoutMs: 1000, retries: 0, retryDelayMs: 0 } },
+            host: {
+              request: {
+                responseTimeoutMs: 1000,
+                retries: 0,
+                retryDelayMs: 0,
+                offlineTimeoutMs: 0,
+                probeUrls: [],
+              },
+            },
           }),
         ).toEqual([]);
       }

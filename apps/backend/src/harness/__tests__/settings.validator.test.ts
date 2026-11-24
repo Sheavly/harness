@@ -229,7 +229,32 @@ describe('parseRequestEnv', () => {
         MODEL_RETRIES: '0',
         MODEL_RETRY_DELAY_MS: '',
       }),
-    ).toEqual({ responseTimeoutMs: 5000, retries: 0, retryDelayMs: REQUEST.retryDelayMs });
+    ).toEqual({
+      responseTimeoutMs: 5000,
+      retries: 0,
+      retryDelayMs: REQUEST.retryDelayMs,
+      offlineTimeoutMs: REQUEST.offlineTimeoutMs,
+      probeUrls: REQUEST.probeUrls,
+    });
+  });
+
+  it('waits an hour for a lost connection by default, and a setting changes or switches it off', () => {
+    expect(REQUEST.offlineTimeoutMs).toBe(3_600_000);
+    expect(parseRequestEnv({ MODEL_OFFLINE_TIMEOUT_MS: '600000' }).offlineTimeoutMs).toBe(600_000);
+    expect(parseRequestEnv({ MODEL_OFFLINE_TIMEOUT_MS: '0' }).offlineTimeoutMs).toBe(0);
+    expect(parseRequestEnv({ MODEL_OFFLINE_TIMEOUT_MS: '' }).offlineTimeoutMs).toBe(3_600_000);
+    expect(() => parseRequestEnv({ MODEL_OFFLINE_TIMEOUT_MS: '-1' })).toThrow();
+    expect(() => parseRequestEnv({ MODEL_OFFLINE_TIMEOUT_MS: 'an hour' })).toThrow();
+  });
+
+  it('asks the addresses MODEL_PROBE_URLS names instead of the defaults, and refuses a non-address', () => {
+    expect(
+      parseRequestEnv({ MODEL_PROBE_URLS: ' https://probe.example/ping , http://10.0.0.1 ,' })
+        .probeUrls,
+    ).toEqual(['https://probe.example/ping', 'http://10.0.0.1']);
+    expect(parseRequestEnv({ MODEL_PROBE_URLS: '' }).probeUrls).toEqual(REQUEST.probeUrls);
+    expect(() => parseRequestEnv({ MODEL_PROBE_URLS: 'probe.example' })).toThrow('http or https');
+    expect(() => parseRequestEnv({ MODEL_PROBE_URLS: 'ftp://probe.example' })).toThrow();
   });
 
   it('rejects a value that is not a whole number, and a timeout of zero', () => {

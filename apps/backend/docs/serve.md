@@ -73,7 +73,7 @@ a while, and then ends or does something else. `sheavly setup` is the one that d
 
 The models and keys are in the user's profile, not here, and not in a `.env`: see
 [models and keys](harness.md#models-and-keys). How a model call is sent (`MODEL_RESPONSE_TIMEOUT_MS`,
-`MODEL_RETRIES`, `MODEL_RETRY_DELAY_MS`) is in [harness.md](harness.md#settings). `--trust` trusts
+`MODEL_RETRIES`, `MODEL_RETRY_DELAY_MS`, `MODEL_OFFLINE_TIMEOUT_MS`, `MODEL_PROBE_URLS`) is in [harness.md](harness.md#settings). `--trust` trusts
 the workspace's `.sheavly/` folder: its hooks, and a `.sheavly/settings.json` even when there are no
 hooks (see "Layered extension settings" in [harness.md](harness.md#the-run)):
 `npm run serve -w @sheavly/backend -- --trust`. It is the only argument the server reads

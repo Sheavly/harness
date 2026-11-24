@@ -98,7 +98,13 @@ describe('a Bedrock model of a known identity', () => {
 
   it('agrees with the adapter: a profile the catalogue accepts is one the adapter accepts', () => {
     const registry = createDefaultRegistry();
-    const request = { responseTimeoutMs: 1000, retries: 0, retryDelayMs: 0 };
+    const request = {
+      responseTimeoutMs: 1000,
+      retries: 0,
+      retryDelayMs: 0,
+      offlineTimeoutMs: 0,
+      probeUrls: [],
+    };
 
     for (const entry of setupModelCatalog(adapters)) {
       const host = bedrockOf(entry.identity.model);
