@@ -23,3 +23,6 @@ export const HEAD_FACTOR = 8;
 
 /** The title of a node whose own title is blank once it is one line. */
 export const UNTITLED = 'untitled';
+
+/** The largest byte offset a cursor may hold: fifteen digits, so it reads back exactly. */
+export const MAX_BYTE_OFFSET = 999_999_999_999_999;

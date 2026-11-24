@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import { MemoryConversationStore } from '../memory-store.fake.js';
-import { describeChannelLimits, describeChannelLog } from '../channel-contract.fake.js';
+import { describeChannelLog } from '../channel-contract.fake.js';
+import { describeChannelLimits } from '../channel-limits-contract.fake.js';
 import {
   CONVERSATION as id,
   READER as session,

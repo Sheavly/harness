@@ -123,6 +123,13 @@ export type ConversationStore = {
    */
   channel(params: { id: ConversationId; channel: string }): ChannelLog;
   /**
+   * The names of the channels conversation `id` has stored (a channel exists from its first
+   * entry), in no order a caller may rely on. A conversation that stored none, or that is not
+   * stored, has none. It is what a reopened conversation looks through to find a channel whose
+   * node never closed.
+   */
+  channels(id: ConversationId): Promise<string[]>;
+  /**
    * Conversation `id`'s shell state (`shell.json`): where its agents work from. The same document
    * for every call with one `id`, so the main session and its sub-agents share it, and kept with
    * the conversation, so it survives a restart and goes when the conversation is deleted.

@@ -13,6 +13,7 @@ import type {
 import { createHarness } from '../host/host.helper.js';
 import { twoModelRun } from './run.fake.js';
 import { reviewSkill } from './skills.fake.js';
+import { harnessStorageOptions } from './storage-options.fake.js';
 
 /** Test-only: a model turn that says `text` and ends. */
 export const say = (text: string): StreamEvent[] => [
@@ -23,7 +24,8 @@ export const say = (text: string): StreamEvent[] => [
 /**
  * Test-only: `Conversations` on a scripted model, each conversation built as a backend builds
  * one. With a `store`, it wires the `storage` the host hands `create` the way an app must: the
- * stream to `entries`, the log to `resume`, and `keepHistory` into the conversation, which is
+ * stream to `entries`, the log to `resume`, the nodes' channels to `channels`, and `keepHistory`
+ * into the conversation, which is
  * `resumed` when reopened. `sent` is the history each model call was sent.
  */
 export function scriptedConversations(params: {
@@ -52,7 +54,7 @@ export function scriptedConversations(params: {
           },
         },
         title: 'Chat',
-        ...(storage && { entries: storage.entries, resume: storage.resume }),
+        ...harnessStorageOptions(storage),
       });
 
       return {

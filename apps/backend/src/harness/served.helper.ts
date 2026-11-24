@@ -148,6 +148,7 @@ export async function servedConversation(params: {
     ...(storage && {
       entries: storage.entries,
       resume: storage.resume,
+      channels: storage.channels,
       shell: storage.shell,
       outputs: storage.outputs,
       keepAgentHistory: storage.keepAgentHistory,

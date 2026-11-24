@@ -1,7 +1,9 @@
 import type { Provider, ProviderRequest } from '@sheavly/core/provider/provider.types';
 import type { EntryStore } from '@sheavly/core/store/store.types';
 import type { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
+import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { NodeRegistry } from '@sheavly/runtime/nodes/node-registry.service';
+import type { NodeChannelStorage } from '@sheavly/runtime/nodes/nodes.types';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { StoredLog } from '@sheavly/runtime/sessions/sessions.types';
 import type { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
@@ -48,6 +50,12 @@ export type HarnessOptions = {
    * and its main session is the one that was stored, idle for the next prompt.
    */
   resume?: StoredLog | undefined;
+  /**
+   * Where each node's channel is kept, beside the combined stream: the run's agents, commands and
+   * services each get a log of their own, with a failed write told once and the run going on
+   * (`NodeChannelStorage`). Without it nothing is stored of them but what the stream holds.
+   */
+  channels?: NodeChannelStorage | undefined;
 };
 
 /**
@@ -74,6 +82,14 @@ export type Harness = {
    * which registries those are); it reads its own nodes through the scoped services.
    */
   nodes: NodeRegistry;
+  /**
+   * What stores each node's channel (`HarnessOptions.channels`), for the host to wait for its
+   * writes when it closes the conversation. Absent when the run's channels are not kept. An
+   * extension never holds it, like the registries: it is typed as the plain class, without
+   * `| undefined`, because `harness/extension-no-runtime-registries` follows only a plain type
+   * reference when it reads which modules are denied.
+   */
+  nodeChannels?: NodeChannelWriter;
   /**
    * Where tools ask the user to approve something (run_command's risky arguments). A UI
    * subscribes, renders each `approval_requested` its own way and answers with `respond`; with no

@@ -89,6 +89,11 @@ as the other files' do (#241). A write that failed may have reached the file: th
 again before the next, so a sequence cursor is refused a second time, and a byte cursor, which may
 repeat, can be stored twice if the writer sends it again.
 
+`FileConversationStore.channels(id)` lists the channels a conversation has stored: the regular
+files `channels/<channel>.jsonl` whose name is a node id or `tree`. A marker, a link, a folder, a
+stray file or a name that is not a channel's is not listed, and a conversation with no folder has
+none. A reopened conversation reads it to find the channels whose node never closed.
+
 A read starts at `start`, at the last `n` entries (`{ tail }`) or after a cursor the reader kept
 (`{ after }`). A cursor the channel does not hold or that is not a cursor, or a tail that is not a
 whole number from 0 to `MAX_TAIL` (1,000), is `cursor_out_of_range`. `start` and `after` stream

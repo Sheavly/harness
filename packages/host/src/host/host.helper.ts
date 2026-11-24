@@ -1,5 +1,6 @@
 import type { Provider } from '@sheavly/core/provider/provider.types';
 import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
+import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import type { Harness, HarnessOptions } from './host.types.js';
@@ -38,6 +39,11 @@ export function createHarness(options: HarnessOptions): Harness {
   const mainSession = sessions.restoredMain() ?? sessions.startMain({ title: title.slice(0, 60) });
   const approvals = options.approvals ?? new ApprovalRegistry();
   const tasks = options.tasks ?? new TaskRegistry(sessions.nodeOwners);
+  // Now that the main session exists, and a reopened conversation's nodes are back, so the writer
+  // sees every node that is open.
+  const nodeChannels = options.channels
+    ? NodeChannelWriter.attach({ nodes: sessions.nodes, tasks, storage: options.channels })
+    : undefined;
 
   // Approvals and background tasks join the combined stream, in order with the events of the
   // call that asked or started them.
@@ -60,6 +66,7 @@ export function createHarness(options: HarnessOptions): Harness {
     mainSession,
     tasks,
     nodes: sessions.nodes,
+    ...(nodeChannels && { nodeChannels }),
     approvals,
   };
 }

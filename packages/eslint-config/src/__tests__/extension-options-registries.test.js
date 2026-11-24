@@ -176,6 +176,7 @@ describe('the registries are read from the Harness type, not listed', () => {
     expect(state).toBe('read');
     expect(Object.fromEntries(registries)).toEqual({
       ApprovalRegistry: '@sheavly/runtime/approvals/approvals.service',
+      NodeChannelWriter: '@sheavly/runtime/nodes/node-channel-writer.service',
       NodeRegistry: '@sheavly/runtime/nodes/node-registry.service',
       SessionRegistry: '@sheavly/runtime/sessions/sessions.service',
       SystemPrompt: '../instructions/system-prompt.service',

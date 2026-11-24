@@ -20,4 +20,12 @@ export class InFlight<TKey, TResult> {
       if (this.#running.get(key) === running) this.#running.delete(key);
     }
   }
+
+  /**
+   * Waits for the running call for `key`, if there is one, however it ends: the caller that started
+   * it is the one to hear of a failure. Resolves at once when nothing runs for `key`.
+   */
+  async settled(key: TKey): Promise<void> {
+    await Promise.allSettled([this.#running.get(key)]);
+  }
 }

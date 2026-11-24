@@ -2,6 +2,7 @@ import type { Harness } from '../host/host.types.js';
 import type { Conversation } from '../conversation/conversation.types.js';
 import type { OutputStore } from '@sheavly/core/output/output.types';
 import type { DocumentStore, EntryStore, HistoryLog } from '@sheavly/core/store/store.types';
+import type { NodeChannelStorage } from '@sheavly/runtime/nodes/nodes.types';
 import type { StoredLog } from '@sheavly/runtime/sessions/sessions.types';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
@@ -123,6 +124,11 @@ export type ConversationStorage = {
   shell: DocumentStore;
   /** The conversation's complete command output, kept with it and readable after a reopen. */
   outputs: OutputStore;
+  /**
+   * Where each node's channel is kept, beside the stream (`createHarness`'s `channels`). A failed
+   * write is announced once as `storage_failed` and ends no run: the stream is still the record.
+   */
+  channels: NodeChannelStorage;
   keepHistory: (messages: readonly HistoryMessage[]) => void;
   /** A sub-agent's history so far, whole: only what is new is appended to that session's log. */
   keepAgentHistory: (params: { session: SessionId; messages: readonly HistoryMessage[] }) => void;

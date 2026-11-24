@@ -1,7 +1,5 @@
-import {
-  describeChannelLimits,
-  describeChannelLog,
-} from '@sheavly/testing/store/channel-contract.fake';
+import { describeChannelLog } from '@sheavly/testing/store/channel-contract.fake';
+import { describeChannelLimits } from '@sheavly/testing/store/channel-limits-contract.fake';
 import { describeConversationStore } from '@sheavly/testing/store/store-contract.fake';
 import { useTempFolder } from '../../testing/temp-folder.fake.js';
 import { FileConversationStore } from '../conversation-store.service.js';

@@ -36,13 +36,17 @@ export function announceStorageFailure(params: {
   });
 }
 
-/** What the app builds conversation `id` on so it is kept: its stream's store and its history. */
+/**
+ * What the app builds conversation `id` on so it is kept: its stream's store, its history and its
+ * nodes' channels. `onChannelFailure` is told once when a channel write fails.
+ */
 export function storageOf(params: {
   store: ConversationStore | undefined;
   keeper: ConversationKeeper | undefined;
   id: ConversationId;
+  onChannelFailure: (failure: StoreError) => void;
 }): StorageOf {
-  const { store, keeper, id } = params;
+  const { store, keeper, id, onChannelFailure } = params;
 
   if (!keeper || !store) return {};
 
@@ -51,6 +55,7 @@ export function storageOf(params: {
       entries: store.entries(id),
       shell: store.shell(id),
       outputs: store.outputs(id),
+      channels: { log: (channel) => store.channel({ id, channel }), onFailure: onChannelFailure },
       keepHistory: (messages) => keeper.keepHistory(messages),
       keepAgentHistory: (agent) => keeper.keepAgentHistory(agent),
       logOf: ({ session, main }) => store.history({ id, session: main ? undefined : session }),

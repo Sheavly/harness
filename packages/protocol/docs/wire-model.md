@@ -95,7 +95,8 @@ Each node has one channel. Every entry has the same envelope:
   none on `lost`, and a cancelled idle agent closed with the outcome `interrupted`.
 - **The causal link.** A child's `opened` entry records the parent's cursor at the moment the
   child was spawned, so a front end can place the child's channel in the parent's without a shared
-  clock or a shared counter.
+  clock or a shared counter. The stored channels name the newest parent entry the store holds when
+  the child's entry is written, which is the same entry unless a write of the parent's failed.
 
 ### The tree channel
 
@@ -256,6 +257,13 @@ as `lost`: a `closed` entry is written to its channel, and the tree channel reco
 change. A channel with no `closed` entry in a conversation that is not live is repaired at that
 point. The restart notice #399 describes stays; `lost` is what a client reads to know it.
 
+What is built: the host closes every node channel the store holds with no `closed` entry, before
+the reopened conversation has a node of its own, with state `lost`, no outcome and no exit code,
+at the next position of a numbered channel and at the last offset of a counted one. It does so
+once: a channel that ends in `closed` is left alone, so reopening again changes nothing. A channel
+the store refuses another entry for, being at a limit, is left as it is, and reads as lost. The
+tree channel is not stored yet, so its record of the change is not written.
+
 ## Storage
 
 Per-channel logs, one append-only file or table per node channel. The cursor is the channel's own:
@@ -263,6 +271,15 @@ the byte offset into its output for a command or service, the entry's sequence n
 others. This is the layout #246 (a SQLite database per workspace) keeps behind the same
 interface. A conversation stored in the old layout (one stream of everything) is migrated when it
 is first opened (#437).
+
+What is built: `ConversationStore.channel({ id, channel })` is the log of one channel, kept by the
+file store as `channels/<channel>.jsonl` beside the stream, which is still written. An agent's,
+a command's and a service's channel are stored as the conversation runs, with `opened`, `updated`
+for an agent and `closed`; the tree channel and the kinds an extension adds are not. A stored line
+is one entry of at most 64 KiB, so a command longer than that is shortened in its `opened` entry.
+Retention is per channel: 128 MiB for a channel, 1 GiB and 5,000 channels for a conversation, and a
+channel that refuses an entry for a limit takes no more. The layout, the rules and the limits are
+in the [storage design](../../storage/docs/design.md).
 
 ## Transport
 

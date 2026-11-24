@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
@@ -133,7 +133,15 @@ describe('a sub-agent report across a restart', () => {
     await afterOnePrompt({
       fetch: model,
       run: async (conversation) => {
-        // The report is delivered, and the notice stored, before the turn finishes.
+        // The turn can end before the sub-agent does: the conversation then wakes itself, in a run
+        // `promptEntries` does not follow, to deliver the report. So wait for the notice in history.
+        await vi.waitFor(
+          async () => {
+            expect(await reportsOf(conversation)).toHaveLength(1);
+          },
+          { timeout: 10_000 },
+        );
+
         const before = await reportsOf(conversation);
 
         await reopen(conversation);

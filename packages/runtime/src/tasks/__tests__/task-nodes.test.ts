@@ -4,6 +4,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { describe, expect, it } from 'vitest';
 import { SessionRegistry } from '../../sessions/sessions.service.js';
+import { startControlledTask } from '../../testing/controlled-task.fake.js';
 import { startHeldTask } from '../../testing/held-task.fake.js';
 import { TaskRegistry } from '../tasks.service.js';
 import type { StartTask } from '../tasks.types.js';
@@ -26,21 +27,13 @@ function conversation() {
 /** Starts work of `kind` owned by the main session, which runs until `finish` is called. */
 function startWork(params: { world: ReturnType<typeof conversation>; kind: TaskKind }) {
   const { world, kind } = params;
-  let finish: (exitCode: number | null) => void = () => undefined;
-  const task = world.tasks.start({
-    command: 'work',
-    description: 'work',
+
+  return startControlledTask({
+    tasks: world.tasks,
     callId: CALL,
     sessionId: world.main.id,
     backgroundKind: kind,
-    run: ({ signal }) =>
-      new Promise((resolve) => {
-        finish = (exitCode) => resolve({ exitCode });
-        signal.addEventListener('abort', () => resolve({ exitCode: null }), { once: true });
-      }),
   });
-
-  return { task, finish: (exitCode: number | null) => finish(exitCode) };
 }
 
 function nodeOf(params: { world: ReturnType<typeof conversation>; id: string }) {

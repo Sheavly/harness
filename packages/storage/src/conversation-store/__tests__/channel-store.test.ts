@@ -290,6 +290,24 @@ describe('a channel log on disk', () => {
     expect(await tail(0)).toEqual([]);
   });
 
+  it('lists only the channel logs the store made: not a marker, a stray file, a folder or a bad name', async () => {
+    await storeOf().channel({ id, channel: 'main' }).append(opened);
+    await storeOf()
+      .channel({ id, channel: 'tree' })
+      .append(entry('opened', 's0', 'tree'));
+
+    await writeFile(path.join(channelsFolder(), 't1.full'), '{"reason":"it is past its size"}');
+    await writeFile(path.join(channelsFolder(), 'notes.txt'), 'hello');
+    await writeFile(path.join(channelsFolder(), 'Not A Channel.jsonl'), '');
+    await mkdir(path.join(channelsFolder(), 'folder.jsonl'));
+
+    expect((await storeOf().channels(id)).toSorted()).toEqual(['main', 'tree']);
+  });
+
+  it('lists nothing for a conversation that has no folder', async () => {
+    expect(await storeOf().channels(id)).toEqual([]);
+  });
+
   it('makes no file for a name that is not a node id or the tree', async () => {
     const store = storeOf();
 

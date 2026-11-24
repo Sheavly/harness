@@ -80,5 +80,13 @@ export type TaskDelivery = { tasks: TaskInfo[]; reason?: string };
 /** How a task ended: its exit code and report, or the error that stopped it. */
 export type TaskResult = { exitCode?: number | null; error?: string; report?: string };
 
-/** A task update, with the session whose tool started it (unset for one started outside a run). */
-export type TaskObserver = (params: { update: TaskUpdate; sessionId?: SessionId }) => void;
+/**
+ * A task update, with the session whose tool started it (unset for one started outside a run) and
+ * the node the task is: its own, or the agent node of the session that runs the sub-agent. The
+ * node is how something that follows the registry's nodes finds the task's command and output.
+ */
+export type TaskObserver = (params: {
+  update: TaskUpdate;
+  sessionId?: SessionId;
+  nodeId: NodeId;
+}) => void;

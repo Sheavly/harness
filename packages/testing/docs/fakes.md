@@ -55,7 +55,7 @@ history for each of its sub-agents (kept apart from each other), a `StoreError` 
 `failWith(error)` makes every following write reject, as a full disk does, for a test of what a
 host does when storage fails.
 
-It keeps each node's channel as its own log too (`channel({ id, channel })`), by the same rules a
+It keeps each node's channel as its own log too (`channel({ id, channel })`, and `channels(id)` lists the ones a conversation has stored), by the same rules a
 file store applies (`channelAppendProblem`, and `quota` at the limits it is given:
 `new MemoryConversationStore({ limits })`). `describeChannelLog` and `describeChannelLimits` are the
 contract tests of that: a test file calls them with a `make` that returns an empty store, so the

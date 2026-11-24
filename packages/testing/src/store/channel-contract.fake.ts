@@ -1,69 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  ChannelEntry,
-  ChannelFrom,
-  ChannelLimits,
-  ConversationStore,
-} from '@sheavly/core/store/store.types';
+import type { ChannelFrom, ConversationStore } from '@sheavly/core/store/store.types';
 import { MAX_CHANNEL_ENTRY_CHARS } from '@sheavly/protocol/channel/channel.constants';
-import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import { MAX_TAIL } from '@sheavly/protocol/subscription/subscription.constants';
+import {
+  CLOSED,
+  OPENED,
+  UPDATED,
+  UPDATED_AGAIN,
+  appendAll,
+  cursorsOf,
+  entryOf,
+  first,
+  past,
+  second,
+} from './channel-entries.fake.js';
 
-/** An entry wrong in a way its type does not allow, as a caller can still send one at run time. */
-const past = (entry: Record<string, unknown>): never => entry as never;
-
-const first = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000a1');
-const second = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000a2');
-
-/**
- * Test-only: an entry of `channel` (a node id, or `tree`; `main` by default) with this type and
- * cursor, holding the node it is about as a channel's entries do.
- */
-const entryOf = (params: { type: string; cursor: string; channel?: string }): ChannelEntry => ({
-  channel: params.channel ?? 'main',
-  type: params.type,
-  cursor: params.cursor,
-  at: 0,
-  node: { id: params.channel ?? 'main', title: 'Chat' },
-});
-
-/** What an entry costs in a limit: its line, as a store keeps it. */
-const lineBytes = (entry: ChannelEntry) => Buffer.byteLength(JSON.stringify(entry)) + 1;
-
-/** The cursors `channel` of `conversation` reads back from `from`. */
-async function cursorsOf(params: {
-  store: ConversationStore;
-  channel?: string;
-  conversation?: typeof first;
-  from?: ChannelFrom | undefined;
-}) {
-  const { store, channel = 'main', conversation = first, from } = params;
-  const cursors: string[] = [];
-
-  for await (const each of store.channel({ id: conversation, channel }).read(from)) {
-    cursors.push(each.cursor);
-  }
-
-  return cursors;
-}
-
-/** Appends `entries` one after another, each to the channel it names. */
-async function appendAll(params: {
-  store: ConversationStore;
-  entries: ChannelEntry[];
-  conversation?: typeof first;
-}) {
-  const { store, entries, conversation = first } = params;
-
-  for (const each of entries) {
-    await store.channel({ id: conversation, channel: each.channel }).append(each);
-  }
-}
-
-const OPENED = entryOf({ type: 'opened', cursor: 's0' });
-const UPDATED = entryOf({ type: 'updated', cursor: 's1' });
-const UPDATED_AGAIN = entryOf({ type: 'updated', cursor: 's2' });
-const CLOSED = entryOf({ type: 'closed', cursor: 's3' });
 const LIFE = [OPENED, UPDATED, UPDATED_AGAIN, CLOSED];
 
 /**
@@ -249,6 +200,36 @@ export function describeChannelLog(params: { name: string; make: () => Conversat
       }
     });
 
+    it('lists the channels a conversation has stored, from their first entry, and none of another’s', async () => {
+      const store = make();
+
+      expect(await store.channels(first)).toEqual([]);
+
+      await appendAll({
+        store,
+        entries: [
+          entryOf({ type: 'opened', cursor: 's0', channel: 'tree' }),
+          OPENED,
+          entryOf({ type: 'opened', cursor: 'b0', channel: 't1' }),
+          UPDATED,
+        ],
+      });
+      await appendAll({ store, conversation: second, entries: [OPENED] });
+
+      // A channel whose first entry was refused was never made, and a read of one does not make it.
+      await expect(
+        store.channel({ id: first, channel: 'never' }).append(UPDATED),
+      ).rejects.toMatchObject({ reason: 'out_of_order' });
+      expect(await cursorsOf({ store, channel: 'unread' })).toEqual([]);
+
+      expect((await store.channels(first)).toSorted()).toEqual(['main', 't1', 'tree']);
+      expect(await store.channels(second)).toEqual(['main']);
+
+      await store.delete(first);
+      expect(await store.channels(first)).toEqual([]);
+      expect(await store.channels(second)).toEqual(['main']);
+    });
+
     it('deletes a conversation’s channels with it, and none of another, and starts again from opened', async () => {
       const store = make();
 
@@ -266,106 +247,6 @@ export function describeChannelLog(params: { name: string; make: () => Conversat
       });
       await log.append(OPENED);
       expect(await cursorsOf({ store })).toEqual(['s0']);
-    });
-  });
-}
-
-/**
- * Test-only: what every store does at a limit. `make` returns a store with nothing in it that
- * holds a conversation's channels to `limits`. An entry past one is refused with `quota` and not
- * stored, the channel then takes no more (so its log is never read as whole), what it already
- * held reads back, and another conversation is not touched.
- */
-export function describeChannelLimits(params: {
-  name: string;
-  make: (limits: ChannelLimits) => ConversationStore;
-}) {
-  const { name, make } = params;
-  const none = Number.MAX_SAFE_INTEGER;
-  // Room for the first three entries of a life, and a little more, whatever a store spends on a line.
-  const room = lineBytes(OPENED) + lineBytes(UPDATED) + lineBytes(UPDATED_AGAIN) + 100;
-
-  describe(`${name} at the limits of a conversation’s channels`, () => {
-    it('refuses an entry past the size of a channel, then every later one, and keeps what it holds', async () => {
-      const store = make({
-        channelBytes: room,
-        conversationBytes: none,
-        conversationChannels: none,
-      });
-      const log = store.channel({ id: first, channel: 'main' });
-      // Over the room by itself, and within what an entry may be.
-      const tooBig = past({ ...UPDATED_AGAIN, pad: 'x'.repeat(room) });
-
-      await log.append(OPENED);
-      await log.append(UPDATED);
-
-      await expect(log.append(tooBig)).rejects.toMatchObject({
-        name: 'StoreError',
-        reason: 'quota',
-      });
-
-      // This entry fits the room that is left: it is refused because the channel took a refusal,
-      // so what the channel holds is never read as whole with an entry missing from it.
-      for (const entry of [UPDATED_AGAIN, UPDATED_AGAIN]) {
-        await expect(log.append(entry)).rejects.toMatchObject({ reason: 'quota' });
-      }
-
-      expect(await cursorsOf({ store })).toEqual(['s0', 's1']);
-    });
-
-    it('holds channels written at once to a limit that each passes alone', async () => {
-      const second1 = entryOf({ type: 'opened', cursor: 's0', channel: 't1' });
-      const second2 = entryOf({ type: 'opened', cursor: 's0', channel: 't2' });
-      const store = make({
-        channelBytes: none,
-        conversationBytes: lineBytes(OPENED) + lineBytes(second1),
-        conversationChannels: none,
-      });
-      const results = await Promise.allSettled(
-        [OPENED, second1, second2].map(async (entry) =>
-          store.channel({ id: first, channel: entry.channel }).append(entry),
-        ),
-      );
-
-      expect(results.filter((each) => each.status === 'fulfilled')).toHaveLength(2);
-      expect(results.filter((each) => each.status === 'rejected')).toMatchObject([
-        { reason: { name: 'StoreError', reason: 'quota' } },
-      ]);
-    });
-
-    it('holds all of a conversation’s channels to one size, and no other conversation', async () => {
-      const other = entryOf({ type: 'opened', cursor: 's0', channel: 't1' });
-      const store = make({
-        channelBytes: none,
-        conversationBytes: lineBytes(OPENED) + lineBytes(other),
-        conversationChannels: none,
-      });
-
-      await appendAll({ store, entries: [OPENED, other] });
-
-      await expect(
-        store.channel({ id: first, channel: 'main' }).append(UPDATED),
-      ).rejects.toMatchObject({ reason: 'quota' });
-
-      // Another conversation has its own room.
-      await appendAll({ store, conversation: second, entries: [OPENED] });
-      expect(await cursorsOf({ store, conversation: second })).toEqual(['s0']);
-    });
-
-    it('refuses a channel past the number a conversation may have', async () => {
-      const store = make({ channelBytes: none, conversationBytes: none, conversationChannels: 2 });
-      const open = (channel: string) => entryOf({ type: 'opened', cursor: 's0', channel });
-
-      await appendAll({ store, entries: [open('main'), open('t1')] });
-
-      await expect(
-        store.channel({ id: first, channel: 't2' }).append(open('t2')),
-      ).rejects.toMatchObject({ reason: 'quota' });
-      expect(await cursorsOf({ store, channel: 't2' })).toEqual([]);
-
-      // A channel that is open goes on, and another conversation has its own count.
-      await store.channel({ id: first, channel: 'main' }).append(UPDATED);
-      await appendAll({ store, conversation: second, entries: [open('main'), open('t1')] });
     });
   });
 }

@@ -435,6 +435,7 @@ export class TaskRegistry {
       observer({
         update: { type, task: { ...entry.info } },
         ...(entry.sessionId && { sessionId: entry.sessionId }),
+        nodeId: entry.nodeId,
       });
     }
   }

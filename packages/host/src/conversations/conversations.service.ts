@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { now } from '@sheavly/core/clock/clock.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
+import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { ConversationKeeper } from './keeper.service.js';
 import { InFlight } from './in-flight.service.js';
@@ -14,9 +15,10 @@ import type {
   SentPrompt,
   StartConversationParams,
 } from './conversations.types.js';
+import { announceChannelFailures, closeLiveConversation } from './lifecycle.helper.js';
 import { announceStorageFailure, refuseWhenStorageFailed, storageOf } from './storage.helper.js';
 
-import { matchesSearch, matchesStored } from './conversations.utils.js';
+import { matchesSearch, matchesStored, summaryOf } from './conversations.utils.js';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
@@ -50,6 +52,8 @@ export class Conversations {
   /** The prompt each conversation is preparing, and the lines waiting in its queue. */
   readonly #inputs: ConversationInputs;
   readonly #reopening = new InFlight<ConversationId, ConversationId>();
+  /** Each conversation being closed: no longer live, but its writes are not all done. */
+  readonly #closing = new InFlight<ConversationId, void>();
 
   constructor(params: {
     create: CreateConversation;
@@ -88,12 +92,13 @@ export class Conversations {
       profile: params.profile,
       model: params.model,
       effort: params.effort,
-      ...(keeper && storageOf({ store: this.#store, keeper, id })),
+      ...(keeper && this.#storageFor({ id, keeper })),
     });
 
     this.#live.set(id, live);
     this.#inputs.open({ id, live, restored: [] });
     this.#begin({ id, keeper });
+    announceChannelFailures({ live, repairs: [] });
 
     return id;
   }
@@ -106,6 +111,15 @@ export class Conversations {
    * keeps none).
    */
   async reopen(id: ConversationId): Promise<ConversationId> {
+    if (this.#live.has(id)) return id;
+
+    // A conversation being closed is no longer live, but its stream, history and channels are
+    // still being written: reading them now would find the old process in the middle of its ending
+    // and call a node that is about to close lost. Wait for it, however it ends: the caller of
+    // `close` is the one to hear of a failure.
+    await this.#closing.settled(id);
+
+    // Another reopen may have finished while this one waited.
     if (this.#live.has(id)) return id;
 
     // Two reopens at once would both log the repair placeholder: they share one.
@@ -124,11 +138,18 @@ export class Conversations {
       store: this.#store,
       id,
     });
+
+    // Before this process has a node of its own: every node channel still open in the store is the
+    // stopped server's, so each is closed as lost. Done once; a second reopen finds them closed.
+    // Best effort, since the stream is the record: a channel that cannot be closed is announced
+    // below, and does not stop the conversation reopening.
+    const repair = await NodeChannelWriter.closeLost({ store: this.#store, id, at: now() });
+
     // Parked by the queue: reopening never runs them. A broken file fails the reopen here, before
     // anything is live, rather than leave a conversation without its queue.
     const restored = await this.#inputs.stored(id);
     const keeper = this.#keeperFor(id);
-    const storage = storageOf({ store: this.#store, keeper, id }).storage;
+    const storage = keeper && this.#storageFor({ id, keeper }).storage;
     const live = await this.#create({
       id,
       messages,
@@ -144,6 +165,7 @@ export class Conversations {
     this.#inputs.open({ id, live, restored });
     keeper?.begin({ ...stored, status: 'open' });
     keeper?.resumeWith({ logged, messages });
+    announceChannelFailures({ live, repairs: repair.failed });
 
     return id;
   }
@@ -191,7 +213,7 @@ export class Conversations {
    * prompt runs now. For a UI that joins a conversation another UI started.
    */
   list(): ConversationSummary[] {
-    return [...this.#live.keys()].map((id) => this.#summary(id));
+    return [...this.#live].map(([id, live]) => summaryOf({ id, live }));
   }
 
   /**
@@ -200,11 +222,12 @@ export class Conversations {
    * the id.
    */
   async details(id: ConversationId): Promise<ConversationDetails> {
-    const { run } = this.get(id);
+    const live = this.get(id);
+    const { run } = live;
     const workingRoot = await run.workingRoot?.();
 
     return {
-      ...this.#summary(id),
+      ...summaryOf({ id, live }),
       ...run.details(),
       permissionMode: await run.permissionMode(),
       ...(workingRoot && { workingRoot }),
@@ -246,17 +269,20 @@ export class Conversations {
     this.#keepers.get(id)?.keepIndex({ modelId, effort });
   }
 
-  #summary(id: ConversationId): ConversationSummary {
-    const { harness, conversation } = this.get(id);
-    const session = harness.sessions.get(harness.mainSession.id);
+  /**
+   * What the app builds conversation `id` on so it is kept. A failed write of a node's channel is
+   * announced on the conversation's stream, which is looked up when it fires: the conversation may
+   * be gone by then.
+   */
+  #storageFor(params: { id: ConversationId; keeper: ConversationKeeper | undefined }) {
+    const { id, keeper } = params;
 
-    return {
+    return storageOf({
+      store: this.#store,
+      keeper,
       id,
-      title: session?.title ?? '',
-      session: harness.mainSession.id,
-      running: conversation.running,
-      startedAt: session?.startedAt ?? 0,
-    };
+      onChannelFailure: (failure) => announceStorageFailure({ live: this.#live.get(id), failure }),
+    });
   }
 
   /** The keeper of conversation `id`, made on first ask; none when the host keeps nothing. */
@@ -284,7 +310,7 @@ export class Conversations {
   #begin(params: { id: ConversationId; keeper: ConversationKeeper | undefined }): void {
     const { id, keeper } = params;
     const live = this.get(id);
-    const summary = this.#summary(id);
+    const summary = summaryOf({ id, live });
     const { model, workspace, profile } = live.run.details();
     const effort = model.effort ?? 'medium';
 
@@ -428,12 +454,18 @@ export class Conversations {
     // Gone first, so its queue starts nothing more; its lines stay stored with it.
     this.#live.delete(id);
     this.#inputs.close(id);
-    await live.conversation.close();
-    await live.dispose?.();
-    keeper?.keepIndex({ status: 'closed' });
-    await keeper?.flush();
-    await live.harness.sessions.flushStore();
-    this.#keepers.delete(id);
+
+    try {
+      // Until it has written everything, a reopen waits for it (see `reopen`).
+      await this.#closing.run({
+        key: id,
+        start: async () => closeLiveConversation({ live, keeper }),
+      });
+    } finally {
+      // Whether or not closing worked: the conversation is gone, so a reopen builds a keeper of its
+      // own and does not reuse one that may hold the failure that stopped it.
+      this.#keepers.delete(id);
+    }
   }
 
   /** Closes every conversation: for a host shutting down. */

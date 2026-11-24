@@ -9,6 +9,7 @@ import { Conversations } from '@sheavly/host/conversations/conversations.service
 import { createHarness } from '@sheavly/host/host/host.helper';
 import { reviewSkill } from '@sheavly/host/testing/skills.fake';
 import { twoModelRun } from '@sheavly/host/testing/run.fake';
+import { harnessStorageOptions } from '@sheavly/host/testing/storage-options.fake';
 import { streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
 import { blockTool } from '@sheavly/runtime/testing/block-tool.fake';
 import { routedProvider } from '@sheavly/testing/provider/routed-provider.fake';
@@ -129,7 +130,7 @@ export function testApi(
       const harness = createHarness({
         provider: routedProvider(scripts),
         title: 'Chat',
-        ...(storage && { entries: storage.entries, resume: storage.resume }),
+        ...harnessStorageOptions(storage),
       });
 
       return {
