@@ -50,6 +50,14 @@ describe('the request policy’s probe addresses', () => {
     },
   );
 
+  it('take at most five, since every failed call asks them all', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => `https://probe${String(index)}.test`);
+
+    expect(policy(many(5))).toBe(true);
+    expect(policy(many(6))).toBe(false);
+  });
+
   it.each(['https://user:secret@probe.test', 'https://user@probe.test'])(
     'refuse %s: an address with a user name or password',
     (address) => {

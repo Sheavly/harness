@@ -14,7 +14,13 @@ async function reached(params: {
     signal: AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]),
   });
 
-  await response.body?.cancel();
+  // The answer is what counts: a body that will not cancel does not make the path down.
+  await response.body?.cancel().catch(ignoreCancelFailure);
+}
+
+/** A failed cancel is an error about a body already answered; anything else is not that. */
+function ignoreCancelFailure(caughtError: unknown): void {
+  if (!(caughtError instanceof Error)) throw caughtError;
 }
 
 /**

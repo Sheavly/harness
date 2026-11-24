@@ -50,12 +50,12 @@ export const WAKE_GAP_MS = 5000;
 
 /**
  * A host on this machine or its own network, which losing the internet does not cut off: a name
- * with no dot (`localhost`, `ollama`), `.local` and `.internal` names, `::1` and the private
- * ranges of IPv6 (`fc00::/7`, `fe80::/10`, as a URL writes them, in brackets), and the loopback,
- * private and link-local ranges of IPv4.
+ * with no dot (`localhost`, `ollama`, and one written with a final dot), `.local`, `.internal` and
+ * `.localhost` names, `::1`, `::` and the private ranges of IPv6 (`fc00::/7`, `fe80::/10`, as a URL
+ * writes them, in brackets), and `0.0.0.0` and the loopback, private and link-local ranges of IPv4.
  */
 export const LOCAL_HOST =
-  /^(?:[^.:[\]]+|.+\.(?:local|internal)|\[?::1\]?|\[(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):.*\]|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2})$/i;
+  /^(?:[^.:[\]]+\.?|.+\.(?:local|internal|localhost)\.?|\[?::1?\]?|\[(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):.*\]|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2})$/i;
 
 /** Query parameter names that carry a credential, so an endpoint URL is stored without them. */
 export const SECRET_QUERY_NAME =

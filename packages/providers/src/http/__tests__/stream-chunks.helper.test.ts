@@ -78,6 +78,18 @@ describe('the chunks of a reply', () => {
     expect(lost).toMatchObject({ reason: 'idle' });
   });
 
+  it('stop at once on an interrupt, even from a body that never notices the signal', async () => {
+    const controller = new AbortController();
+    const stop = new Error('stop');
+    const reading = listen(body({ chunks: [] }), 60_000, controller.signal).catch(
+      (caughtError: unknown) => caughtError,
+    );
+
+    controller.abort(stop);
+
+    expect(await reading).toBe(stop);
+  });
+
   it('cancel a body that went silent, so its socket and its pending read are not kept', async () => {
     let cancelled = false;
 

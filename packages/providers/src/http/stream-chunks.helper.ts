@@ -5,10 +5,32 @@ import { networkMessage } from './network-message.utils.js';
 type Reader = ReadableStreamDefaultReader<Uint8Array>;
 type Chunk = Awaited<ReturnType<Reader['read']>>;
 
-/** The next chunk of `reader`, or a `ConnectionLostError` when none arrives within `idleMs`. */
-async function nextWithin(params: { reader: Reader; idleMs: number }): Promise<Chunk> {
-  const { reader, idleMs } = params;
+/**
+ * The next chunk of `reader`, or a `ConnectionLostError` when none arrives within `idleMs`, or the
+ * signal's reason when `signal` aborts first (a body that ignores the signal would otherwise hold
+ * the interrupt until the idle timer).
+ */
+async function nextWithin(params: {
+  reader: Reader;
+  idleMs: number;
+  signal: AbortSignal;
+}): Promise<Chunk> {
+  const { reader, idleMs, signal } = params;
   let timer: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<void>((resolve) => {
+    onAbort = resolve;
+
+    if (signal.aborted) resolve();
+    else signal.addEventListener('abort', resolve, { once: true });
+  });
+  // Rejects with the signal's own reason, as `throwIfAborted` throws it, so an interrupt goes up
+  // as the caller wrote it. Never settles while the signal has not aborted.
+  const interrupted = aborted.then((): never => {
+    signal.throwIfAborted();
+
+    throw new ConnectionLostError({ reason: 'dropped', message: 'The interrupt was lost' });
+  });
   const silent = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       reject(
@@ -21,10 +43,19 @@ async function nextWithin(params: { reader: Reader; idleMs: number }): Promise<C
   });
 
   try {
-    return await Promise.race([reader.read(), silent]);
+    return await Promise.race([reader.read(), silent, interrupted]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) signal.removeEventListener('abort', onAbort);
   }
+}
+
+/**
+ * Cancelling a body that is already closed or broken can reject with its own error, which says
+ * nothing new: the read that failed has been reported. Anything that is not an error is not that.
+ */
+function ignoreCancelFailure(caughtError: unknown): void {
+  if (!(caughtError instanceof Error)) throw caughtError;
 }
 
 /** One chunk, with a failed read turned into the loss of the connection. */
@@ -36,7 +67,7 @@ async function nextChunk(params: {
   const { reader, idleMs, signal } = params;
 
   try {
-    return await nextWithin({ reader, idleMs });
+    return await nextWithin({ reader, idleMs, signal });
   } catch (caughtError) {
     if (signal.aborted || caughtError instanceof ConnectionLostError) throw caughtError;
 
@@ -80,11 +111,14 @@ export async function* streamChunks(params: {
     }
   } catch (caughtError) {
     // A body that ended or failed is closed already, and cancelling it would only throw its error
-    // a second time. One that went silent is still open, as is one the caller stopped reading.
-    open = caughtError instanceof ConnectionLostError && caughtError.reason === 'idle';
+    // a second time. One that went silent is still open, as is one the caller interrupted.
+    open =
+      signal.aborted ||
+      (caughtError instanceof ConnectionLostError && caughtError.reason === 'idle');
 
     throw caughtError;
   } finally {
-    if (open) await reader.cancel();
+    // Not awaited: a cancel that never settles must not hold a run that already knows its answer.
+    if (open) void reader.cancel().catch(ignoreCancelFailure);
   }
 }

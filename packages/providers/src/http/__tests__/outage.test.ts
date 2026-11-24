@@ -80,17 +80,18 @@ const send = (params: {
     signal: params.signal ?? new AbortController().signal,
   });
 
+/** Fakes the timers a wait uses and nothing else, so the clock stays the fixed one. */
+function timersOnly(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+}
+
 describe('a call with no connection to its provider', () => {
   const clock = useFixedClock();
 
   // Only the timers are fake: every wait while offline is at least a second, and the clock a
   // call reads is the fixed one, so a test decides how much time "passed".
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  beforeEach(timersOnly);
+  afterEach(vi.useRealTimers);
 
   /** Lets every wait of `running` pass, and returns how it ended. */
   async function settled(running: Promise<unknown>): Promise<unknown> {

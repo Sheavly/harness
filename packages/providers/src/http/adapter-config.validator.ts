@@ -58,6 +58,7 @@ export const requestPolicySchema = z
     retries: z.number().int().min(0).max(10),
     retryDelayMs: z.number().int().min(0),
     offlineTimeoutMs: z.number().int().min(0),
-    probeUrls: z.array(probeUrlSchema),
+    // Every failed call asks all of them at once, so the list stays short.
+    probeUrls: z.array(probeUrlSchema).max(5),
   })
   .meta({ [FIELD_KIND.host]: true });

@@ -17,6 +17,10 @@ describe('a host on this machine or its own network', () => {
     '169.254.169.254',
     'gpu-box.local',
     'gateway.corp.internal',
+    'api.localhost',
+    'localhost.',
+    '0.0.0.0',
+    '[::]',
     '[fd12:3456::1]',
     '[fe80::1]',
   ])('is %s', (host) => {
