@@ -71,49 +71,89 @@ describe('undeliveredAgents', () => {
     expect(undeliveredAgents({ main: MAIN, sessions: [agent('a')], history })).toEqual([]);
   });
 
-  it('skips one delivered by a notice of its starting call, alone or in a group', () => {
-    const finished = {
+  it('skips one whose failure a task-finished delivered, alone or in a group, by the session its task ran', () => {
+    const context = { reason: 'x', startedAt: 1, durationMs: 0, userMessagesSinceStart: 0 };
+    const finished = (session: string) => ({
       kind: 'task-finished',
       task: {
         id: 't1',
         command: 'x',
         description: 'x',
-        kind: 'task',
+        kind: 'agent',
+        status: 'failed',
+        output: '',
+        startedAt: 1,
+        agentSessionId: session,
+      },
+      context,
+    });
+    const grouped = {
+      kind: 'tasks-finished',
+      reason: 'wait',
+      context,
+      notices: [finished('b')],
+    };
+    const sessions = [agent('a'), agent('b')];
+
+    expect(undeliveredAgents({ main: MAIN, sessions, history: [notice(finished('a'))] })).toEqual([
+      agent('b'),
+    ]);
+    expect(undeliveredAgents({ main: MAIN, sessions, history: [notice(grouped)] })).toEqual([
+      agent('a'),
+    ]);
+  });
+
+  it('does not take a call id for a session: sub-agents that share one are told apart', () => {
+    // A provider repeats call ids, so two sub-agents can have started by the same one.
+    const shared = { startedByCall: 'call_0' };
+    const delivered = notice({
+      kind: 'task-finished',
+      task: {
+        id: 't1',
+        command: 'x',
+        description: 'x',
+        kind: 'agent',
+        status: 'failed',
+        output: '',
+        startedAt: 1,
+        callId: 'call_0',
+        agentSessionId: 'a',
+      },
+      context: {
+        reason: 'x',
+        startedAt: 1,
+        durationMs: 0,
+        userMessagesSinceStart: 0,
+        callId: 'call_0',
+      },
+    });
+    const sessions = [agent('a', shared), agent('b', shared)];
+
+    // `a` was told about; `b` shares its call id and was not, so it is still owed.
+    expect(undeliveredAgents({ main: MAIN, sessions, history: [delivered] })).toEqual([
+      agent('b', shared),
+    ]);
+  });
+
+  it('owes a sub-agent whose only notice names no session, as one stored before the field existed', () => {
+    const oldNotice = notice({
+      kind: 'task-finished',
+      task: {
+        id: 't1',
+        command: 'x',
+        description: 'x',
+        kind: 'agent',
         status: 'failed',
         output: '',
         startedAt: 1,
         callId: 'call-a',
       },
       context: { reason: 'x', startedAt: 1, durationMs: 0, userMessagesSinceStart: 0 },
-    };
-    const grouped = {
-      kind: 'tasks-finished',
-      reason: 'wait',
-      context: { reason: 'x', startedAt: 1, durationMs: 0, userMessagesSinceStart: 0 },
-      notices: [
-        {
-          kind: 'agent-report',
-          agent: agent('z'),
-          outcome: 'completed',
-          report: 'r',
-          context: {
-            reason: 'x',
-            startedAt: 1,
-            durationMs: 0,
-            userMessagesSinceStart: 0,
-            callId: 'call-b',
-          },
-        },
-      ],
-    };
-    const sessions = [agent('a'), agent('b')];
+    });
 
-    expect(undeliveredAgents({ main: MAIN, sessions, history: [notice(finished)] })).toEqual([
-      agent('b'),
-    ]);
-    expect(undeliveredAgents({ main: MAIN, sessions, history: [notice(grouped)] })).toEqual([
-      agent('a'),
-    ]);
+    expect(undeliveredAgents({ main: MAIN, sessions: [agent('a')], history: [oldNotice] })).toEqual(
+      [agent('a')],
+    );
   });
 
   it('ignores sub-agents of another session', () => {

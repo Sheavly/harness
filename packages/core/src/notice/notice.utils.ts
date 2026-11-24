@@ -5,7 +5,7 @@ import type {
   TaskCompletionContext,
 } from '@sheavly/protocol/notice/notice.types';
 import { outputReferenceLines } from '../output/output.utils.js';
-import { attributeValue, escapeTags, fenceDashes, oneLine } from '../text/text.utils.js';
+import { attributeValue, escapedLine, escapeTags, fenceDashes } from '../text/text.utils.js';
 import {
   renderAgentReport,
   renderCompletionContext,
@@ -99,9 +99,7 @@ function formatAgentReport(notice: Extract<HarnessNotice, { kind: 'agent-report'
 }
 
 /** A header field as one escaped line: the harness made most of them, but history is a file. */
-function line(text: string): string {
-  return oneLine(escapeTags(text));
-}
+const line = escapedLine;
 
 /** A finished task: how it ended, and its bounded output preview as data. */
 function formatTaskFinished(notice: Extract<HarnessNotice, { kind: 'task-finished' }>): string {

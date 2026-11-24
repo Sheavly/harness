@@ -1,5 +1,6 @@
 import { DEFAULT_TASK_OUTPUT_CHARS, WORK_IS_SUB_AGENT } from './tasks.constants.js';
 import { outputReferenceLines } from '@sheavly/core/output/output.utils';
+import { escapedLine } from '@sheavly/core/text/text.utils';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunningTask } from '@sheavly/protocol/notice/notice.types';
@@ -91,6 +92,16 @@ export function runningTaskOf(params: { info: TaskInfo; group: TaskId | undefine
   };
 }
 
+/** The tail of `output` that fits `chars`, marked as cut; nothing at all when no characters are asked for. */
+function previewOf(params: { output: string; chars: number }): string {
+  const { output, chars } = params;
+
+  // Not `chars <= 0`: a NaN is no count either, and must not read as "the whole output".
+  if (!(chars > 0)) return '';
+
+  return output.length > chars ? `[…]\n${output.slice(-chars)}` : output;
+}
+
 /**
  * One readable block for the model: header line, command, then the task's result. A task that
  * returned a `report` shows it whole and nothing else of its output: the output is progress, and
@@ -111,16 +122,20 @@ export function formatTask(params: {
   if (task.exitCode !== undefined) parts.push(`exit code ${task.exitCode ?? 'unknown'}`);
   parts.push(`${elapsed.toFixed(1)}s`);
 
-  const preview =
-    task.output.length > outputChars ? `[…]\n${task.output.slice(-outputChars)}` : task.output;
+  const preview = previewOf({ output: task.output, chars: outputChars });
   const output = report ?? preview;
   // A task's own preview is cut to `outputChars`, so the reference is compared with what is shown.
+  // A list asks for none (`outputChars` 0) and gets headers only, so it carries no reference.
   const reference =
-    report === undefined ? outputReferenceLines({ log: task.outputLog, shown: preview }) : [];
+    report === undefined && outputChars > 0
+      ? outputReferenceLines({ log: task.outputLog, shown: preview })
+      : [];
 
+  // The command is a line anyone who started the task wrote (an extension names its own work), and
+  // an error can quote one: neither may close a tag or start a line of its own.
   return [
-    `[task ${task.id} · ${parts.join(' · ')}] $ ${task.command}`,
-    task.error,
+    `[task ${task.id} · ${parts.join(' · ')}] $ ${escapedLine(task.command)}`,
+    task.error === undefined ? undefined : escapedLine(task.error),
     output.trimEnd(),
     ...reference,
   ]

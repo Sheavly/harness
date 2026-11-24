@@ -1,5 +1,4 @@
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
-import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { HarnessNotice } from '@sheavly/protocol/notice/notice.types';
 import type { RunOutcome, SessionId, SessionInfo } from '@sheavly/protocol/session/session.types';
 
@@ -11,8 +10,8 @@ type SubAgent = Extract<SessionInfo, { parentId: SessionId }>;
 
 /**
  * The sub-agents of `main` that ended and whose report never reached `history`, as stored, oldest
- * first. A sub-agent is delivered when `history` has an `agent-report` for its session, or a
- * completion notice for its starting call, alone or in a group.
+ * first. A sub-agent is delivered when `history` has a notice that names its session: an
+ * `agent-report`, or a `task-finished` of the task that ran it, alone or in a group.
  */
 export function undeliveredAgents(params: {
   main: SessionId;
@@ -24,9 +23,7 @@ export function undeliveredAgents(params: {
 
   return sessions
     .filter((session): session is SubAgent => 'parentId' in session && session.parentId === main)
-    .filter(
-      (agent) => !delivered.sessions.has(agent.id) && !delivered.calls.has(agent.startedByCall),
-    )
+    .filter((agent) => !delivered.sessions.has(agent.id))
     .toSorted((first, second) => first.startedAt - second.startedAt);
 }
 
@@ -85,10 +82,18 @@ export function restoredReportNotices(params: {
   });
 }
 
-type Delivered = { sessions: Set<SessionId>; calls: Set<CallId> };
+type Delivered = { sessions: Set<SessionId> };
 
+/**
+ * The sub-agent sessions history already tells the model about. A notice names its agent by
+ * session, never by the tool call that started it: a provider repeats call ids (`call_0` in every
+ * turn), so a call id says which of several sub-agents it was no better than which of several
+ * tasks. A `task-finished` names the session its task ran (`TaskInfo.agentSessionId`), which a
+ * conversation stored before that field existed does not carry: the failure of such a sub-agent is
+ * told once more when the conversation is reopened.
+ */
 function deliveredIn(history: readonly HistoryMessage[]): Delivered {
-  const delivered: Delivered = { sessions: new Set(), calls: new Set() };
+  const delivered: Delivered = { sessions: new Set() };
 
   for (const message of history) {
     if (message.role !== 'notice') continue;
@@ -108,16 +113,9 @@ function noteDelivered(params: { notice: HarnessNotice; delivered: Delivered }):
 
   if (notice.kind === 'agent-report') {
     delivered.sessions.add(notice.agent.id);
-    addCall({ delivered, callId: notice.context.callId });
-
-    return;
   }
 
-  if (notice.kind === 'task-finished') {
-    addCall({ delivered, callId: notice.task.callId ?? notice.context.callId });
+  if (notice.kind === 'task-finished' && notice.task.agentSessionId !== undefined) {
+    delivered.sessions.add(notice.task.agentSessionId);
   }
-}
-
-function addCall(params: { delivered: Delivered; callId: CallId | undefined }): void {
-  if (params.callId !== undefined) params.delivered.calls.add(params.callId);
 }

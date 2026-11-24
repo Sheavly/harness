@@ -24,7 +24,7 @@ import type { Provider } from '@sheavly/core/provider/provider.types';
 | `notice/`              | `formatHarnessNotice`: model-facing formatting of shared protocol notices, transient and persistent                                          |
 | `history/`             | `latestRequest`, `latestRequestIndex`, `latestPromptIndex`: what counts as a request in stored history                                       |
 | `summary/`             | `Summarizer`, `SummaryOptions` and `SummaryPolicy` (what writes a checkpoint, and when), and `formatCheckpoint`                              |
-| `text/`                | `neutralize`, `escapeTags`, `oneLine`: keep model-written text from opening or closing an envelope                                           |
+| `text/`                | `neutralize`, `escapeTags`, `oneLine`, `escapedLine`: keep model-written text from opening or closing an envelope                            |
 | `instruction-context/` | `createInstructionHook`, `registerInstructionHooks`: the one factory for instruction sources; `appendInstructionContext` dedups from history |
 | `adapter/`             | `Adapter` types and `defineAdapter`, for model backends                                                                                      |
 | `output/`              | `OutputStore` (`OutputReader` + `OutputCapture`): a conversation's complete command output, and the lines that tell the model where it is    |
