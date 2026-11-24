@@ -53,7 +53,7 @@ export function createMessagesProvider(config: MessagesProviderConfig): Provider
         config.promptCaching !== false && notices?.length
           ? withNotices({ messages: withCacheBreakpoint(apiMessages), notices })
           : sent;
-      const response = await sendRequest({
+      const response = yield* sendRequest({
         api: MESSAGES_API,
         fetch: config.fetch,
         url: new URL(`${endpoint.baseUrl}/messages`),

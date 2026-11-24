@@ -12,7 +12,13 @@ import { createDefaultRegistry } from '@sheavly/providers/registry/default-regis
 import { ProviderSwitch } from '@sheavly/providers/switch/switch.service';
 
 const registry = createDefaultRegistry();
-const request = { responseTimeoutMs: 60_000, retries: 2, retryDelayMs: 1000 };
+const request = {
+  responseTimeoutMs: 60_000,
+  retries: 2,
+  retryDelayMs: 1000,
+  offlineTimeoutMs: 3_600_000, // wait up to an hour for a lost connection (0: never)
+  probeUrls: ['https://www.gstatic.com/generate_204', 'https://1.1.1.1'],
+};
 
 // A provider is added under the model's id, never its display name: the id is what is switched by.
 const SOL = '4b1f9a52-3c5e-4a77-9d64-0e2b7f1c8a30';
@@ -263,6 +269,24 @@ and types without including text, arguments or signatures.
   and 5xx; any other HTTP error fails at once. Once an event has streamed it never retries, since
   the turn may have started tools: a stream cut off mid-reply fails the run.
 - An interrupt (the run's `signal`) stops the wait and every attempt, and is never retried.
+- `offlineTimeoutMs` and `probeUrls`: a call that gets no HTTP answer at all (a network error or a
+  timeout) is either this machine having lost its connection or the provider being down, and
+  only the first is waited for (`http/outage.helper.ts`). After such a failure the call asks every
+  `probeUrls` address, over the same `fetch`, for its headers (`http/connectivity.helper.ts`; any
+  HTTP answer, whatever its status, shows the path is up). If one answers, the provider is the
+  problem: the retries above apply and the error is reported, never an hour's wait. If none does,
+  the call waits for the connection and asks again, 1s doubling to 30s apart (`retryDelayMs`
+  is the first wait), for up to `offlineTimeoutMs`. Only time the machine was awake counts: the
+  wait is cut into one-second slices, and a slice that ran `WAKE_GAP_MS` over means the machine
+  slept, so the count starts over and the next attempt is made at once. It never waits for a model
+  on this machine (a loopback host), with no `probeUrls` (a lost connection can't be told from a
+  provider that is down), or with `offlineTimeoutMs` 0. It gives up with the failure and how long it
+  waited, or when `signal` aborts.
+- While it waits or retries, `sendRequest` yields `model_connection` reports (`offline` once;
+  `provider_unreachable`, with the retry's number, before each retry of the provider's own
+  failures, 429 and 5xx included; `restored` once a call that reported got through), and each
+  provider streams them before the reply. Without `probeUrls` a dropped request is reported as
+  `provider_unreachable`, since the call cannot tell.
 
 A call that still fails throws a `ModelApiError` (its message names the API) whose `reason` says why (`network`,
 `timeout`, `http` with its `status`), with the original error as `cause` and Node's own reason

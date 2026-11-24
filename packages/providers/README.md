@@ -11,23 +11,29 @@ const provider = createDefaultRegistry().create('openai', {
   apiKey,
   model: 'gpt-6.1-sol',
   // How a call is sent: required, like the model, since it is the caller's choice.
-  request: { responseTimeoutMs: 60_000, retries: 2, retryDelayMs: 1000 },
+  request: {
+    responseTimeoutMs: 60_000,
+    retries: 2,
+    retryDelayMs: 1000,
+    offlineTimeoutMs: 3_600_000, // wait up to an hour for a lost connection (0: never)
+    probeUrls: ['https://www.gstatic.com/generate_204', 'https://1.1.1.1'],
+  },
 });
 ```
 
-| Module                | What it holds                                                                                                                                                                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `registry/`           | `AdapterRegistry` (kind + config → `Provider`), `describe`, `validateDefinition`, `check`                                                                                                                                                     |
-| `switch/`             | `ProviderSwitch`: swap, remove or pin a provider between turns (states tabled in the class)                                                                                                                                                   |
-| `http/`               | What every protocol shares: `sendRequest` and its retry policy, `readReply`, replay check, output-token limits, and `createModelFetch`, the `fetch` model calls use ([why](docs/backends.md#the-model-fetch-one-tcp-segment-per-clienthello)) |
-| `responses/`          | The OpenAI Responses protocol: `createResponsesProvider`, `defineResponsesAdapter`                                                                                                                                                            |
-| `chat-completions/`   | Native Chat Completions: `createChatCompletionsProvider`, `defineChatCompletionsAdapter`, `readChatReply`                                                                                                                                     |
-| `anthropic-messages/` | The Anthropic Messages protocol: `createMessagesProvider`, `defineMessagesAdapter`                                                                                                                                                            |
-| `openai/`             | Backend: config → Responses endpoint (Bearer key)                                                                                                                                                                                             |
-| `azure/`              | Azure backends: `openai.adapter` (Responses), `chat.adapter` (Chat Completions), `anthropic.adapter` (Messages)                                                                                                                               |
-| `bedrock/`            | Amazon Bedrock backends: `anthropic.adapter` (Claude, Messages), `openai.adapter` (GPT, Responses)                                                                                                                                            |
-| `errors/`             | `AdapterError`, `ModelApiError`, `ProviderSwitchError`                                                                                                                                                                                        |
-| `testing/`            | Fakes for tests: Responses API items, a model call, a local server that captures a TLS ClientHello (`client-hello.fake`)                                                                                                                      |
+| Module                | What it holds                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registry/`           | `AdapterRegistry` (kind + config → `Provider`), `describe`, `validateDefinition`, `check`                                                                                                                                                                                     |
+| `switch/`             | `ProviderSwitch`: swap, remove or pin a provider between turns (states tabled in the class)                                                                                                                                                                                   |
+| `http/`               | What every protocol shares: `sendRequest`, its retry policy and its wait for a lost connection, `readReply`, replay check, output-token limits, and `createModelFetch`, the `fetch` model calls use ([why](docs/backends.md#the-model-fetch-one-tcp-segment-per-clienthello)) |
+| `responses/`          | The OpenAI Responses protocol: `createResponsesProvider`, `defineResponsesAdapter`                                                                                                                                                                                            |
+| `chat-completions/`   | Native Chat Completions: `createChatCompletionsProvider`, `defineChatCompletionsAdapter`, `readChatReply`                                                                                                                                                                     |
+| `anthropic-messages/` | The Anthropic Messages protocol: `createMessagesProvider`, `defineMessagesAdapter`                                                                                                                                                                                            |
+| `openai/`             | Backend: config → Responses endpoint (Bearer key)                                                                                                                                                                                                                             |
+| `azure/`              | Azure backends: `openai.adapter` (Responses), `chat.adapter` (Chat Completions), `anthropic.adapter` (Messages)                                                                                                                                                               |
+| `bedrock/`            | Amazon Bedrock backends: `anthropic.adapter` (Claude, Messages), `openai.adapter` (GPT, Responses)                                                                                                                                                                            |
+| `errors/`             | `AdapterError`, `ModelApiError`, `ProviderSwitchError`                                                                                                                                                                                                                        |
+| `testing/`            | Fakes for tests: Responses API items, a model call, a local server that captures a TLS ClientHello (`client-hello.fake`)                                                                                                                                                      |
 
 The caller chooses the backend and the model: adapters validate config but have no default model.
 Messages and Responses providers attach reported token usage to the final `done` event. Messages

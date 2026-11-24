@@ -14,6 +14,30 @@ export const MS_PER_SECOND = 1000;
  */
 export const MAX_RETRY_AFTER_MS = 60_000;
 
+/** Milliseconds in a minute: an outage is reported in minutes once it is a minute long. */
+export const MS_PER_MINUTE = 60_000;
+
+/** How long one connectivity probe waits for any answer before it counts as failed. */
+export const PROBE_TIMEOUT_MS = 5000;
+
+/** The longest wait between two attempts while offline: a connection that is back is noticed within it. */
+export const OFFLINE_MAX_DELAY_MS = 30_000;
+
+/** Doublings of the retry delay while offline stop here, so `2 ** round` never grows without bound. */
+export const OFFLINE_MAX_BACKOFF_ROUNDS = 8;
+
+/** A wait while offline is cut into slices this long, so a machine that slept is noticed at its first. */
+export const WAKE_CHECK_MS = 1000;
+
+/**
+ * A step that took this much longer than it was meant to is taken for the machine having slept:
+ * timers stop while it does, and the wall clock does not.
+ */
+export const WAKE_GAP_MS = 5000;
+
+/** A host only this machine can reach: `localhost`, `::1` (as a URL writes it, in brackets) or `127.x.x.x`. */
+export const LOOPBACK_HOST = /^(localhost|\[?::1\]?|127(\.\d{1,3}){3})$/i;
+
 /** Query parameter names that carry a credential, so an endpoint URL is stored without them. */
 export const SECRET_QUERY_NAME =
   /(?:^|[-_])(?:api[-_]?key|key|token|secret|sig|signature|auth|authorization|password|credential)s?(?:$|[-_])/i;

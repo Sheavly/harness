@@ -13,6 +13,8 @@ const policy = (fields: Partial<RequestPolicy> = {}): RequestPolicy => ({
   responseTimeoutMs: 1000,
   retries: 2,
   retryDelayMs: 0,
+  offlineTimeoutMs: 0,
+  probeUrls: [],
   ...fields,
 });
 
@@ -72,6 +74,21 @@ describe('sending a Responses call', () => {
 
     await expect(run({ fetch })).resolves.toContainEqual({ type: 'text_delta', text: 'ok' });
     expect(calls.count).toBe(3);
+  });
+
+  it('streams what it says about the connection before the reply, and keeps it out of the reply', async () => {
+    // The model call is dropped, then the probe fails too (the second fetch), so the call waits.
+    const { fetch } = scriptedFetch([dropped(), dropped()]);
+    const events = await run({
+      fetch,
+      request: policy({ offlineTimeoutMs: 3_600_000, probeUrls: ['https://probe.test'] }),
+    });
+
+    expect(events.slice(0, 2)).toMatchObject([
+      { type: 'model_connection', state: 'offline' },
+      { type: 'model_connection', state: 'restored' },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
   });
 
   it('gives up after its retries, naming the reason and keeping the cause', async () => {

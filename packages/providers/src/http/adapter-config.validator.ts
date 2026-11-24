@@ -29,8 +29,9 @@ export const explicitCacheSchema = z.boolean().meta({
 });
 
 /**
- * How a call is sent: how long to wait for the response to start, and how often to retry one
- * that failed before anything streamed. Required, with no defaults: like the model, it is the
+ * How a call is sent: how long to wait for the response to start, how often to retry one that
+ * failed before anything streamed, and how long to wait for a lost connection to come back.
+ * Required, with no defaults: like the model, it is the
  * caller's choice. See `RequestPolicy`. Host-owned: a model's file doesn't hold it, the backend
  * supplies it.
  */
@@ -39,5 +40,7 @@ export const requestPolicySchema = z
     responseTimeoutMs: z.number().int().positive(),
     retries: z.number().int().min(0).max(10),
     retryDelayMs: z.number().int().min(0),
+    offlineTimeoutMs: z.number().int().min(0),
+    probeUrls: z.array(z.url()),
   })
   .meta({ [FIELD_KIND.host]: true });

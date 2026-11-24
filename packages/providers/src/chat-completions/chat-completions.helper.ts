@@ -23,7 +23,7 @@ export function createChatCompletionsProvider(config: ChatProviderConfig): Provi
     async *stream(request) {
       const url = new URL(endpoint.url);
 
-      const response = await sendRequest({
+      const response = yield* sendRequest({
         api: 'Chat Completions API',
         fetch: config.fetch,
         url,

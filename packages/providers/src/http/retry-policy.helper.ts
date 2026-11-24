@@ -1,5 +1,10 @@
 import { httpDateMs, now } from '@sheavly/core/clock/clock.helper';
-import { MAX_RETRY_AFTER_MS, MS_PER_SECOND } from './http.constants.js';
+import {
+  MAX_RETRY_AFTER_MS,
+  MS_PER_SECOND,
+  OFFLINE_MAX_BACKOFF_ROUNDS,
+  OFFLINE_MAX_DELAY_MS,
+} from './http.constants.js';
 
 /**
  * The one retry policy of a model call. A call is retried only before its response headers
@@ -49,4 +54,24 @@ export function backoffMs(params: {
   const jittered = ceiling / 2 + (ceiling / 2) * params.random();
 
   return Math.max(params.serverWaitMs, jittered);
+}
+
+/**
+ * How long to wait before asking again while this machine has no connection: `backoffMs` with no
+ * server to ask, its doubling stopped after `OFFLINE_MAX_BACKOFF_ROUNDS` and the whole cut to
+ * `OFFLINE_MAX_DELAY_MS`, so a connection that is back is found within that, however long it was gone.
+ */
+export function offlineBackoffMs(params: {
+  round: number;
+  retryDelayMs: number;
+  random: () => number;
+}): number {
+  const delay = backoffMs({
+    tried: Math.min(params.round, OFFLINE_MAX_BACKOFF_ROUNDS),
+    retryDelayMs: params.retryDelayMs,
+    serverWaitMs: 0,
+    random: params.random,
+  });
+
+  return Math.min(delay, OFFLINE_MAX_DELAY_MS);
 }

@@ -44,7 +44,7 @@ export function createResponsesProvider(config: ResponsesProviderConfig): Provid
         url.searchParams.set(key, value);
       }
 
-      const response = await sendRequest({
+      const response = yield* sendRequest({
         api: 'Responses API',
         fetch: config.fetch,
         url,
