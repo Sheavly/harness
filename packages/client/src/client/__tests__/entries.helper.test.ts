@@ -66,6 +66,23 @@ describe('readEntries', () => {
     expect(read).toEqual([extensionEntry]);
   });
 
+  it('reads an entry whose text holds U+2028 or U+2029, which JSON leaves unescaped', async () => {
+    const started = entry(7);
+    const withSeparators = {
+      ...started,
+      update: {
+        ...started.update,
+        task: { ...started.update.task, output: 'before\u2028middle\u2029after' },
+      },
+    };
+    const sse = `event: entry\nid: 7\ndata: ${JSON.stringify(withSeparators)}\n\n`;
+    const read = [];
+
+    for await (const { entry: parsed } of readEntries(body([sse]))) read.push(parsed);
+
+    expect(read).toEqual([withSeparators]);
+  });
+
   it('reads nothing from no body', async () => {
     const seen: unknown[] = [];
 

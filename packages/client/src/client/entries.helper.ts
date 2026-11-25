@@ -46,13 +46,27 @@ export async function* readFrames(body: ReadableStream<Uint8Array> | null): Asyn
 }
 
 /**
+ * The value of the first `name: value` line. Lines are split on `\n` alone, never matched with
+ * `.` or `$`: those also stop at U+2028 and U+2029, which JSON leaves unescaped in a string, and
+ * would cut an entry's data short.
+ */
+function fieldOf(params: { lines: readonly string[]; name: string }): string | undefined {
+  const { lines, name } = params;
+  const prefix = `${name}: `;
+  const line = lines.find((each) => each.startsWith(prefix));
+
+  return line?.slice(prefix.length);
+}
+
+/**
  * One frame's cursor and entry: an entry frame, or a head frame (an `id` and nothing else, no
  * entry). Undefined for a heartbeat comment or another event's frame.
  */
 function parseFrame(frame: string): { cursor: string; entry: StreamEntry | undefined } | undefined {
-  const event = /^event: (.*)$/m.exec(frame)?.[1];
-  const id = /^id: (.*)$/m.exec(frame)?.[1];
-  const data = /^data: (.*)$/m.exec(frame)?.[1];
+  const lines = frame.split('\n');
+  const event = fieldOf({ lines, name: 'event' });
+  const id = fieldOf({ lines, name: 'id' });
+  const data = fieldOf({ lines, name: 'data' });
 
   if (id === undefined) return undefined;
   if (event === undefined && data === undefined) return { cursor: id, entry: undefined };
