@@ -165,6 +165,98 @@ describe('the closed entry of a node channel', () => {
   });
 });
 
+describe('how a command’s output ended, on its closed entry', () => {
+  /** A command's closed entry, with `output` when there is one: an absent key, never `undefined`. */
+  const closed = (output: unknown, more: object = {}) => ({
+    channel: 't1',
+    cursor: 'b40',
+    at: 2,
+    type: 'closed',
+    state: 'completed',
+    exitCode: 0,
+    ...(output !== undefined && { output }),
+    ...more,
+  });
+
+  it('is complete, or incomplete with what was lost', () => {
+    expect(accepts(closed({ status: 'complete' }))).toBe(true);
+    expect(
+      accepts(closed({ status: 'incomplete', reason: 'the stored output reached its limit' })),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['incomplete with no reason', { status: 'incomplete' }],
+    ['complete with a reason', { status: 'complete', reason: 'nothing was lost' }],
+    ['still capturing: its log was closed before the node ended', { status: 'capturing' }],
+    ['a reason over its cap', { status: 'incomplete', reason: 'x'.repeat(1_001) }],
+    ['an unknown status', { status: 'lost' }],
+  ])('refuses %s', (_name, output) => {
+    expect(accepts(closed(output))).toBe(false);
+  });
+
+  it('is only on a channel counted in bytes: an agent’s has no output', () => {
+    expect(accepts(closed({ status: 'complete' }, { channel: 'agent-1', cursor: 's9' }))).toBe(
+      false,
+    );
+  });
+
+  it('is optional: a command that kept no output, or a node that was lost, says nothing of it', () => {
+    expect(accepts(closed(undefined))).toBe(true);
+    expect(accepts({ channel: 't1', cursor: 'b0', at: 2, type: 'closed', state: 'lost' })).toBe(
+      true,
+    );
+  });
+});
+
+describe('the output entry of a command or service channel', () => {
+  const output = (more: object = {}) => ({
+    channel: 't1',
+    cursor: 'b5',
+    at: 2,
+    type: 'output',
+    offset: 0,
+    text: 'hello',
+    ...more,
+  });
+  const served = (value: unknown) => channelEntrySchema.safeParse(value).success;
+
+  it('is text and the offset of its first byte, with the offset after it as its cursor', () => {
+    expect(served(output())).toBe(true);
+    expect(served(output({ offset: 100, cursor: 'b105' }))).toBe(true);
+  });
+
+  it('counts bytes, not characters: a character of UTF-8 is up to four', () => {
+    // é is two bytes, € three, 😀 four.
+    expect(served(output({ text: 'é€😀', cursor: 'b9' }))).toBe(true);
+    expect(served(output({ text: 'é€😀', cursor: 'b5' }))).toBe(false);
+  });
+
+  it('is at most 16 KiB of bytes, so a chunk of wide characters is cut by its bytes', () => {
+    expect(served(output({ text: 'a'.repeat(16_384), cursor: 'b16384' }))).toBe(true);
+    expect(served(output({ text: 'a'.repeat(16_385), cursor: 'b16385' }))).toBe(false);
+    // 5,462 euro signs are 16,386 bytes, though far fewer characters than 16,384.
+    expect(served(output({ text: '€'.repeat(5_462), cursor: 'b16386' }))).toBe(false);
+  });
+
+  it.each([
+    ['a cursor that is not the offset after it', output({ cursor: 'b4' })],
+    ['a cursor before its own offset', output({ offset: 10, cursor: 'b5' })],
+    ['a sequence cursor', output({ cursor: 's5' })],
+    ['no text', output({ text: '', cursor: 'b0' })],
+    ['an offset that is not whole', output({ offset: 0.5, cursor: 'b5' })],
+    ['a negative offset', output({ offset: -1, cursor: 'b4' })],
+    ['text that is not text: a lone surrogate', output({ text: 'a\ud800', cursor: 'b4' })],
+  ])('refuses %s', (_name, value) => {
+    expect(served(value)).toBe(false);
+  });
+
+  it('is not an entry of a channel’s stored log between its boundaries: it is served, not kept', () => {
+    // A stored channel is the two boundary entries; an output entry is made from the output store.
+    expect(accepts(output())).toBe(false);
+  });
+});
+
 describe('the entries of the tree channel', () => {
   const tree = (type: string, cursor: string) => ({ channel: 'tree', cursor, at: 1, type });
 

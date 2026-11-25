@@ -1,12 +1,18 @@
 import { z } from 'zod';
-import { MAX_NODE_ERROR_CHARS, TREE_CHANNEL_NAME } from '../node/node.constants.js';
+import {
+  MAX_NODE_ERROR_CHARS,
+  MAX_NODE_REASON_CHARS,
+  TREE_CHANNEL_NAME,
+} from '../node/node.constants.js';
 import { nodeIdSchema, nodeInfoSchema } from '../node/node.validator.js';
+import { outputStatusSchema } from '../output/output.validator.js';
 import { runOutcomeSchema } from '../session/session.validator.js';
 import { NODE_END_STATES, NODE_STATE_OF_OUTCOME } from '../status/status.constants.js';
 import { timestampSchema } from '../time/time.validator.js';
 import {
   BYTE_CURSOR_PATTERN,
   MAX_ENTRY_TYPE_CHARS,
+  MAX_OUTPUT_CHUNK_BYTES,
   SEQUENCE_CURSOR_PATTERN,
 } from './channel.constants.js';
 import {
@@ -72,8 +78,27 @@ const nodeOpenedSchema = entrySchema
   );
 
 /**
+ * How a command's or a service's output ended, on its `closed` entry: `complete`, or `incomplete`
+ * with what was lost (a limit, a failed write), so what was served is a prefix of the output and is
+ * never presented as all of it. The log was closed before the node ended, so it is never still
+ * `capturing`.
+ */
+const outputEndSchema = z
+  .object({
+    status: outputStatusSchema.exclude(['capturing']),
+    /** Present exactly when `status` is `incomplete`. */
+    reason: z.string().max(MAX_NODE_REASON_CHARS).exactOptional(),
+  })
+  .refine(({ status, reason }) => (status === 'incomplete') === (reason !== undefined), {
+    error: 'reason is given exactly when the output is incomplete',
+    path: ['reason'],
+  });
+
+/**
  * The last entry of a node's channel: how the node ended. The outcome and the exit code are the
- * detail the state does not keep, and an outcome is one the state comes from.
+ * detail the state does not keep, and an outcome is one the state comes from. A command's or a
+ * service's, which counts bytes, also says how its output ended (`output`), and its cursor is where
+ * the output stood: the bytes before it are all that was kept.
  */
 const nodeClosedSchema = entrySchema
   .extend({
@@ -84,12 +109,52 @@ const nodeClosedSchema = entrySchema
     outcome: runOutcomeSchema.exactOptional(),
     /** A command's or a service's exit code. */
     exitCode: z.number().int().nullable().exactOptional(),
+    /** How a command's or a service's output ended. */
+    output: outputEndSchema.exactOptional(),
     error: z.string().max(MAX_NODE_ERROR_CHARS).exactOptional(),
   })
   .refine(
     ({ state, outcome }) =>
       outcome === undefined || state === 'lost' || NODE_STATE_OF_OUTCOME[outcome] === state,
     { error: 'a closed entry has the state its outcome comes from', path: ['state'] },
+  )
+  .refine(
+    ({ cursor, output }) => output === undefined || byteCursorSchema.safeParse(cursor).success,
+    {
+      error: 'only a channel counted in bytes has an output to say how it ended',
+      path: ['output'],
+    },
+  );
+
+/** How many bytes `text` is as UTF-8: what a byte cursor counts. */
+const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
+
+/**
+ * A part of the output of a command or a service: its text, and the byte offset of its first byte.
+ * The entry's cursor is the offset after it, so a client that sends the last cursor it saw asks for
+ * the bytes from there, and the next entry starts where this one ended. It is not stored in the
+ * channel: a subscription makes it from the output store, which holds only text (the bytes are
+ * always whole characters of UTF-8), so a chunk is a string and never cuts a character.
+ */
+const nodeOutputSchema = entrySchema
+  .extend({
+    channel: nodeIdSchema,
+    type: z.literal('output'),
+    /** The offset, in bytes, of `text`'s first byte in the output. */
+    offset: z.number().int().nonnegative(),
+    text: z.string().min(1).max(MAX_OUTPUT_CHUNK_BYTES),
+  })
+  .refine(
+    ({ cursor, offset, text }) =>
+      byteCursorSchema.safeParse(cursor).success &&
+      cursorNumber(cursor) === offset + utf8Bytes(text) &&
+      utf8Bytes(text) <= MAX_OUTPUT_CHUNK_BYTES &&
+      text.isWellFormed(),
+    {
+      error:
+        'an output entry is at most 16 KiB of UTF-8 text, and its cursor is the offset after it',
+      path: ['cursor'],
+    },
   );
 
 /**
@@ -140,12 +205,16 @@ export const channelBoundarySchema = z.union([
 ]);
 
 /**
- * Every entry a channel holds today, and so every entry a subscription serves: the two boundary
- * entries and an agent's `updated`. A command's or a service's output is not an entry of its
- * channel (the complete output is the output store's), and the tree channel's other entries are
- * the tree's (`treeChannelEntrySchema`).
+ * Every entry of a node's channel a subscription serves: the two boundary entries, an agent's
+ * `updated` and a command's or a service's `output`. The output is not stored in the channel (the
+ * complete output is the output store's): a subscription makes its entries between the stored
+ * `opened` and `closed`. The tree channel's other entries are the tree's (`treeChannelEntrySchema`).
  */
-export const channelEntrySchema = z.union([channelBoundarySchema, nodeUpdatedSchema]);
+export const channelEntrySchema = z.union([
+  channelBoundarySchema,
+  nodeUpdatedSchema,
+  nodeOutputSchema,
+]);
 
 /**
  * One channel's entries, oldest first, checked for the shape of a channel (`isWellFormedChannelLog`):
