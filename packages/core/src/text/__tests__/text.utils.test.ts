@@ -24,6 +24,17 @@ describe('escapeTags and neutralize', () => {
   it('also escapes a heading at a line start in neutralize', () => {
     expect(neutralize('x\n  # head')).toBe('x\n  \\# head');
   });
+
+  it('escapes a heading after every character a reader may take for a line break', () => {
+    expect(neutralize('# a')).toBe('\\# a');
+    expect(neutralize('x\r# a\u2028# b\u2029# c\n\n# d')).toBe(
+      'x\r\\# a\u2028\\# b\u2029\\# c\n\n\\# d',
+    );
+  });
+
+  it('leaves a # that does not start a line alone', () => {
+    expect(neutralize('a # b #c')).toBe('a # b #c');
+  });
 });
 
 describe('escapedLine', () => {
