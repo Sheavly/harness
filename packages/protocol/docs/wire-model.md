@@ -3,10 +3,10 @@
 How a front end follows a conversation's agents, commands and services. The decision is
 [#438](https://github.com/Sheavly/harness/issues/438); this page is its specification. **The
 schemas are built** and described in [the contract](contract.md#the-wire-models-schemas). **The
-rest is only partly**: one route serves the node channels (`QUERY /conversations/{id}/subscribe`,
-see "What is built of subscriptions" below), but the tree channel and a command's output are not
-served. That work is split into the issues in "What this changes" below, and until it lands the single
-combined stream in the contract is the wire. Where this page and a schema differ, implement
+rest is only partly**: one route serves the node channels, the tree channel and a command's output
+(`QUERY /conversations/{id}/subscribe`, see "What is built of subscriptions" below). The client and
+the terminal do not read it yet. That work is split into the issues in "What this changes" below,
+and until it lands the single combined stream in the contract is the wire for them. Where this page and a schema differ, implement
 against the schema and treat the difference as a defect in one of the two, to fix.
 
 ## What exists today
@@ -22,9 +22,10 @@ against the schema and treat the difference as a defect in one of the two, to fi
   `startedByCall`. A command or service is a task alone. A task is one `TaskInfo` with optional
   fields for the different kinds, and its statuses are `running`, `completed`, `failed` and
   `cancelled`. Nothing records work lost when a server stops.
-- No route lists tasks, reads a task's output or cancels one task. A task's complete output is
-  kept (`outputLog`, and the output store's byte-ranged `read`), but only a bounded preview
-  travels on the stream.
+- No route lists tasks or cancels one task. A task's complete output is kept (`outputLog`, and the
+  output store's byte-ranged `read`), but only a bounded preview travels on the stream; the
+  subscribe route serves the complete output as its node's channel (see "Command and service
+  channels").
 - `POST /conversations/{id}/prompts` already answers at once with `{ status, queued }` and never
   with a stream; what the prompt does arrives on the conversation's stream. (The issue that
   started this design described an older shape, so #429 is narrower than its title.)
@@ -130,10 +131,75 @@ are the entries that become live only in the item model, and until then are stor
 
 ### Command and service channels
 
-Their entries are output: bytes with the offset they start at, and the `opened` and `closed`
+Their entries are output: text with the byte offset it starts at, and the `opened` and `closed`
 entries around them. A bounded preview still rides in the node's lifecycle entries on the tree
 channel, as `TaskInfo.output` does today, but the complete output is read by subscribing to the
-channel from an offset (#428).
+channel (#428, built).
+
+**The output is made, not stored in the channel.** The stored channel is `opened` and `closed`. The
+host reads the output log the node kept (the reference is in the `opened` entry's `outputLog`) and
+sends it as `output` entries between them, so no byte is stored twice. A command whose output was
+not stored (past the log count, or storage failing when it started) has a channel with no output
+entries and no `output` on its `closed` entry.
+
+**Chunk encoding: UTF-8 text in a JSON string, cut between characters.** The output store holds
+text (its writer takes strings and encodes them as UTF-8), so the output is always whole
+characters, and an entry's `text` is a string: no base64, which would cost a third more and be
+unreadable for what is text, and no character split between two entries. An entry holds at most
+16 KiB of bytes (`MAX_OUTPUT_CHUNK_BYTES`, counted in bytes: a character is up to four), is never
+empty and holds no lone surrogate. Its `offset` is the byte offset of its first byte and its cursor
+is the offset after it (`b<offset + bytes>`), so a client that keeps the last cursor it saw and
+sends it back asks for the bytes after it, and the next entry starts where the last ended. A reader
+that starts at an offset inside a character moves forward to the next one, which is why `offset`
+is a field and not only the cursor. An entry is not stored, so it is not held to the stored-entry
+cap: a chunk of control characters is up to six times its size as JSON, which a subscription
+counts against what a conversation may hold. Its `at` is not when a byte was printed, which the
+output store does not keep: for live output it is when its first bytes were stored (also for what
+was stored while the history was being read), and for the
+history of a node that has ended it is when the node ended, so no output entry is later than the
+`closed` entry that follows it (for a running node's history it is the time of the read).
+
+- **Positions.** `start`: `opened`, all the output, then `closed` once the node has ended. A
+  cursor `b<n>`: the bytes from `n`, never `opened` again; one past the end is
+  `cursor_out_of_range`. `tail:<n>`: the last `n` bytes, with `opened` only when they reach the
+  first. `now`: a `head` frame at the size the output stands, then what comes.
+- **History is bounded as any history is.** What a request reads is charged to its 8 MiB and to the
+  conversation's pool, so a `start` on an output too large for a request is refused (`bad_request`),
+  never cut: the client asks from a cursor or a tail. A read that could not fit even as the cheapest
+  text (three bytes to a character of JSON) is refused before it reads anything, and any other that
+  outgrows the budget after reading up to it, giving back what it held. A read the output store
+  fails is `storage_failed`. **History is not paged**: a
+  position more than about 8 MiB behind the end of the output cannot be resumed from in one
+  request, so a client that fell that far behind (a cut-off client of a fast command) can only ask
+  for a tail, which skips bytes, and the complete output of a larger log is not readable through
+  this route yet. Serving history in pages, paced to the consumer, is not built.
+- **Live output is pushed, and joined by offset.** The capture tells the subscription each chunk
+  once it is stored; the subscription follows before it reads, as for any channel, so what is
+  stored while the history is read is told and kept. Where the read ended is the join: a chunk
+  wholly before it is dropped, one that overlaps it is cut at that byte, one that starts after it
+  is sent whole, and one that starts beyond a gap cuts the channel off (`cut_off`: the client
+  resumes from its cursor and reads what lies between). The bytes decide, not how the store and
+  the capture cut the output, so none is missed or sent twice. What the capture tells while the
+  history is read is kept, up to 1,000 chunks and 1 MiB for a channel (not counted against the
+  pool); past that the channel is cut off when the history is joined, and the client reads the
+  rest from the store. After an `end` no more frames of the channel follow.
+- **Batched for at most 100 ms** (`OUTPUT_BATCH_MS`): what is stored within the window goes out as
+  one entry, or at once when it is a whole 16 KiB, so a command that prints a character at a time is
+  not a frame for each, and a client sees it at most that late.
+- **`closed` comes after all of the output and stands where it ends**, with the exit code and
+  `output: { status, reason? }`: `complete`, or `incomplete` with what was lost (a limit, a failed
+  write, a stalled disk), so what was served is a prefix and never presented as all of it. A node
+  that was lost has no size of its own, so its `closed` is served at the end of the output it
+  printed, never at 0: a channel's offset does not go back. It has no `output` either: that its
+  state is `lost` is what says the end of the output may be missing. If the disk stalled while the
+  log was closing, `incomplete` says so and a late chunk may follow the node's end unsent.
+- **Each subscription does its own work.** Every follower of a command counts, encodes and
+  serializes what the command prints for itself, so a conversation's 64 subscriptions to one command
+  that prints fast cost about 64 times that of one, on the server's one thread. There is no rate
+  limit (see the API's security notes); sharing that work between followers is not built.
+- **A consumer that does not keep up is cut off**, as on any channel: the frames that waited are
+  dropped and the client resumes from the cursor of the last frame it got, which reads the rest
+  from the store.
 
 ## Subscriptions
 
@@ -269,8 +335,8 @@ included, so an answer can only ever mean the approval it was made for, and a re
 refuses an id it never issued. A schema cannot say "unique", so the protocol does not pin it; the
 registry's tests do.
 
-Reading a command's or service's complete output, listing nodes and cancelling one are new: no
-route does them today.
+Reading a command's or service's complete output (#428) and listing nodes (the tree, #427) are
+built; cancelling one node is new: no route does it today.
 
 ## Ordering
 
@@ -322,14 +388,15 @@ channel that refuses an entry for a limit takes no more. The layout, the rules a
 in the [storage design](../../storage/docs/design.md).
 
 What is built of subscriptions: `QUERY /conversations/{id}/subscribe` (`streamChannels`) serves the
-channels the store keeps for a conversation's nodes (an agent's, a command's and a service's, the
-last two with their `opened` and `closed` entries) and for its tree, stored history and then what
-the channel's writer stores next, joined by each entry's place in its log so none is missed or sent
-twice. The tree channel is served like any other, and from `snapshot` it sends the tree as one frame
-first (`GET /conversations/{id}/tree` answers the same snapshot with no stream), then the entries
-after its cursor. A command's output is not in a channel; a channel that does not exist, belongs to
-another conversation, or is the tree of a conversation that keeps none is `not_found`, with one
-message. A channel with more than 1,000 live frames waiting for its consumer, or whose frames would
+channels the store keeps for a conversation's nodes (an agent's, a command's and a service's) and
+for its tree, stored history and then what the channel's writer stores next, joined by each entry's
+place in its log so none is missed or sent twice. The tree channel is served like any other, and
+from `snapshot` it sends the tree as one frame first (`GET /conversations/{id}/tree` answers the
+same snapshot with no stream), then the entries after its cursor. A command's or a service's channel
+carries its complete output between its `opened` and `closed` entries, made from the output store
+and followed as the capture stores it, joined by byte offset (see "Command and service channels").
+A channel that does not exist, belongs to another conversation, or is the tree of a conversation
+that keeps none is `not_found`, with one message. A channel with more than 1,000 live frames waiting for its consumer, or whose frames would
 take the conversation's subscriptions past what they may hold, is cut off on that channel (`end`
 with `cut_off`), and a channel whose storage failed, or that no writer has, ends as `failed`. A
 conversation that closes ends its node channels with their `closed` entries, which a client reads
@@ -360,17 +427,17 @@ being written and its snapshot is refused (`507`) for the life of the conversati
 HTTP with server-sent events. The envelope does not depend on the transport. A WebSocket is
 reserved for an interactive attach to a task, if input to tasks is ever built; it is not part of
 this design. The server checks the `Origin` and `Host` of every request (#435, built): it came
-before the subscribe endpoint and comes before the complete output (#428), which expose more
-through the same bearer token, so that output with secrets is never newly readable on a server
-without the check. A request for a name the server does not list, or that carries an origin it does not list,
+before the subscribe endpoint and the complete output (#428), which expose more through the same
+bearer token, so that output with secrets is never readable on a server without the check. A request for a name the server does not list, or that carries an origin it does not list,
 is `403 forbidden` before any route, public ones included; the names and origins are
 `SERVER_ALLOWED_HOSTS` and `SERVER_ALLOWED_ORIGINS` ([the API](../../../apps/backend/docs/api.md#security)).
 
 ## Free text in the schemas
 
 Every free-text field of a node and of the tree channel is untrusted text, whatever the schema
-checked: a command's `command`, `description`, `output` and `error`, an extension's `text`, a
-queued line, an approval's command and message. A front end escapes each as the terminal's
+checked: a command's `command`, `description`, `output` and `error`, the `text` of an `output`
+entry (what a command printed, with any escape sequence it wrote), an extension's `text`, a queued
+line, an approval's command and message. A front end escapes each as the terminal's
 `plainTerminalText` does and never passes it to the screen as it is, since `text` and the others
 accept escape sequences. Only a node's `title` and status text are refused them, as one line of
 plain text (the terminal test in `apps/terminal` holds that rule to the terminal's class).
@@ -406,25 +473,28 @@ and its kinds and events are then refused (#433 adds the check at the manifest).
 
 ## Who may read what
 
-Any token holder reads a task's complete output, for now, once the output is served (#428). Today
-no route serves it: the stream carries only the bounded preview (`TaskInfo.output`), and an
-extension holding the `output:read` grant reads it through its own service. Command output may
-contain secrets (the host's run-services doc says the output store holds every command's output),
-so a front end treats it as untrusted terminal text and escapes it as the terminal's
-`plainTerminalText` does, never passing it to the screen as it is. Scopes and redaction wait until
-a remote server exists. Two caveats: what the model read with the output tool, and a command's
-result, is already in the history that `GET …/messages` and the stream carry, so the complete
-output is reachable through history today for what the model asked to see; and the bytes of an
-output channel can split a multi-byte character, so how #428 frames them (base64, or boundaries
-that keep a character whole) is its decision to make.
+Any token holder reads a task's complete output, for now: the subscribe route serves it as the
+channel of its node (#428). **Command output may contain secrets**: a command prints whatever it
+prints (an environment, a credentials file, a token in a URL), and the output store holds every
+command's output, all of it, not the bounded preview the stream carries. The server does not look
+for secrets and does not redact: whoever may subscribe to a conversation reads everything its
+commands printed. A front end shows it as untrusted terminal text, escaping it as the terminal's
+`plainTerminalText` does and never passing it to the screen as it is, since it holds whatever
+escape sequence the command wrote. Scopes and redaction wait until a remote server exists. Two
+facts about what is already reachable: what the model read with the output tool, and a command's
+result, is in the history that `GET …/messages` and the stream carry, so some of the output was
+reachable through history before this; and an extension holding the `output:read` grant reads it
+through its own service. The `Origin` and `Host` check (#435) is in front of the route, as of
+every route.
 
 **Open, and not decided here: what profiles mean for this.** Today one server holds one token,
 and every route that takes a conversation id accepts any conversation the server keeps, whichever
 profile it runs on. Profiles separate credentials, models and where a conversation is stored; they
-are not a security boundary between token holders. So when the complete output is served (#428), a
-client that holds the token can read it for a command in a conversation on any profile. #438
-accepted that with a caveat about profiles that was to be written down. This paragraph is the facts as the code has them. What
-the caveat should say, and whether profiles are ever to be a boundary, is a decision for the owner.
+are not a security boundary between token holders. So a client that holds the token can read the
+complete output of a command in a conversation on any profile (#428 serves it). #438 accepted that
+with a caveat about profiles that was to be written down. This paragraph is the facts as the code
+has them. What the caveat should say, and whether profiles are ever to be a boundary, is a decision
+for the owner.
 
 ## Where each current entry goes
 
