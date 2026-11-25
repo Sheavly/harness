@@ -37,9 +37,9 @@ workspace package, and the layout check holds it to that.
 ## The wire model's schemas
 
 The schemas of [the wire model](wire-model.md) are in the contract beside the stream's.
-`SubscribeRequest`, `SubscribeFrame` and the channel entries are what
-`QUERY /conversations/{id}/subscribe` reads and answers; no route reads the rest yet (the tree, a
-node command and the snapshot).
+`SubscribeRequest`, `SubscribeFrame` and the channel entries (a node's and the tree's) are what
+`QUERY /conversations/{id}/subscribe` reads and answers, and `TreeSnapshot` is what
+`GET /conversations/{id}/tree` answers; no route reads the rest yet (a node command).
 They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`,
 `ChannelEntry`, `ChannelLog`, `TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`,
 `ChannelHeadFrame`, `ChannelEndFrame`, `SubscribeFrame`, `MessageNodeRequest`, `PromptSent`).
@@ -85,7 +85,9 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   twice or from a node that is not in it, and more than `MAX_TREE_NODES` nodes or as many
   approvals (the node registry refuses a node past the first bound, and the approval registry a
   request past the second). A
-  snapshot at its bounds is still a large document, which the route that serves it bounds.
+  snapshot at its bounds is still a large document, which the server counts against what a
+  conversation's subscriptions may hold. `applyTreeEntry` keeps the nodes within `MAX_TREE_NODES` by
+  dropping the oldest ended one nothing hangs from.
 - **A subscription** (`subscription/`, `SubscribeRequest`): `{ subscriptions: [{ channel, from }],
 approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `tail:<n>` or a
   cursor. The request holds at most `MAX_SUBSCRIPTIONS` channels, none twice, a `tail` of at most
@@ -105,8 +107,8 @@ approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `ta
   and, for a prompt that started, the id of its user message. A command to a node that ended is
   `node_ended`. Cancelling a node has no body and no answer.
 
-An agent's other entries, a command's output entries and the tree's are not here: the issues that
-serve them define them.
+An agent's other entries and a command's output entries are not here: the issues that serve them
+define them.
 
 ## Version
 
