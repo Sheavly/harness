@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { messageIdSchema } from '@sheavly/protocol/message/message.validator';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
+import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
 import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
-import type { SendPromptResponse } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
@@ -12,6 +14,9 @@ import { promptEntries } from '../prompt.helper.js';
 
 const ID = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000ab');
 const MAIN = sessionIdSchema.parse('main');
+/** What a prompt's answer names: the agent that carries the run, and the message it became. */
+const NODE = nodeIdSchema.parse('agent-1');
+const MESSAGE = messageIdSchema.parse('00000000-0000-4000-8000-0000000000cd');
 const at = { at: 1, sessionId: MAIN };
 
 const queue = (seq: number, update: QueueUpdate): StreamEntry => ({
@@ -37,7 +42,7 @@ const done = (seq: number): StreamEntry => ({
  * A backend whose conversation stream gives `entries` once the prompt is sent, then stays open,
  * and answers the send with `answer`.
  */
-function backend(params: { answer: SendPromptResponse | FakeRefusal; entries: StreamEntry[] }) {
+function backend(params: { answer: PromptSent | FakeRefusal; entries: StreamEntry[] }) {
   const sent = Promise.withResolvers<undefined>();
   const { fetch } = fakeServer({
     async *streamConversation() {
@@ -66,7 +71,7 @@ async function seqsOf(entries: AsyncIterable<StreamEntry>): Promise<number[]> {
 describe('promptEntries', () => {
   it('yields the run of a prompt that started at once, from its start to its end', async () => {
     const client = backend({
-      answer: { status: 'started', queued: [] },
+      answer: { status: 'started', node: NODE, messageId: MESSAGE, queued: [] },
       entries: [
         said(1, 'an earlier run'),
         queue(2, { type: 'prompt_started', text: 'hi', queued: [] }),
@@ -83,7 +88,7 @@ describe('promptEntries', () => {
 
   it('waits for a queued prompt behind an identical line, and yields only its own run', async () => {
     const client = backend({
-      answer: { status: 'queued', queued: ['same', 'same'] },
+      answer: { status: 'queued', node: NODE, queued: ['same', 'same'] },
       entries: [
         queue(1, { type: 'prompt_started', text: 'same', queued: ['same'] }),
         done(2),
@@ -100,7 +105,7 @@ describe('promptEntries', () => {
 
   it('throws PromptRefusedError for a queued prompt that could not start', async () => {
     const client = backend({
-      answer: { status: 'queued', queued: ['/nope'] },
+      answer: { status: 'queued', node: NODE, queued: ['/nope'] },
       entries: [
         queue(1, {
           type: 'prompt_refused',
