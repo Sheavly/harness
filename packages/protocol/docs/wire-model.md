@@ -227,8 +227,9 @@ What a conversation's subscriptions hold is bounded in bytes too, 128 MiB all to
 moment their history is being read: history that does not fit refuses the request the same way, and
 a live frame that does not fit cuts its channel off. A client that leaves while its history is read
 stops that read.
-`approvals` needs the tree channel, which a subscription cannot follow yet, so no request can claim
-it.
+`approvals` needs the tree channel, where an approval is seen. The tree channel can be followed now,
+but nothing yet makes an approval wait for a subscription, so the server refuses the claim (`400`)
+until the client that answers through one is built (#430), rather than promise what it does not do.
 
 Every route the model adds is private: it needs the bearer token like every route that does not
 say `public` (the route table in [the contract](contract.md#what-a-server-accepts-and-answers)
@@ -293,7 +294,13 @@ the reopened conversation has a node of its own, with state `lost`, no outcome a
 at the next position of a numbered channel and at the last offset of a counted one. It does so
 once: a channel that ends in `closed` is left alone, so reopening again changes nothing. A channel
 the store refuses another entry for, being at a limit, is left as it is, and reads as lost. The
-tree channel is not stored yet, so its record of the change is not written.
+tree channel is stored too and goes on from where it was: each node the stopped process left open
+is closed on it as `lost` (a `node_closed` entry with the node as the tree last had it), and each
+approval it left waiting is given up (`approval_cancelled`), since nobody can answer it now. This
+process's own main agent opens after them, so a snapshot after a reopen shows no node as running that
+is not. A stored tree channel that cannot be gone on from (an entry no client could read, or one
+that ends in `closed`) is not written: the conversation still reopens, and the failure is told once
+as `storage_failed`.
 
 ## Storage
 
@@ -306,7 +313,9 @@ is first opened (#437).
 What is built: `ConversationStore.channel({ id, channel })` is the log of one channel, kept by the
 file store as `channels/<channel>.jsonl` beside the stream, which is still written. An agent's,
 a command's and a service's channel are stored as the conversation runs, with `opened`, `updated`
-for an agent and `closed`; the tree channel and the kinds an extension adds are not. A stored line
+for an agent and `closed`; the tree channel is stored beside them (`channels/tree.jsonl`, numbered
+from `s0`, never closed while its conversation exists, so a reopen can go on from it), and the kinds
+an extension adds are not. A stored line
 is one entry of at most 64 KiB, so a command longer than that is shortened in its `opened` entry.
 Retention is per channel: 128 MiB for a channel, 1 GiB and 5,000 channels for a conversation, and a
 channel that refuses an entry for a limit takes no more. The layout, the rules and the limits are
@@ -314,16 +323,37 @@ in the [storage design](../../storage/docs/design.md).
 
 What is built of subscriptions: `QUERY /conversations/{id}/subscribe` (`streamChannels`) serves the
 channels the store keeps for a conversation's nodes (an agent's, a command's and a service's, the
-last two with their `opened` and `closed` entries), stored history and then what the node channel
-writer stores next, joined by each entry's place in its log so none is missed or sent twice. The
-tree channel is not served, and a command's output is not in a channel: a request for the tree is
-`not_found`, with the same message as for a channel that does not exist or belongs to another
-conversation. A channel with more than 1,000 live frames
-waiting for its consumer, or whose frames would take the conversation's subscriptions past what they
-may hold, is cut off on that channel (`end` with `cut_off`), and a channel whose storage failed, or
-that no writer has, ends as `failed`. A conversation that closes ends its channels with their
-`closed` entries, which a client reads like any other. The client has no reader for these frames
-yet: they carry no `id`, which its stream reader requires.
+last two with their `opened` and `closed` entries) and for its tree, stored history and then what
+the channel's writer stores next, joined by each entry's place in its log so none is missed or sent
+twice. The tree channel is served like any other, and from `snapshot` it sends the tree as one frame
+first (`GET /conversations/{id}/tree` answers the same snapshot with no stream), then the entries
+after its cursor. A command's output is not in a channel; a channel that does not exist, belongs to
+another conversation, or is the tree of a conversation that keeps none is `not_found`, with one
+message. A channel with more than 1,000 live frames waiting for its consumer, or whose frames would
+take the conversation's subscriptions past what they may hold, is cut off on that channel (`end`
+with `cut_off`), and a channel whose storage failed, or that no writer has, ends as `failed`. A
+conversation that closes ends its node channels with their `closed` entries, which a client reads
+like any other, and its tree channel as `failed`: the writer stopped, and the channel is not closed,
+so that a reopen goes on from it. The client has no reader for these frames yet: they carry no `id`,
+which its stream reader requires.
+
+The snapshot is held in memory by the server, so it counts against what a conversation's
+subscriptions may hold (128 MiB) and not against the 8 MiB of stored history a request may read:
+that bound would make the tree of a long conversation unservable. The tree keeps at most
+`MAX_TREE_NODES` nodes (`applyTreeEntry` drops the oldest ended one nothing hangs from), and an
+entry of the tree channel is cut to 16 KiB of JSON (16,384 characters), a quarter of what a store
+keeps, so that a snapshot at its bounds is about 32 million characters: about 32 MiB of ASCII, up to
+three times that in bytes for wide characters. What does not fit is cut: an approval's command,
+concerns and tool name, with its first concern saying so and the request then offering only to skip
+it, and its call id, which is cut to what a node keeps of one (200 characters) whatever its size; a
+command's command, output (its start is dropped and its end kept), description, reason and error, the
+costliest first; an answer's message, with a trailing `…`. The whole command is on the
+conversation's stream. A cut never lands inside a surrogate pair, and a lone surrogate in a text that
+is cut is replaced; an approval request that fits is stored as asked, as the stream carries it, so
+a strict JSON reader reads its text with the same care it reads the stream's. The tree channel has
+a channel's usual 128 MiB quota, counted in bytes, and shares the conversation's 1 GiB with the node
+channels; a client that changes the queue some thousand times can fill it, and the tree then stops
+being written and its snapshot is refused (`507`) for the life of the conversation.
 
 ## Transport
 
@@ -366,7 +396,7 @@ a value nested a few thousand levels deep makes `safeParse` throw a `RangeError`
 cap is checked, so a client wraps parsing of a frame in a `try` and drops the frame; the array of
 `channelLogSchema` and any extra field of its entries, which are loose on purpose, so whoever feeds
 it bounds the input; and a snapshot as a whole, since 1,000 nodes at their caps are a large
-document, so #427 bounds the bytes it serves. A title is one line but not an identity: look-alike
+document, so the server counts it against what the conversation's subscriptions may hold (#427). A title is one line but not an identity: look-alike
 letters, combining marks and a title like another's are accepted, and only text that draws as
 nothing is blank.
 

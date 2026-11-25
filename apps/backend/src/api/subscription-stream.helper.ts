@@ -1,7 +1,11 @@
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { ENTRY_EVENT } from '@sheavly/protocol/api/api.constants';
-import { END_EVENT, HEAD_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
+import {
+  END_EVENT,
+  HEAD_EVENT,
+  SNAPSHOT_EVENT,
+} from '@sheavly/protocol/subscription/subscription.constants';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { HEARTBEAT_MS } from './api.constants.js';
 
@@ -11,16 +15,21 @@ type FrameSource = {
   close: () => void;
 };
 
-/** The event name a frame travels under: `head` and `end` for the two control frames, else `entry`. */
+/**
+ * The event name a frame travels under: `head`, `end` and `snapshot` for the frames that are not
+ * entries, else `entry`.
+ */
 function eventOf(frame: SubscribeFrame): string {
-  if (frame.type === HEAD_EVENT) return HEAD_EVENT;
+  if (frame.type === HEAD_EVENT || frame.type === END_EVENT || frame.type === SNAPSHOT_EVENT) {
+    return frame.type;
+  }
 
-  return frame.type === END_EVENT ? END_EVENT : ENTRY_EVENT;
+  return ENTRY_EVENT;
 }
 
 /**
  * A subscription's frames as server-sent events, one `data` JSON per frame under its event name
- * (`entry`, `head` or `end`) and no `id`: one id cannot carry the cursors of several channels, so
+ * (`entry`, `head`, `end` or `snapshot`) and no `id`: one id cannot carry the cursors of several channels, so
  * a client keeps each channel's last cursor and sends them again on a reconnect. The stream ends
  * when the subscription does (every channel ended) or when the client leaves, and the subscription
  * is closed either way, so the connection it held is free again. A heartbeat comment keeps a quiet
