@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { contextWindowSchema } from '@sheavly/protocol/model/model.validator';
+import { isHostName } from '../api/request-origin.utils.js';
 import { UnknownArgumentError } from '../errors/arguments.errors.js';
 import {
   DEFAULT_WEB_SEARCH_BACKENDS,
@@ -49,6 +50,19 @@ function isProbeUrl(entry: string): boolean {
 
   return ['http:', 'https:'].includes(protocol) && username === '' && password === '';
 }
+
+/**
+ * Whether `entry` is an origin and nothing more: `scheme://host`, with a port only when it is not
+ * the scheme's own. No path, no user name, no trailing slash: that is how a browser sends one. No
+ * `*` (an origin is listed whole, there are no wildcards) and no trailing dot on the host (a
+ * browser never sends one), which would never match.
+ */
+const isOrigin = (entry: string): boolean =>
+  URL.canParse(entry) &&
+  ['http:', 'https:'].includes(new URL(entry).protocol) &&
+  new URL(entry).origin === entry &&
+  !entry.includes('*') &&
+  !new URL(entry).hostname.endsWith('.');
 
 /**
  * How the backend sends a model call: `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES`,
@@ -107,6 +121,24 @@ const serverEnvSchema = z.object({
   SERVER_ALLOW_REMOTE_SETUP: optionalSetting,
   /** On unless "false": whether an always-on server takes the lock and writes its discovery file. */
   SERVER_DISCOVERY: optionalSetting.pipe(z.enum(['true', 'false']).default('true')),
+  /**
+   * The host names a remote server is reached by, besides this machine's and the one it is bound
+   * to: comma-separated, each a name only (no scheme, port or path), such as `myhost.example`.
+   */
+  SERVER_ALLOWED_HOSTS: list({
+    message:
+      'Name each SERVER_ALLOWED_HOSTS entry as a host name only, with no scheme, port or path, such as myhost.example',
+    valid: isHostName,
+  }),
+  /**
+   * The web pages that may call the server: comma-separated, each an origin (`https://app.example`,
+   * with a port when it is not the scheme's own, and no path). None by default.
+   */
+  SERVER_ALLOWED_ORIGINS: list({
+    message:
+      'Give each SERVER_ALLOWED_ORIGINS entry as an origin, such as https://app.example or http://localhost:5173, with no path',
+    valid: isOrigin,
+  }),
 });
 
 /**
@@ -127,6 +159,10 @@ export function parseServerEnv(env: Record<string, string | undefined>) {
     /** True when `SERVER_PORT` is unset or empty: the port was not asked for, so it may move. */
     portIsDefault: optionalSetting.parse(env.SERVER_PORT) === undefined,
     token: parsed.SERVER_TOKEN,
+    /** The host names, besides this machine's and the bound one, a request may carry (`SERVER_ALLOWED_HOSTS`). */
+    allowedHosts: parsed.SERVER_ALLOWED_HOSTS,
+    /** The web origins that may call the server (`SERVER_ALLOWED_ORIGINS`); none by default. */
+    allowedOrigins: parsed.SERVER_ALLOWED_ORIGINS,
     discovery: parsed.SERVER_DISCOVERY === 'true',
     /**
      * Whether the setup routes that hand out access (a model's key, a workspace's trust) may work:

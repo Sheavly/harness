@@ -16,6 +16,7 @@ import { validJson } from './api.validator.js';
 import { apiHandlers, idOf } from './handlers.helper.js';
 import { identityHandlers } from './identity-handlers.helper.js';
 import { permissionHandlers } from './permission-handlers.helper.js';
+import { allowedRequests, refusalOf } from './request-origin.utils.js';
 import { setupHandlers } from './setup-handlers.helper.js';
 import { workspaceHandlers } from './workspace-handlers.helper.js';
 
@@ -74,7 +75,9 @@ function addRoute(params: { app: Hono; name: RouteName; handlers: ApiHandlers })
  * The backend's HTTP API: every route of `API_ROUTES` (method, path and body schema from the
  * contract, its handler from `apiHandlers` and `setupHandlers`), behind a bearer token except the
  * routes the contract marks `public`, with request bodies capped and every failure answered as a
- * `ServerError`. It turns requests into calls on `conversations` and `setup` and adds no
+ * `ServerError`. A request whose `Host` is not one of the server's names, or that carries an
+ * `Origin` not listed, is refused with `forbidden` before any route, public ones included
+ * (`options.allowed`). It turns requests into calls on `conversations` and `setup` and adds no
  * behaviour of its own. `serve.ts` decides how to listen and closes the conversations when it
  * stops. It logs no request, only a failure it answers as `internal` (`logs`): a future request
  * log must leave out the handshake's body.
@@ -90,6 +93,25 @@ export function createApiApp(options: ApiOptions): Hono {
     ...permissionHandlers(permissions),
   };
   const app = new Hono();
+  const allowed = options.allowed ?? allowedRequests();
+
+  // First of all, before the public routes: a rebinding page reaches those as if they were its own
+  // (it sends its own name as `Host`), so the check cannot sit behind the token. A refused request
+  // is told only that it is refused, and nothing else (a route, a header, a name) reaches it.
+  app.use(
+    createMiddleware(async (c, next) => {
+      const refusal = refusalOf({
+        host: c.req.header('host'),
+        url: c.req.url,
+        origin: c.req.header('origin'),
+        allowed,
+      });
+
+      if (refusal !== undefined) throw new HTTPException(403, { message: refusal });
+
+      await next();
+    }),
+  );
 
   // Order matters, do not move the guard: Hono runs handlers in registration order and a public
   // route answers without calling `next`, so only a request no public route matches (a private

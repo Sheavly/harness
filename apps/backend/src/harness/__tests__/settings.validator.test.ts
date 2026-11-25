@@ -57,6 +57,8 @@ describe('parseServerEnv', () => {
       port: SERVER.port,
       portIsDefault: true,
       token: undefined,
+      allowedHosts: [],
+      allowedOrigins: [],
       discovery: true,
       remoteSetupAllowed: true,
     });
@@ -112,6 +114,67 @@ describe('parseServerEnv', () => {
         parseServerEnv({ ...env, SERVER_ALLOW_REMOTE_SETUP: word }).remoteSetupAllowed,
         word,
       ).toBe(false);
+    }
+  });
+});
+
+describe('the host and origin settings', () => {
+  it('list the host names and web origins a server answers, none by default', () => {
+    expect(parseServerEnv({}).allowedHosts).toEqual([]);
+    expect(parseServerEnv({}).allowedOrigins).toEqual([]);
+    expect(parseServerEnv({ SERVER_ALLOWED_HOSTS: '', SERVER_ALLOWED_ORIGINS: '' })).toMatchObject({
+      allowedHosts: [],
+      allowedOrigins: [],
+    });
+    expect(
+      parseServerEnv({
+        SERVER_ALLOWED_HOSTS: ' myhost.example , [::1],, 10.0.0.5 ',
+        SERVER_ALLOWED_ORIGINS: 'https://app.example, http://localhost:5173',
+      }),
+    ).toMatchObject({
+      allowedHosts: ['myhost.example', '[::1]', '10.0.0.5'],
+      allowedOrigins: ['https://app.example', 'http://localhost:5173'],
+    });
+  });
+
+  it('refuse a host that is more than a name, saying how to write it', () => {
+    const refused = [
+      'http://myhost.example',
+      'myhost.example:4310',
+      'myhost/path',
+      'a b',
+      // Empty names, and a name a client's URL writes differently (it would never match).
+      '.',
+      '..',
+      '10.1',
+      '[fe80:0:0:0:0:0:0:1]',
+    ];
+
+    for (const entry of refused) {
+      expect(() => parseServerEnv({ SERVER_ALLOWED_HOSTS: entry }), entry).toThrow(
+        'SERVER_ALLOWED_HOSTS entry as a host name only',
+      );
+    }
+  });
+
+  it('refuse an origin that is more than scheme, host and port', () => {
+    const refused = [
+      'app.example',
+      'https://app.example/',
+      'https://app.example/path',
+      'https://user@app.example',
+      'ftp://app.example',
+      'null',
+      'https://app.example:443',
+      // An origin is listed whole: no wildcard, and no trailing dot a browser never sends.
+      'https://*.example',
+      'https://app.example.',
+    ];
+
+    for (const entry of refused) {
+      expect(() => parseServerEnv({ SERVER_ALLOWED_ORIGINS: entry }), entry).toThrow(
+        'SERVER_ALLOWED_ORIGINS entry as an origin',
+      );
     }
   });
 });

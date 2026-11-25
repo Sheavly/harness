@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createAdaptorServer } from '@hono/node-server';
 import type { Environment } from '@sheavly/core/environment/environment.types';
 import { createApiApp } from '../api/api.helper.js';
+import { allowedRequests } from '../api/request-origin.utils.js';
 import { createBackend } from '../backend.helper.js';
 import type { ServedSettings } from '../harness/harness.types.js';
 import { newInstanceId } from '../instance/instance-id.helper.js';
@@ -37,6 +38,11 @@ export async function buildServer(params: {
     workspaces,
     permissions,
     token,
+    allowed: allowedRequests({
+      bound: server.host,
+      hosts: server.allowedHosts,
+      origins: server.allowedOrigins,
+    }),
     instanceId,
     serverVersion,
     logs,

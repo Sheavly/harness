@@ -38,9 +38,14 @@ const SETUP_FAILURES: Record<SetupError['reason'], (message: string) => ApiFailu
  */
 export function toApiFailure(error: unknown): ApiFailure {
   if (error instanceof HTTPException) {
-    return error.status === 401
-      ? { status: 401, code: 'unauthorized', message: 'A valid bearer token is required' }
-      : { status: 400, code: 'bad_request', message: error.message };
+    if (error.status === 401) {
+      return { status: 401, code: 'unauthorized', message: 'A valid bearer token is required' };
+    }
+
+    // The request's host or origin is not one this server answers (`refusalOf`).
+    if (error.status === 403) return { status: 403, code: 'forbidden', message: error.message };
+
+    return { status: 400, code: 'bad_request', message: error.message };
   }
 
   if (error instanceof ConversationsError) {

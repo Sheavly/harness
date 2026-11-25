@@ -2,9 +2,10 @@ import { createServer as createHttp2Server } from 'node:http2';
 import net from 'node:net';
 import { createAdaptorServer } from '@hono/node-server';
 import type { ServerType } from '@hono/node-server';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ServerAlreadyListeningError, UnsupportedServerError } from '../../errors/listen.errors.js';
 import { testApi } from '../../testing/api.fake.js';
+import { useOpenedServers } from '../../testing/opened-servers.fake.js';
 import {
   CONNECTIONS_CHECK_INTERVAL_MS,
   HEADERS_TIMEOUT_MS,
@@ -16,15 +17,7 @@ import { configureServerTimeouts } from '../server-timeouts.helper.js';
 const HOST = '127.0.0.1';
 const SHORT = { requestTimeoutMs: 300, headersTimeoutMs: 200, checkIntervalMs: 20 };
 const CLIENT_GIVES_UP_MS = 3000;
-const opened: ServerType[] = [];
-
-afterEach(() => {
-  for (const server of opened.splice(0)) {
-    if ('closeAllConnections' in server) server.closeAllConnections();
-
-    server.close();
-  }
-});
+const servers = useOpenedServers();
 
 async function startServer(params: {
   fetch: (request: Request) => Response | Promise<Response>;
@@ -32,7 +25,7 @@ async function startServer(params: {
 }): Promise<{ server: ServerType; port: number }> {
   const server = createAdaptorServer({ fetch: params.fetch });
 
-  opened.push(server);
+  servers.add(server);
   configureServerTimeouts({ server, ...params.timeouts });
   await listenServer({ server, host: HOST, port: 0 });
 
@@ -59,7 +52,7 @@ function sendThenStall(params: { port: number; text: string }): Promise<{
 }
 
 const headOf = (length: number) =>
-  `QUERY /handshake HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: ${String(length)}\r\n\r\n`;
+  `QUERY /handshake HTTP/1.1\r\nHost: ${HOST}\r\nContent-Type: application/json\r\nContent-Length: ${String(length)}\r\n\r\n`;
 
 describe('configureServerTimeouts', () => {
   it('sets the request and headers timeouts and how often they are checked, from the constants', () => {
@@ -101,7 +94,7 @@ describe('configureServerTimeouts', () => {
   it('refuses a server that already listens, where the check interval would not apply', async () => {
     const server = createAdaptorServer({ fetch: () => new Response('ok') });
 
-    opened.push(server);
+    servers.add(server);
     await listenServer({ server, host: HOST, port: 0 });
 
     expect(() => configureServerTimeouts({ server })).toThrow(ServerAlreadyListeningError);
@@ -126,7 +119,7 @@ describe('configureServerTimeouts', () => {
     const { port } = await startServer({ fetch: app.fetch, timeouts: SHORT });
     const { closedAfterMs } = await sendThenStall({
       port,
-      text: 'QUERY /handshake HTTP/1.1\r\nHost: x\r\n',
+      text: `QUERY /handshake HTTP/1.1\r\nHost: ${HOST}\r\n`,
     });
 
     expect(closedAfterMs).toBeLessThan(CLIENT_GIVES_UP_MS);
