@@ -22,6 +22,7 @@ export function startControlledTask(params: {
 }) {
   const { tasks, sessionId, callId, backgroundKind, capture } = params;
   let finish: (exitCode: number | null) => void = () => undefined;
+  let print: (chunk: string) => void = () => undefined;
   const task = tasks.start({
     command: params.command ?? 'work',
     description: params.description ?? 'work',
@@ -31,6 +32,8 @@ export function startControlledTask(params: {
     ...(capture && { capture }),
     run: ({ signal, onOutput }) =>
       new Promise((resolve) => {
+        print = onOutput;
+
         if (params.output) onOutput(params.output);
 
         finish = (exitCode) => resolve({ exitCode });
@@ -38,5 +41,10 @@ export function startControlledTask(params: {
       }),
   });
 
-  return { task, finish: (exitCode: number | null) => finish(exitCode) };
+  return {
+    task,
+    finish: (exitCode: number | null) => finish(exitCode),
+    /** What the task prints while it runs, to its preview and to its capture. */
+    print: (chunk: string) => print(chunk),
+  };
 }

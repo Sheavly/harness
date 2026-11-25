@@ -174,6 +174,24 @@ after) while the others go on. A channel whose storage failed, or that no writer
 channel as `failed` (the writer stopped; the channel itself stays open). An aborted
 `signal` given to `subscribe` stops the reading of history, so a client that left costs no more.
 
+**A command's or a service's output** is the channel of its node: the stored channel is `opened` and
+`closed`, and the host makes the `output` entries between them. It reads the output store by byte
+offset in pieces of at most 16 KiB (cut between characters, each with its `offset`, its cursor the
+offset after it), then follows the capture, which tells each chunk once it is stored
+(`TaskRegistry.followOutput`), and sends what is stored within 100 ms as one entry. The two are
+joined by offset (`OutputTail`): a told chunk the read already held is dropped or cut at its byte, so
+none is missed or sent twice (a chunk that starts beyond a gap cuts the channel off, and nothing
+follows an `end`). A cursor `b<n>` is the bytes from `n` and never sends `opened` again; `tail:n` is
+the last `n` bytes. The history is charged like any other: a read that cannot fit the request is
+refused, never cut, before it reads anything when even three bytes to a character of JSON would
+not fit and after reading up to the budget otherwise (ask from a cursor or a tail; history is not paged, so
+a position more than about 8 MiB behind the end cannot be resumed from). What the capture tells
+while the history is read is kept up to 1,000 chunks and 1 MiB for a channel, and not counted
+against the pool. A consumer that does not keep up is cut off and reads the rest from the store;
+each subscription encodes the output for itself. The `closed` entry comes after all of the output,
+at its end, and says how it ended (`complete`, or `incomplete` with the reason). Output may hold
+secrets: whoever reads the channel reads all of it.
+
 ## Docs
 
 Normal prompts sent with `send` have stable UUID `id`s, persisted in history and attached to stream

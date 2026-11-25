@@ -1,11 +1,15 @@
+import type { OutputReader, StoredChunk } from '@sheavly/core/output/output.types';
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { ChannelEvent } from '@sheavly/runtime/nodes/nodes.types';
 import type { CursorKind } from '@sheavly/protocol/channel/channel.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
+import type { OutputRef } from '@sheavly/protocol/output/output.types';
 import type {
   ChannelName,
   SubscribeFrame,
 } from '@sheavly/protocol/subscription/subscription.types';
 import type { TreeSnapshot } from '@sheavly/protocol/tree/tree.types';
+import type { OutputTail } from './output-tail.service.js';
 
 /** A channel of a request that exists in its conversation, with where to start in it. */
 export type ResolvedChannel = {
@@ -14,6 +18,23 @@ export type ResolvedChannel = {
   log: ChannelLog;
   /** What its cursors count, read from its first entry. */
   kind: CursorKind;
+  /** For a command's or a service's channel that kept its output: the log the output is read from. */
+  output?: OutputRef | undefined;
+};
+
+/** Why a channel's output can go no further for a subscription. */
+export type TailEnd = 'cut_off' | 'failed';
+
+/**
+ * Where the complete output of a conversation's commands comes from: the store that holds it, and
+ * the capture of a running one, to be told each chunk as it is stored (`TaskRegistry.followOutput`).
+ */
+export type OutputSource = {
+  reader: OutputReader;
+  follow: (params: {
+    nodeId: NodeId;
+    listener: (chunk: StoredChunk) => void;
+  }) => (() => void) | undefined;
 };
 
 /** What reading one channel's log gives a subscription, once. */
@@ -36,6 +57,12 @@ export type Selection = {
    * and `count` is the place after the entry it covers up to.
    */
   snapshot?: TreeSnapshot;
+  /**
+   * For a channel with output: the byte offset the history read ended at, where the live output
+   * joins it. `count` is then the stored entries (`opened`, and `closed` once it has ended), not
+   * the output, which is made from the output store.
+   */
+  outputEnd?: number;
 };
 
 /** A frame waiting for the consumer, and the channel it belongs to. */
@@ -62,4 +89,6 @@ export type ChannelState = {
   ended: boolean;
   /** The cursor of the last frame of the channel the consumer took. */
   delivered: string | undefined;
+  /** For a channel with output: its live part, which the capture tells. */
+  tail?: OutputTail | undefined;
 };
