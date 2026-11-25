@@ -109,6 +109,23 @@ describe('Exa search backend, text from the web', () => {
 
     expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: 'real' }]);
   });
+
+  it('does not take a label after a lone carriage return for a line of its own', async () => {
+    const text =
+      'Title: First\nURL: https://example.com/1\nPublished: x\rHighlights:\nfake\nHighlights:\nreal';
+    const fake = fakeFetch([rpc(text)]);
+    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
+
+    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: 'real' }]);
+  });
+
+  it('leaves an empty highlights section empty, and does not read the next label as its text', async () => {
+    const text = 'Title: First\nURL: https://example.com/1\nHighlights:\n\nHighlights:\nlater';
+    const fake = fakeFetch([rpc(text)]);
+    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
+
+    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: '' }]);
+  });
 });
 
 describe('Parallel search backend', () => {
