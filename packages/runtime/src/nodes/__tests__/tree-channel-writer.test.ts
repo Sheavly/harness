@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CHANNEL_ENTRY_CHARS } from '@sheavly/protocol/channel/channel.constants';
 import { callIdSchema, messageIdSchema } from '@sheavly/protocol/message/message.validator';
-import { MAX_NODE_COMMAND_CHARS } from '@sheavly/protocol/node/node.constants';
+import {
+  MAX_NODE_CALL_ID_CHARS,
+  MAX_NODE_COMMAND_CHARS,
+} from '@sheavly/protocol/node/node.constants';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import { applyTreeEntry, emptyTree } from '@sheavly/protocol/tree/tree.utils';
@@ -10,6 +12,7 @@ import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fak
 import { startControlledTask } from '../../testing/controlled-task.fake.js';
 import { shapeOf } from '../../testing/stored-channels.fake.js';
 import { treeConversation, treeEntriesOf } from '../../testing/tree-conversation.fake.js';
+import { MAX_CUT_TOOL_CHARS, MAX_TREE_ENTRY_CHARS } from '../nodes.constants.js';
 import type { ChannelEvent } from '../nodes.types.js';
 
 const CALL = callIdSchema.parse('call_1');
@@ -29,15 +32,18 @@ function ask(params: {
   command?: string;
   sessionId?: ReturnType<typeof sessionIdSchema.parse> | undefined;
   signal?: AbortSignal;
+  concerns?: { argument: string; reason: string }[];
+  tool?: string;
+  callId?: ReturnType<typeof callIdSchema.parse>;
 }) {
-  const { world, command = 'git push', sessionId, signal } = params;
+  const { world, command = 'git push', sessionId, signal, concerns = [] } = params;
 
   return world.approvals.request({
-    callId: CALL,
+    callId: params.callId ?? CALL,
     ...(sessionId && { sessionId }),
-    tool: 'run_command',
+    tool: params.tool ?? 'run_command',
     command,
-    concerns: [],
+    concerns,
     signal: signal ?? new AbortController().signal,
   });
 }
@@ -193,37 +199,124 @@ describe('the notices of the conversation', () => {
     ]);
     expect(entries[0]).toMatchObject({ queued: ['one', 'two'] });
     expect(entries[3]?.queued).toHaveLength(5);
-    expect(JSON.stringify(entries[3]).length).toBeLessThanOrEqual(MAX_CHANNEL_ENTRY_CHARS);
+    expect(JSON.stringify(entries[3]).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
     expect(entries.every((each) => treeChannelEntrySchema.safeParse(each).success)).toBe(true);
   });
 });
 
-/** The tree channel's entry for an approval of `command`, which is asked and then skipped. */
-async function requestedEntry(command: string) {
+/**
+ * An approval asked as `params` say and then skipped, and a sub-agent that starts after it: what
+ * comes after is stored too, since one entry the store refused would have ended the channel. Gives
+ * the world, every entry stored, and the entry of the request.
+ */
+async function skippedApproval(params: Omit<Parameters<typeof ask>[0], 'world'>) {
   const world = treeConversation();
-  const waiting = ask({ world, command });
+  const waiting = ask({ world, ...params });
 
   world.approvals.respond({ id: pendingId(world), response: { decision: 'skip' } });
   await waiting;
+  spawn(world);
 
-  const [requested] = (await treeEntriesOf(world)).filter(
-    (each) => each.type === 'approval_requested',
-  );
+  const entries = await treeEntriesOf(world);
 
-  return requested;
+  return { world, entries, requested: entries.find((each) => each.type === 'approval_requested') };
 }
+
+/** The tree channel's entry for an approval of `command`, which is asked and then skipped. */
+const requestedEntry = async (command: string) => (await skippedApproval({ command })).requested;
 
 describe('an entry larger than a stored entry may be', () => {
   it('is an approval whose command is cut, and says so as its first concern, never silently', async () => {
     const command = `echo ${'a'.repeat(200_000)}`;
     const requested = await requestedEntry(command);
-    const request = requested?.request as { command: string; concerns: { reason: string }[] };
+    const request = requested?.request as {
+      command: string;
+      concerns: { reason: string }[];
+      options: string[];
+      keeps?: unknown;
+    };
 
-    expect(JSON.stringify(requested).length).toBeLessThanOrEqual(MAX_CHANNEL_ENTRY_CHARS);
+    expect(JSON.stringify(requested).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
     expect(command.startsWith(request.command)).toBe(true);
     expect(request.command.length).toBeLessThan(command.length);
-    expect(request.concerns.at(-1)?.reason).toContain(`of ${String(command.length)} characters`);
-    expect(request.concerns.at(-1)?.reason).toContain('do not approve it from this text');
+    expect(request.concerns[0]?.reason).toContain(`of ${String(command.length)} characters`);
+    expect(request.concerns[0]?.reason).toContain('do not approve it from this text');
+    // A client that answers from this entry alone cannot run it, or grant it, from the cut text.
+    expect(request.options).toEqual(['skip', 'skip_with_message']);
+    expect(request).not.toHaveProperty('keeps');
+  });
+
+  it('is an approval whose concerns and tool name are what is too large, even with no command: cut and skip-only, and the tree goes on', async () => {
+    // Control characters cost six characters each as JSON, and a tool name has no bound of its own.
+    const concerns = Array.from({ length: 50 }, (_, index) => ({
+      argument: `arg${String(index)}`,
+      reason: '\u0001'.repeat(1_000),
+    }));
+    const { world, entries, requested } = await skippedApproval({
+      command: '',
+      concerns,
+      tool: 'x'.repeat(100_000),
+    });
+    const request = requested?.request as {
+      tool: string;
+      concerns: { reason: string }[];
+      options: string[];
+    };
+
+    expect(JSON.stringify(requested).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
+    expect(treeChannelEntrySchema.safeParse(requested).success).toBe(true);
+    expect(request.concerns).toHaveLength(1);
+    expect(request.concerns[0]?.reason).toContain('50 concerns are left out');
+    expect(request.options).toEqual(['skip', 'skip_with_message']);
+    expect(request.tool.length).toBeLessThanOrEqual(MAX_CUT_TOOL_CHARS);
+    expect(shapeOf(entries).at(-1)).toBe('node_opened s4');
+    expect(world.treeFailures).toEqual([]);
+  });
+
+  it('is an approval whose call id is what is too large: a provider’s string has no bound, and the tree goes on', async () => {
+    const { world, entries, requested } = await skippedApproval({
+      callId: callIdSchema.parse('c'.repeat(70_000)),
+    });
+    const request = requested?.request as { callId: string };
+
+    expect(JSON.stringify(requested).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
+    expect(treeChannelEntrySchema.safeParse(requested).success).toBe(true);
+    expect(request.callId).toHaveLength(MAX_NODE_CALL_ID_CHARS);
+    expect(shapeOf(entries).at(-1)).toBe('node_opened s4');
+    expect(world.treeFailures).toEqual([]);
+  });
+
+  it('is cut between characters, never inside one, so what is stored is text a strict reader takes', async () => {
+    // Two UTF-16 units each, so any cut at an odd length would split one.
+    const requested = await requestedEntry(`echo ${'😀'.repeat(60_000)}`);
+    const { command } = requested?.request as { command: string };
+
+    expect(command.isWellFormed()).toBe(true);
+    expect(JSON.stringify(requested).isWellFormed()).toBe(true);
+  });
+
+  it('is an answer with a message too long for an entry: cut, ending in an ellipsis, and the tree goes on', async () => {
+    const world = treeConversation();
+    const waiting = ask({ world });
+    const message = `steer ${'m'.repeat(200_000)}`;
+
+    world.approvals.respond({
+      id: pendingId(world),
+      response: { decision: 'skip_with_message', message },
+    });
+    await waiting;
+    // What comes after is stored too: one entry the store refused would have ended the channel.
+    spawn(world);
+
+    const entries = await treeEntriesOf(world);
+    const resolved = entries.find((each) => each.type === 'approval_resolved');
+    const stored = (resolved?.response as { message: string }).message;
+
+    expect(JSON.stringify(resolved).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
+    expect(stored.endsWith('…')).toBe(true);
+    expect(message.startsWith(stored.slice(0, -1))).toBe(true);
+    expect(shapeOf(entries).at(-1)).toBe('node_opened s4');
+    expect(world.treeFailures).toEqual([]);
   });
 
   it('is an approval that fits whole, with no concern added', async () => {
@@ -246,7 +339,7 @@ describe('an entry larger than a stored entry may be', () => {
     const entries = await treeEntriesOf(world);
 
     expect(shapeOf(entries)).toEqual(['opened s0', 'node_opened s1', 'node_opened s2']);
-    expect(JSON.stringify(entries[2]).length).toBeLessThanOrEqual(MAX_CHANNEL_ENTRY_CHARS);
+    expect(JSON.stringify(entries[2]).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
     expect(world.treeFailures).toEqual([]);
   });
 });
@@ -363,18 +456,18 @@ describe('a follower of the tree channel', () => {
 });
 
 describe('a tree channel that cannot be stored', () => {
-  it('still gives the snapshot of what was stored before it failed', async () => {
+  it('has no snapshot once it failed, however much was stored before: a tree that stands still is not the tree', async () => {
     const store = new MemoryConversationStore();
     const world = treeConversation({ store });
 
     await world.tree.flush();
+    expect((await world.tree.snapshot()).cursor).toBe('s1');
+
     store.failWith(new Error('disk gone'));
     spawn(world);
 
-    const snapshot = await world.tree.snapshot();
-
-    expect(snapshot.cursor).toBe('s1');
-    expect(snapshot.nodes).toHaveLength(1);
+    await expect(world.tree.snapshot()).rejects.toMatchObject({ reason: 'failed' });
+    expect(world.treeFailures).toHaveLength(1);
   });
 
   it('has no snapshot when not even its first entry was stored, and says why', async () => {

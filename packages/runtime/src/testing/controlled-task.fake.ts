@@ -17,6 +17,8 @@ export function startControlledTask(params: {
   command?: string;
   description?: string;
   capture?: OutputWriter | undefined;
+  /** Printed as the task starts, so it ends with it as its output preview. */
+  output?: string;
 }) {
   const { tasks, sessionId, callId, backgroundKind, capture } = params;
   let finish: (exitCode: number | null) => void = () => undefined;
@@ -27,8 +29,10 @@ export function startControlledTask(params: {
     ...(callId && { callId }),
     ...(backgroundKind && { backgroundKind }),
     ...(capture && { capture }),
-    run: ({ signal }) =>
+    run: ({ signal, onOutput }) =>
       new Promise((resolve) => {
+        if (params.output) onOutput(params.output);
+
         finish = (exitCode) => resolve({ exitCode });
         signal.addEventListener('abort', () => resolve({ exitCode: null }), { once: true });
       }),

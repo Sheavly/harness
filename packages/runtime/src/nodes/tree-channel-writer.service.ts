@@ -203,16 +203,18 @@ export class TreeChannelWriter {
   /**
    * The tree as the stored entries leave it, with the cursor of the last: what a client starts
    * from, then follows after that cursor. Waits for the entries told so far to be stored first.
-   * Rejects with the failure when the channel holds nothing, because its first write failed.
+   * Rejects with the failure once the channel has failed, whatever it stored before: it takes no
+   * more entries, so the tree would stand still while the conversation went on, and a client that
+   * took it for the tree as it is would be wrong without any sign. A writer that was only stopped
+   * (the conversation closed) still gives the tree it left.
    */
   async snapshot(): Promise<TreeSnapshot> {
     await this.#written;
 
+    if (this.#failure) throw this.#failure;
+
     if (!this.#last) {
-      throw (
-        this.#failure ??
-        new StoreError({ reason: 'failed', message: 'The tree channel holds nothing yet' })
-      );
+      throw new StoreError({ reason: 'failed', message: 'The tree channel holds nothing yet' });
     }
 
     return treeSnapshotOf({ tree: this.#tree, cursor: this.#last.cursor, at: this.#last.at });

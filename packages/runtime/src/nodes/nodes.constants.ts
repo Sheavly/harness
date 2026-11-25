@@ -24,5 +24,24 @@ export const HEAD_FACTOR = 8;
 /** The title of a node whose own title is blank once it is one line. */
 export const UNTITLED = 'untitled';
 
+/**
+ * The most an entry of the tree channel carries, as JSON: a quarter of what a store keeps
+ * (`MAX_CHANNEL_ENTRY_CHARS`). The tree is what a sidebar needs, not each node's whole story (a
+ * node's own channel and the conversation's stream have that), and a snapshot holds every node and
+ * waiting approval at once: at its bounds (1,000 of each) it is about 32 MiB of JSON, not the 128 MiB
+ * and more that full-size entries would make, which the server holds in memory and sends whole. A
+ * command, an output or a message that does not fit is cut, and a cut approval says so.
+ */
+export const MAX_TREE_ENTRY_CHARS = 16_384;
+
+/**
+ * What an approval request whose command was cut to fit the tree channel may still offer there: to
+ * skip it, never to run it or grant it from a text the client was not shown whole.
+ */
+export const CUT_APPROVAL_OPTIONS = ['skip', 'skip_with_message'] as const;
+
+/** The longest tool name an approval request keeps when it is cut to fit the tree channel. */
+export const MAX_CUT_TOOL_CHARS = 200;
+
 /** The largest byte offset a cursor may hold: fifteen digits, so it reads back exactly. */
 export const MAX_BYTE_OFFSET = 999_999_999_999_999;

@@ -13,6 +13,7 @@ import {
   treeConversation,
   treeEntriesOf,
 } from '../../testing/tree-conversation.fake.js';
+import { MAX_TREE_ENTRY_CHARS } from '../nodes.constants.js';
 import { TreeChannelWriter } from '../tree-channel-writer.service.js';
 
 const CALL = callIdSchema.parse('call_1');
@@ -124,6 +125,50 @@ describe('the tree channel of a reopened conversation', () => {
       // Nothing was left open: only this process's own main agent opens.
       'node_opened s3',
     ]);
+  });
+
+  it('closes as lost a service whose entry already filled the limit, which the end time would push over it', async () => {
+    // A command whose entry is exactly as long as an entry may be: measured from one of a known
+    // length, since an entry is its fixed part and its command. A halved long command leaves slack.
+    const measured = treeConversation();
+
+    startControlledTask({
+      tasks: measured.tasks,
+      sessionId: measured.main.id,
+      callId: CALL,
+      backgroundKind: 'service',
+      command: 'c'.repeat(1_000),
+    });
+
+    const [, , trial] = await treeEntriesOf(measured);
+    const exact = 1_000 + MAX_TREE_ENTRY_CHARS - JSON.stringify(trial).length;
+    const before = treeConversation();
+
+    startControlledTask({
+      tasks: before.tasks,
+      sessionId: before.main.id,
+      callId: CALL,
+      backgroundKind: 'service',
+      command: 'c'.repeat(exact),
+    });
+    await before.tree.flush();
+
+    const [, , opened] = await treeEntriesOf(before);
+
+    expect(JSON.stringify(opened).length).toBe(MAX_TREE_ENTRY_CHARS);
+
+    const after = await reopenedTreeConversation(before.store);
+    const entries = await treeEntriesOf(after);
+    const lost = entries.filter(
+      (each) => each.type === 'node_closed' && (each.node as { state: string }).state === 'lost',
+    );
+
+    expect(lost).toHaveLength(2);
+    expect(lost.every((each) => JSON.stringify(each).length <= MAX_TREE_ENTRY_CHARS)).toBe(true);
+    expect(after.treeFailures).toEqual([]);
+    expect(after.tree.writing()).toBe(true);
+    // The new process's own main agent is on the tree after them.
+    expect(shapeOf(entries).at(-1)).toBe('node_opened s5');
   });
 
   it('opens the channel for a conversation that has none stored yet', async () => {

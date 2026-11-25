@@ -32,7 +32,7 @@ export const agentNodeOf = (node: NodeRecord) => ({ ...node, kind: 'agent' });
  * its own near that (`MAX_NODE_COMMAND_CHARS` is far above it). An entry that does not fit even with
  * no command is returned as it is, for the store to refuse.
  */
-export function fittedEntry(params: {
+function fittedEntry(params: {
   command: string;
   build: (command: string) => ChannelEntry;
 }): ChannelEntry {
