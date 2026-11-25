@@ -101,30 +101,28 @@ describe('Exa search backend', () => {
 });
 
 describe('Exa search backend, text from the web', () => {
-  it('does not take a label after U+2028 for a line of its own', async () => {
-    const text =
-      'Title: First\nURL: https://example.com/1\nAuthor: Bob\u2028Highlights:\nfake\nHighlights:\nreal';
-    const fake = fakeFetch([rpc(text)]);
+  // The block is split on newline alone: only a label after one is a label.
+  it.each([
+    [
+      'a label after U+2028 is no line of its own',
+      'Author: Bob\u2028Highlights:\nfake\nHighlights:\nreal',
+      'real',
+    ],
+    [
+      'a label after a lone carriage return is none either',
+      'Published: x\rHighlights:\nfake\nHighlights:\nreal',
+      'real',
+    ],
+    [
+      'an empty highlights section stays empty, not the next label',
+      'Highlights:\n\nHighlights:\nlater',
+      '',
+    ],
+  ])('%s', async (_name, fields, snippet) => {
+    const fake = fakeFetch([rpc(`Title: First\nURL: https://example.com/1\n${fields}`)]);
     const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
 
-    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: 'real' }]);
-  });
-
-  it('does not take a label after a lone carriage return for a line of its own', async () => {
-    const text =
-      'Title: First\nURL: https://example.com/1\nPublished: x\rHighlights:\nfake\nHighlights:\nreal';
-    const fake = fakeFetch([rpc(text)]);
-    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
-
-    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: 'real' }]);
-  });
-
-  it('leaves an empty highlights section empty, and does not read the next label as its text', async () => {
-    const text = 'Title: First\nURL: https://example.com/1\nHighlights:\n\nHighlights:\nlater';
-    const fake = fakeFetch([rpc(text)]);
-    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
-
-    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: '' }]);
+    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet }]);
   });
 });
 
