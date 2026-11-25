@@ -2,6 +2,7 @@ import type { Provider, ProviderRequest } from '@sheavly/core/provider/provider.
 import type { EntryStore } from '@sheavly/core/store/store.types';
 import type { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
+import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import type { NodeRegistry } from '@sheavly/runtime/nodes/node-registry.service';
 import type { NodeChannelStorage } from '@sheavly/runtime/nodes/nodes.types';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
@@ -90,6 +91,13 @@ export type Harness = {
    * reference when it reads which modules are denied.
    */
   nodeChannels?: NodeChannelWriter;
+  /**
+   * What stores the conversation's tree channel, from the same `HarnessOptions.channels`: what
+   * exists, what waits for the user and the conversation's notices. The host tells it the notices
+   * (the queue, a storage failure), reads its `snapshot` and stops it when the conversation closes.
+   * Absent when the run's channels are not kept. An extension never holds it, as with `nodeChannels`.
+   */
+  treeChannel?: TreeChannelWriter;
   /**
    * Where tools ask the user to approve something (run_command's risky arguments). A UI
    * subscribes, renders each `approval_requested` its own way and answers with `respond`; with no

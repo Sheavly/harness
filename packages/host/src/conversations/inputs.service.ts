@@ -10,6 +10,7 @@ import type { LiveConversation, PromptFailure, SentPrompt } from './conversation
 import { partsText } from '@sheavly/protocol/message/message.utils';
 import { prepareForSend, refuseOverlappingSend, releaseOnAbort } from './prompt.helper.js';
 import { PromptQueue } from './prompt-queue.service.js';
+import { publishQueueUpdate } from './queue-notices.helper.js';
 import { ConversationQueues } from './queues.service.js';
 import { announceStorageFailure } from './storage.helper.js';
 
@@ -75,14 +76,12 @@ export class ConversationInputs {
   /** Gives conversation `id`, now live as `live`, its queue: `restored` lines wait, parked. */
   open(params: { id: ConversationId; live: LiveConversation; restored: readonly string[] }): void {
     const { id, live, restored } = params;
-    const { harness } = live;
     const queue: PromptQueue = new PromptQueue({
       restored,
       conversation: live.conversation,
       preparing: () => this.#preparing.get(id),
       start: ({ text, taken }) => this.#startLine({ id, live, prompt: { text }, left: taken }),
-      publish: (update) =>
-        harness.sessions.publishQueue({ sessionId: harness.mainSession.id, update }),
+      publish: (update) => publishQueueUpdate({ live, update }),
       keep: (lines) => this.#queues.replace({ id, queued: lines }),
       onStoreFailure: (failure) => announceStorageFailure({ live, failure }),
       onStartFailure: (error) => this.#onPromptFailure?.({ id, error }),
@@ -250,13 +249,12 @@ export class ConversationInputs {
     left: () => readonly string[];
   }): Promise<void> {
     const { id, live, prompt, left } = params;
-    const { harness } = live;
     const text = 'text' in prompt ? prompt.text : partsText(prompt.parts);
     const { events } = await this.#send({
       ...params,
       onStarted: () =>
-        harness.sessions.publishQueue({
-          sessionId: harness.mainSession.id,
+        publishQueueUpdate({
+          live,
           update: { type: 'prompt_started', text, queued: [...left()] },
         }),
     });

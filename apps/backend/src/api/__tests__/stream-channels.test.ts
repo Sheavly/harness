@@ -28,7 +28,7 @@ async function served(store = new MemoryConversationStore()) {
 
   await api.conversations.get(conversation).harness.nodeChannels?.flush();
 
-  const [channel = ''] = await store.channels(conversation);
+  const channel = (await store.channels(conversation)).find((name) => name !== 'tree') ?? '';
 
   return { api, store, client, id, conversation, channel };
 }
@@ -149,18 +149,18 @@ describe('a request the server cannot serve', () => {
     return { status: response.status, ...serverErrorSchema.parse(await response.json()).error };
   }
 
-  it('is not found, the same for another conversation’s channel, an unknown one and the tree', async () => {
+  it('is not found, the same for another conversation’s channel and an unknown one', async () => {
     const { api, store, id, channel } = await served();
     const other = conversationIdSchema.parse(await api.start());
 
     await api.conversations.get(other).harness.nodeChannels?.flush();
 
-    const [otherChannel = ''] = await store.channels(other);
+    const otherChannel = (await store.channels(other)).find((name) => name !== 'tree') ?? '';
     const answers = [];
 
     expect(otherChannel).not.toBe('');
 
-    for (const name of [otherChannel, 'no-such-node', 'tree']) {
+    for (const name of [otherChannel, 'no-such-node']) {
       answers.push(await refusal({ api, id, body: bodyOf(name, 'start') }));
     }
 

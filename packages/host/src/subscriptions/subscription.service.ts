@@ -1,5 +1,7 @@
 import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { ChannelEvent } from '@sheavly/runtime/nodes/nodes.types';
+import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
+import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import type {
   ChannelEndFrame,
   ChannelName,
@@ -7,7 +9,7 @@ import type {
 } from '@sheavly/protocol/subscription/subscription.types';
 import { FrameQueue } from './frame-queue.service.js';
 import type { HeldBytes } from './held-bytes.service.js';
-import { readSelection, tooMuchHeld } from './subscription-read.helper.js';
+import { readSelection, snapshotSelection, tooMuchHeld } from './subscription-read.helper.js';
 import {
   bytesOfFrame,
   cursorOfFrame,
@@ -37,6 +39,7 @@ import type { ChannelState, ResolvedChannel, Selection } from './subscriptions.t
  */
 export class Subscription {
   readonly #writer: NodeChannelWriter | undefined;
+  readonly #tree: TreeChannelWriter | undefined;
   readonly #pool: HeldBytes;
   readonly #queue = new FrameQueue();
   readonly #states = new Map<string, ChannelState>();
@@ -47,10 +50,12 @@ export class Subscription {
 
   constructor(params: {
     writer: NodeChannelWriter | undefined;
+    tree?: TreeChannelWriter | undefined;
     pool: HeldBytes;
     onClose: () => void;
   }) {
     this.#writer = params.writer;
+    this.#tree = params.tree;
     this.#pool = params.pool;
     this.#onClose = params.onClose;
   }
@@ -63,6 +68,8 @@ export class Subscription {
    */
   static async open(params: {
     writer: NodeChannelWriter | undefined;
+    /** The conversation's tree channel's writer, which the tree channel is followed through. */
+    tree?: TreeChannelWriter | undefined;
     channels: readonly ResolvedChannel[];
     budget: { left: number };
     pool: HeldBytes;
@@ -144,7 +151,10 @@ export class Subscription {
 
     for (const { channel, log, from, kind } of channels) {
       const pool = this.#pool;
-      const selection = await readSelection({ log, from, kind, budget, pool, signal });
+      const selection =
+        from === 'snapshot'
+          ? await snapshotSelection(this.#tree)
+          : await readSelection({ log, from, kind, budget, pool, signal });
 
       this.#readHeld += selection.held;
       selections.set(channel, selection);
@@ -158,9 +168,11 @@ export class Subscription {
   }
 
   #follow(channel: ChannelName): void {
+    const listener = (event: ChannelEvent) => this.#hear({ channel, event });
     const stop =
-      this.#writer?.follow({ channel, listener: (event) => this.#hear({ channel, event }) }) ??
-      (() => undefined);
+      (channel === TREE_CHANNEL_NAME
+        ? this.#tree?.follow(listener)
+        : this.#writer?.follow({ channel, listener })) ?? (() => undefined);
 
     this.#states.set(channel, {
       stop,
@@ -190,6 +202,11 @@ export class Subscription {
       const frame = headFrame({ channel, cursor: selection.newest.cursor });
 
       this.#enqueue({ channel, frame, live: false });
+    }
+
+    // The tree as it stands comes first; the entries after its cursor are the live ones below.
+    if (selection.snapshot && !this.#enqueue({ channel, frame: selection.snapshot, live: false })) {
+      throw tooMuchHeld();
     }
 
     for (const entry of selection.entries) {
@@ -224,9 +241,16 @@ export class Subscription {
     for (const event of early) this.#hear({ channel, event });
 
     // Nothing will be written to a channel its writer does not have: waiting would be for good.
-    if (!state.ended && this.#writer?.writing(channel) !== true) {
+    if (!state.ended && !this.#writing(channel)) {
       this.#end({ channel, reason: 'failed' });
     }
+  }
+
+  /** Whether a writer may still write `channel`: its own, or the tree's for the tree channel. */
+  #writing(channel: ChannelName): boolean {
+    if (channel === TREE_CHANNEL_NAME) return this.#tree?.writing() === true;
+
+    return this.#writer?.writing(channel) === true;
   }
 
   /** What the writer told about `channel`. Never throws: it runs inside the writer's own call. */

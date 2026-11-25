@@ -2,6 +2,7 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import { readHistoryEntries } from '@sheavly/core/store/history-log.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
+import { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
@@ -36,8 +37,11 @@ export async function readStoredConversation(params: {
   const resume = await SessionRegistry.readStoredLog(store.entries(id));
   // After the repair placeholders, so the log stays append-only and the model gets them once.
   const owed = await owedAgentReports({ store, id, resume, history: repaired, at });
+  // Where the tree channel stands and the tree it builds, for its writer to go on from. A channel
+  // it cannot go on from is a failure in this value, not an error here: the conversation reopens.
+  const resumedTree = await TreeChannelWriter.readStored({ store, id });
 
-  return { stored, logged: logged.length, messages: [...repaired, ...owed], resume };
+  return { stored, logged: logged.length, messages: [...repaired, ...owed], resume, resumedTree };
 }
 
 /**

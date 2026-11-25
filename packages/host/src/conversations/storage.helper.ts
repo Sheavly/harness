@@ -1,5 +1,6 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
+import type { ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { LiveConversation, StorageOf } from './conversations.types.js';
@@ -21,7 +22,11 @@ export function refuseWhenStorageFailed(params: {
   });
 }
 
-/** Puts `storage_failed` on the conversation's stream, under its main session. */
+/**
+ * Puts `storage_failed` on the conversation's stream, under its main session, and on its tree
+ * channel, where a client that follows only that learns of it. A tree channel that cannot be
+ * written takes no more, so its own failure is not repeated there.
+ */
 export function announceStorageFailure(params: {
   live: LiveConversation | undefined;
   failure: StoreError;
@@ -34,6 +39,7 @@ export function announceStorageFailure(params: {
     sessionId: harness.mainSession.id,
     event: { seq: 0, type: 'storage_failed', error: params.failure.message },
   });
+  harness.treeChannel?.noteStorageFailed(params.failure.message);
 }
 
 /**
@@ -45,8 +51,10 @@ export function storageOf(params: {
   keeper: ConversationKeeper | undefined;
   id: ConversationId;
   onChannelFailure: (failure: StoreError) => void;
+  /** What the stored tree channel left, for a reopened conversation's tree writer to go on from. */
+  resumedTree?: ResumedTree | undefined;
 }): StorageOf {
-  const { store, keeper, id, onChannelFailure } = params;
+  const { store, keeper, id, onChannelFailure, resumedTree } = params;
 
   if (!keeper || !store) return {};
 
@@ -55,7 +63,11 @@ export function storageOf(params: {
       entries: store.entries(id),
       shell: store.shell(id),
       outputs: store.outputs(id),
-      channels: { log: (channel) => store.channel({ id, channel }), onFailure: onChannelFailure },
+      channels: {
+        log: (channel) => store.channel({ id, channel }),
+        onFailure: onChannelFailure,
+        resumedTree,
+      },
       keepHistory: (messages) => keeper.keepHistory(messages),
       keepAgentHistory: (agent) => keeper.keepAgentHistory(agent),
       logOf: ({ session, main }) => store.history({ id, session: main ? undefined : session }),

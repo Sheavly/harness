@@ -3,7 +3,6 @@ import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
-import { subscribeRequestSchema } from '@sheavly/protocol/subscription/subscription.validator';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { ConversationsError } from '../../errors/conversations.errors.js';
 import { SubscriptionError } from '../../errors/subscription.errors.js';
@@ -14,22 +13,8 @@ import {
 } from '../../subscriptions/subscriptions.constants.js';
 import { say, scriptedConversations } from '../../testing/conversations.fake.js';
 import { ranOnePrompt } from '../../testing/stored-conversation.fake.js';
+import { refusalOf, requestOf } from '../../testing/subscription-world.fake.js';
 import type { Conversations } from '../conversations.service.js';
-
-/** A request for one channel from `from`, as the contract parses it. */
-const requestOf = (channel: string, from = 'start') =>
-  subscribeRequestSchema.parse({ subscriptions: [{ channel, from }] });
-
-/** What a promise that is refused rejects with, or undefined if it was not. */
-async function refusalOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (caughtError) {
-    return caughtError;
-  }
-
-  return undefined;
-}
 
 /** Asks for `from` once more than a conversation may hold connections, and gives each refusal. */
 async function refusedOften(params: {
@@ -89,9 +74,14 @@ async function stored() {
 
   await conversations.get(id).harness.nodeChannels?.flush();
 
-  const [channel = ''] = await store.channels(id);
+  const [channel = ''] = await nodeChannelsOf({ store, id });
 
   return { store, id, conversations, channel };
+}
+
+/** A conversation's node channels: every stored channel but the tree's. */
+async function nodeChannelsOf(params: { store: MemoryConversationStore; id: ConversationId }) {
+  return (await params.store.channels(params.id)).filter((name) => name !== 'tree');
 }
 
 describe('subscribing to a conversation’s channels', () => {
@@ -136,17 +126,17 @@ describe('subscribing to a conversation’s channels', () => {
 });
 
 describe('a channel the conversation does not have', () => {
-  it('is told the same whether it is another conversation’s, unknown, or the tree', async () => {
+  it('is told the same whether it is another conversation’s or unknown', async () => {
     const { store, id, conversations } = await stored();
     const other = await conversations.start();
 
     await conversations.get(other).harness.nodeChannels?.flush();
 
-    const [foreign = ''] = await store.channels(other);
+    const [foreign = ''] = await nodeChannelsOf({ store, id: other });
 
     expect(foreign).not.toBe('');
 
-    for (const name of [foreign, 'no-such-node', 'tree']) {
+    for (const name of [foreign, 'no-such-node']) {
       const refusal = await refusalOf(conversations.subscribe({ id, request: requestOf(name) }));
 
       expect(refusal).toBeInstanceOf(ConversationsError);
@@ -261,7 +251,7 @@ describe('the connections a conversation serves', () => {
 
     await conversations.get(other).harness.nodeChannels?.flush();
 
-    const [otherChannel = ''] = await store.channels(other);
+    const [otherChannel = ''] = await nodeChannelsOf({ store, id: other });
     const held = await fillPlaces({ conversations, id, channel });
 
     expect(

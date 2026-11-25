@@ -1,6 +1,7 @@
 import type { Provider } from '@sheavly/core/provider/provider.types';
 import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
+import { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import type { Harness, HarnessOptions } from './host.types.js';
@@ -44,6 +45,17 @@ export function createHarness(options: HarnessOptions): Harness {
   const nodeChannels = options.channels
     ? NodeChannelWriter.attach({ nodes: sessions.nodes, tasks, storage: options.channels })
     : undefined;
+  // The tree channel is told what the registries do from here on, so it is attached before
+  // anything else can start a node or ask for an approval.
+  const treeChannel = options.channels
+    ? TreeChannelWriter.attach({
+        nodes: sessions.nodes,
+        tasks,
+        approvals,
+        nodeIdOf: (session) => sessions.nodeIdOf(session),
+        storage: options.channels,
+      })
+    : undefined;
 
   // Approvals and background tasks join the combined stream, in order with the events of the
   // call that asked or started them.
@@ -67,6 +79,7 @@ export function createHarness(options: HarnessOptions): Harness {
     tasks,
     nodes: sessions.nodes,
     ...(nodeChannels && { nodeChannels }),
+    ...(treeChannel && { treeChannel }),
     approvals,
   };
 }

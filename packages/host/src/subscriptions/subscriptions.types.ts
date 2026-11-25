@@ -5,6 +5,7 @@ import type {
   ChannelName,
   SubscribeFrame,
 } from '@sheavly/protocol/subscription/subscription.types';
+import type { TreeSnapshot } from '@sheavly/protocol/tree/tree.types';
 
 /** A channel of a request that exists in its conversation, with where to start in it. */
 export type ResolvedChannel = {
@@ -28,6 +29,13 @@ export type Selection = {
   newest: Pick<ChannelEntry, 'cursor' | 'type'>;
   /** The bytes of the conversation's pool the entries hold, until they are queued as frames. */
   held: number;
+  /**
+   * For `from: snapshot` on the tree channel: the tree as it stands, sent before anything else. It
+   * is held in memory by the writer and counts against the pool once queued, not as a read of
+   * stored history, so it is not bound by the request's history budget; `entries` is then empty
+   * and `count` is the place after the entry it covers up to.
+   */
+  snapshot?: TreeSnapshot;
 };
 
 /** A frame waiting for the consumer, and the channel it belongs to. */

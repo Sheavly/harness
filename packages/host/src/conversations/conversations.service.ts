@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { now } from '@sheavly/core/clock/clock.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
+import type { ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionHub } from '../subscriptions/subscription-hub.service.js';
 import type { Subscription } from '../subscriptions/subscription.service.js';
+import { treeSnapshotOf } from '../subscriptions/tree-snapshot.helper.js';
 import { detailsOf } from './details.helper.js';
 import { skillsOf } from './skills.helper.js';
 import { ConversationKeeper } from './keeper.service.js';
@@ -19,7 +21,11 @@ import type {
   SentPrompt,
   StartConversationParams,
 } from './conversations.types.js';
-import { announceChannelFailures, closeLiveConversation } from './lifecycle.helper.js';
+import {
+  announceChannelFailures,
+  beginConversation,
+  closeLiveConversation,
+} from './lifecycle.helper.js';
 import { announceStorageFailure, refuseWhenStorageFailed, storageOf } from './storage.helper.js';
 
 import { matchesStored, summaryOf } from './conversations.utils.js';
@@ -37,6 +43,7 @@ import { conversationIdSchema } from '@sheavly/protocol/server/server.validator'
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
 import type { SubscribeRequest } from '@sheavly/protocol/subscription/subscription.types';
 import type { StoredConversation } from '@sheavly/protocol/store/store.types';
+import type { TreeSnapshot } from '@sheavly/protocol/tree/tree.types';
 
 /**
  * The live conversations a host serves, by id: each built by the app's `create`, with the
@@ -141,7 +148,7 @@ export class Conversations {
       });
     }
 
-    const { stored, logged, messages, resume } = await readStoredConversation({
+    const { stored, logged, messages, resume, resumedTree } = await readStoredConversation({
       store: this.#store,
       id,
     });
@@ -156,7 +163,7 @@ export class Conversations {
     // anything is live, rather than leave a conversation without its queue.
     const restored = await this.#inputs.stored(id);
     const keeper = this.#keeperFor(id);
-    const storage = keeper && this.#storageFor({ id, keeper }).storage;
+    const storage = keeper && this.#storageFor({ id, keeper, resumedTree }).storage;
     const live = await this.#create({
       id,
       messages,
@@ -268,18 +275,31 @@ export class Conversations {
   }
 
   /**
-   * What the app builds conversation `id` on so it is kept. A failed write of a node's channel is
-   * announced on the conversation's stream, which is looked up when it fires: the conversation may
-   * be gone by then.
+   * What the app builds conversation `id` on so it is kept. A failed write of a node's channel or
+   * of the tree channel is announced on the conversation's stream, which is looked up when it fires:
+   * the conversation may be gone by then. The same failure is told once, though both writers hit it,
+   * and a different one later is told too.
    */
-  #storageFor(params: { id: ConversationId; keeper: ConversationKeeper | undefined }) {
-    const { id, keeper } = params;
+  #storageFor(params: {
+    id: ConversationId;
+    keeper: ConversationKeeper | undefined;
+    resumedTree?: ResumedTree | undefined;
+  }) {
+    const { id, keeper, resumedTree } = params;
+    // The node channels and the tree channel share a disk, so both fail together with one message.
+    const told = new Set<string>();
 
     return storageOf({
       store: this.#store,
       keeper,
       id,
-      onChannelFailure: (failure) => announceStorageFailure({ live: this.#live.get(id), failure }),
+      resumedTree,
+      onChannelFailure: (failure) => {
+        if (told.has(failure.message)) return;
+
+        told.add(failure.message);
+        announceStorageFailure({ live: this.#live.get(id), failure });
+      },
     });
   }
 
@@ -306,28 +326,7 @@ export class Conversations {
    * records the model on the main session: the first `session_model` of its stream.
    */
   #begin(params: { id: ConversationId; keeper: ConversationKeeper | undefined }): void {
-    const { id, keeper } = params;
-    const live = this.get(id);
-    const summary = summaryOf({ id, live });
-    const { model, workspace, profile } = live.run.details();
-    const effort = model.effort ?? 'medium';
-
-    live.harness.sessions.setModel({
-      id: live.harness.mainSession.id,
-      modelId: model.id,
-      effort,
-    });
-    keeper?.begin({
-      id,
-      title: summary.title,
-      modelId: model.id,
-      effort,
-      workspace,
-      profile,
-      status: 'open',
-      startedAt: summary.startedAt,
-      updatedAt: now(),
-    });
+    beginConversation({ id: params.id, live: this.get(params.id), keeper: params.keeper });
   }
 
   /**
@@ -448,6 +447,17 @@ export class Conversations {
     signal?: AbortSignal | undefined;
   }): Promise<Subscription> {
     return this.#subscriptions.open({ ...params, live: this.get(params.id) });
+  }
+
+  /**
+   * The tree of conversation `id` as it stands, with the cursor to follow the tree channel from
+   * (subscribe to `tree` after it): every node, ended ones included, and every approval waiting. A
+   * client that starts from it and follows from that cursor has what one that replayed the channel
+   * has. `not_found` when the conversation is not live or keeps no tree, and `storage_failed` when
+   * its tree channel could not be stored.
+   */
+  async tree(id: ConversationId): Promise<TreeSnapshot> {
+    return treeSnapshotOf(this.get(id).harness.treeChannel);
   }
 
   /**

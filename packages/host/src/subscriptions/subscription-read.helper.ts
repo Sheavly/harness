@@ -1,11 +1,14 @@
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CursorKind } from '@sheavly/protocol/channel/channel.types';
 import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
+import { SNAPSHOT_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
 import { tailCount, tailLimit } from '@sheavly/protocol/subscription/subscription.utils';
+import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionError } from '../errors/subscription.errors.js';
 import type { HeldBytes } from './held-bytes.service.js';
 import { MAX_SUBSCRIBE_READ_BYTES, NO_SUCH_CHANNEL } from './subscriptions.constants.js';
+import { treeSnapshotOf } from './tree-snapshot.helper.js';
 import type { Selection } from './subscriptions.types.js';
 
 /** What the entry costs to hold: its JSON, as a store counts a line. */
@@ -42,7 +45,10 @@ export function checkPosition(params: { from: string; kind: CursorKind }): void 
     });
   }
 
-  if (from === 'start' || from === 'now' || cursorKind(from) === kind) return;
+  // The request only lets `snapshot` ask for the tree channel, which is numbered.
+  if (from === 'start' || from === 'now' || from === 'snapshot') return;
+
+  if (cursorKind(from) === kind) return;
 
   throw new SubscriptionError({
     reason: 'bad_request',
@@ -167,6 +173,24 @@ async function readInto(params: {
   }
 
   return { entries: kept, count, newest, held: taken.bytes };
+}
+
+/**
+ * What `from: snapshot` on the tree channel sends first: the tree as the writer has stored it, as
+ * one frame, and no history. `count` is the place after the entry it covers up to, so what the
+ * writer told while it was taken, from that entry on, is dropped as already in it, and what comes
+ * after is sent. Refuses as `treeSnapshotOf` does.
+ */
+export async function snapshotSelection(tree: TreeChannelWriter | undefined): Promise<Selection> {
+  const snapshot = await treeSnapshotOf(tree);
+
+  return {
+    entries: [],
+    count: cursorNumber(snapshot.cursor) + 1,
+    newest: { cursor: snapshot.cursor, type: SNAPSHOT_EVENT },
+    held: 0,
+    snapshot,
+  };
 }
 
 /** The refusal for a request whose history does not fit in what the conversation's subscriptions may hold. */

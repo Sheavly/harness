@@ -138,6 +138,19 @@ stays damaged is announced again on each reopen. A `reopen`
 of a conversation that is still being closed waits for the close to finish its writes.
 `Harness.nodeChannels` is the writer, which `close` waits for.
 
+The conversation's **tree channel** is kept beside them (`Harness.treeChannel`, a
+`TreeChannelWriter`): what exists (each agent, command and service opening, changing and ending),
+what waits for the user (an approval, with the node that asked), and the conversation's notices
+(its queue, a line starting with the message it became, a line refused, a storage failure). The
+host tells it the notices through `publishQueueUpdate`, which puts each queue change on the stream
+and on the tree. `await conversations.tree(id)` is the tree as it stands (`TreeSnapshot`), with the
+cursor to follow from, for a client that connects late; it is the same tree a replay of the whole
+channel gives. Closing the conversation stops the writer and does not close the channel, which a
+reopen goes on from: the nodes the stopped process left open are closed as `lost` and its waiting
+approvals given up. A stored tree channel the reopen cannot go on from is not written and is told
+once as `storage_failed`; `tree` then answers `storage_failed`. A write failure of a node channel or
+the tree channel is announced once per conversation, since they share a disk.
+
 **Following a channel.** `await conversations.subscribe({ id, request })` serves the channels a
 `SubscribeRequest` names: the stored history each position asks for (`start`, `now`, `tail:n` or
 after a cursor), then each entry the writer stores from then on, as the frames of
@@ -145,15 +158,20 @@ after a cursor), then each entry the writer stores from then on, as the frames o
 caller `close`s it when done, whether or not it read). It follows each channel before it reads the
 store and joins the two by the entry's place in its log, so none is missed or sent twice. A channel
 is the conversation's own only if its store lists it: another conversation's node, an unknown id and
-the tree channel (not stored) all answer `not_found` with one message. A request is refused before
-anything is read for a position its channel cannot be asked for (`bad_request`), and while reading
+the tree channel of a conversation that keeps none all answer `not_found` with one message. The
+tree channel is served like any other, and from `snapshot` it sends the tree as one frame first
+(counted against what the conversation holds, not against the 8 MiB of history, since the writer
+holds it in memory), then the entries after its cursor, none missed or repeated. A request that
+claims to answer approvals (`approvals: true`) is refused as `bad_request` for now. A request is
+refused before anything is read for a position its channel cannot be asked for (`bad_request`), and while reading
 for a cursor it does not hold (`cursor_out_of_range`) or history over 8 MiB, never cut
 (`bad_request`); a conversation serves at most 64 subscriptions (`too_many_subscriptions`), and its
 subscriptions hold at most 128 MiB together for consumers that have not read it: history that does
 not fit is refused the same way, and a live frame that does not fit, or a consumer more than 1,000
 frames behind on a channel, cuts that channel off (`end` with `cut_off`, and the cursor to resume
 after) while the others go on. A channel whose storage failed, or that no writer has, ends as
-`failed`; a conversation that closes ends its channels with their `closed` entries. An aborted
+`failed`; a conversation that closes ends its node channels with their `closed` entries and its tree
+channel as `failed` (the writer stopped; the channel itself stays open). An aborted
 `signal` given to `subscribe` stops the reading of history, so a client that left costs no more.
 
 ## Docs

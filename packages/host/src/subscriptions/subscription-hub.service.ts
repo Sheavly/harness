@@ -21,14 +21,29 @@ const noSuchChannel = () =>
   new ConversationsError({ reason: 'not_found', message: NO_SUCH_CHANNEL });
 
 /**
+ * Refuses a connection that claims to answer approvals: nothing yet makes an approval wait for a
+ * subscription, so honouring the claim would be a promise the server does not keep. It is refused
+ * until the client that answers through a subscription exists, rather than ignored.
+ */
+function refuseApprovals(request: SubscribeRequest): void {
+  if (request.approvals !== true) return;
+
+  throw new SubscriptionError({
+    reason: 'bad_request',
+    message:
+      'Answering approvals through a subscription is not supported yet: leave approvals out, and answer them through the conversation',
+  });
+}
+
+/**
  * The subscriptions a host serves, by conversation: it decides whether a request may be served
  * (the connections a conversation holds, the channels it has, the positions they can be asked
  * for), and opens the subscription. A conversation closing needs nothing of it: the writer ends
  * every channel it writes, and a subscription ends with its channels.
  *
  * A channel is the conversation's only if its store lists it: another conversation's node, an
- * unknown id and the tree channel (which is not stored) all answer `not_found` with one message,
- * so a request learns nothing about channels it cannot reach.
+ * unknown id and the tree channel of a conversation that stores none all answer `not_found` with
+ * one message, so a request learns nothing about channels it cannot reach.
  */
 export class SubscriptionHub {
   readonly #store: ConversationStore | undefined;
@@ -45,7 +60,8 @@ export class SubscriptionHub {
   /**
    * Opens a subscription to the channels `request` names, in conversation `id` (`live`). Refuses,
    * before reading anything of the history, a request for a channel the conversation does not have
-   * (`not_found`), a position it cannot be asked for (`bad_request`) or a conversation that serves
+   * (`not_found`), a position it cannot be asked for or a claim to answer approvals
+   * (`bad_request`, for now) or a conversation that serves
    * as many as it may (`too_many_subscriptions`); then reads, and refuses a position its log cannot
    * start at (`cursor_out_of_range`), a read over `MAX_SUBSCRIBE_READ_BYTES` (`bad_request`) or
    * history that does not fit in what the conversation's subscriptions may hold
@@ -61,15 +77,25 @@ export class SubscriptionHub {
   }): Promise<Subscription> {
     const { id, live, signal } = params;
     const request = subscribeRequestSchema.parse(params.request);
+
+    refuseApprovals(request);
+
     const { pool, release } = this.#reserve(id);
 
     try {
+      // The tree channel is listed once its first entry is stored, which is queued when the
+      // conversation starts: a client that asks at once must not be told it has none.
+      if (request.subscriptions.some(({ channel }) => channel === TREE_CHANNEL_NAME)) {
+        await live.harness.treeChannel?.flush();
+      }
+
       const channels = await this.#resolve({ id, request });
 
       signal?.throwIfAborted();
 
       return await Subscription.open({
         writer: live.harness.nodeChannels,
+        tree: live.harness.treeChannel,
         channels,
         budget: { left: MAX_SUBSCRIBE_READ_BYTES },
         pool,
@@ -126,7 +152,7 @@ export class SubscriptionHub {
 
     // Every name is looked up before any log is opened, so which of them is missing is not told.
     for (const { channel } of request.subscriptions) {
-      if (channel === TREE_CHANNEL_NAME || !stored.has(channel)) throw noSuchChannel();
+      if (!stored.has(channel)) throw noSuchChannel();
     }
 
     for (const { channel, from } of request.subscriptions) {
