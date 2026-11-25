@@ -26,7 +26,7 @@ export function owningWorktree(params: { worktrees: string[]; root: string }): s
 
 /** Where a `.git` file points: its `gitdir:` line, resolved against the folder holding the file. */
 export function parseGitdirFile(params: { content: string; dir: string }): string | undefined {
-  const target = /^gitdir:\s*(.+?)\s*$/m.exec(params.content)?.[1];
+  const target = /(?:^|[\r\n])gitdir:\s*([^\r\n]+?)\s*(?=[\r\n]|$)/.exec(params.content)?.[1];
 
   return target ? path.resolve(params.dir, target) : undefined;
 }

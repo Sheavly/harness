@@ -34,6 +34,12 @@ describe('parseGitdirFile', () => {
     );
   });
 
+  it('keeps a path whole when a folder name holds U+2028, which is no line end in a .git file', () => {
+    expect(parseGitdirFile({ content: 'gitdir: /repo/.git/worktrees/a\u2028b\n', dir: '/p' })).toBe(
+      '/repo/.git/worktrees/a\u2028b',
+    );
+  });
+
   it('is undefined for a file that is not a gitdir pointer', () => {
     expect(parseGitdirFile({ content: 'nope', dir: '/p' })).toBeUndefined();
   });
