@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createClient } from '@sheavly/client/client/client.helper';
 import { conversationIdSchema, serverErrorSchema } from '@sheavly/protocol/server/server.validator';
-import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
-import { subscribeFrameSchema } from '@sheavly/protocol/subscription/subscription.validator';
 import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
-import { reply, testApi } from '../../testing/api.fake.js';
 import { useOpenedServers } from '../../testing/opened-servers.fake.js';
-import { TEST_TOKEN } from '../../testing/testing.constants.js';
+import { servedConversation } from '../../testing/served-conversation.fake.js';
+import { framesOf } from '../../testing/subscription-frames.fake.js';
 
 // The route that follows node channels, over a real listener and in-process: what a client reads
 // of a conversation's stored channels and of what is stored next, and how a request it cannot have
@@ -17,20 +14,10 @@ const servers = useOpenedServers();
 
 /** A conversation that ran one prompt, kept in a store, served on a real port and in-process. */
 async function served(store = new MemoryConversationStore()) {
-  const api = testApi({ go: [reply('done')] }, store);
-  const url = await servers.listen(api.app.fetch);
-  const client = createClient({ url, token: TEST_TOKEN });
-  const id = await api.start();
+  const world = await servedConversation({ servers, store });
+  const channel = (await store.channels(world.conversation)).find((name) => name !== 'tree') ?? '';
 
-  for await (const _frame of api.runOf({ id, text: 'go' }));
-
-  const conversation = conversationIdSchema.parse(id);
-
-  await api.conversations.get(conversation).harness.nodeChannels?.flush();
-
-  const channel = (await store.channels(conversation)).find((name) => name !== 'tree') ?? '';
-
-  return { api, store, client, id, conversation, channel };
+  return { ...world, channel };
 }
 
 /** A request body for one channel from `from`. */
@@ -46,48 +33,6 @@ const askNow = (params: {
     method: 'QUERY',
     body: bodyOf(params.channel, 'now'),
   });
-
-/**
- * The text of each server-sent frame of `body`, as it ends. The client's own reader keeps only the
- * frames of the conversation stream, which have an `id`; these have none, so a test reads them here.
- */
-async function* rawFrames(body: ReadableStream<Uint8Array>) {
-  const decoder = new TextDecoder();
-  let buffered = '';
-
-  for await (const chunk of body) {
-    buffered += decoder.decode(chunk, { stream: true });
-
-    for (let end = buffered.indexOf('\n\n'); end !== -1; end = buffered.indexOf('\n\n')) {
-      yield buffered.slice(0, end);
-      buffered = buffered.slice(end + 2);
-    }
-  }
-}
-
-/** The frames of a stream body, one at a time, as a client reads them. */
-function framesOf(body: ReadableStream<Uint8Array>) {
-  const frames = rawFrames(body);
-
-  return async (): Promise<{ event: string; frame: SubscribeFrame } | undefined> => {
-    for (;;) {
-      const next = await frames.next();
-
-      if (next.done) return undefined;
-
-      const lines = next.value.split('\n');
-      const event = lines.find((each) => each.startsWith('event: '));
-      const data = lines.find((each) => each.startsWith('data: '));
-
-      // A heartbeat comment is neither.
-      if (!event || !data) continue;
-
-      const parsed: unknown = JSON.parse(data.slice('data: '.length));
-
-      return { event: event.slice('event: '.length), frame: subscribeFrameSchema.parse(parsed) };
-    }
-  };
-}
 
 describe('following a conversation’s channels over HTTP', () => {
   it('serves what is stored, then what comes, and ends with the channel', async () => {

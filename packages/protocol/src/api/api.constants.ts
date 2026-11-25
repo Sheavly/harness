@@ -23,6 +23,7 @@ import {
   storedConversationsQuerySchema,
   storedConversationsResponseSchema,
 } from '../store/store.validator.js';
+import { treeSnapshotSchema } from '../tree/tree.validator.js';
 import { FOLDER_ROUTES } from './folder-routes.constants.js';
 import { PUBLIC_ROUTES } from './public-routes.constants.js';
 import { SETUP_ROUTES } from './setup-routes.constants.js';
@@ -48,8 +49,8 @@ export const LAST_EVENT_ID_HEADER = 'Last-Event-ID';
 
 /**
  * The SSE event name of a frame that carries an entry, as JSON: on the conversation's stream every
- * frame is one `StreamEntry`; on the channel stream it is an entry of a channel, beside the `head`
- * and `end` frames.
+ * frame is one `StreamEntry`; on the channel stream it is an entry of a channel (a node's or the
+ * tree's), beside the `head`, `end` and `snapshot` frames.
  */
 export const ENTRY_EVENT = 'entry';
 
@@ -174,9 +175,17 @@ export const API_ROUTES = {
     method: 'query',
     path: '/conversations/{id}/subscribe',
     summary:
-      'Follow node channels: the stored history each position asks for, then what is stored next, as entry, head and end frames',
+      "Follow channels, a node's or the conversation's tree: the stored history each position asks for (the tree as it stands, for the tree from snapshot), then what is stored next, as entry, head, end and snapshot frames",
     body: subscribeRequestSchema,
     response: { status: 200, stream: subscribeFrameSchema },
+  },
+  getTree: {
+    effect: 'read',
+    method: 'get',
+    path: '/conversations/{id}/tree',
+    summary:
+      'The tree as it stands: every node, ended ones included, and every approval waiting, with the cursor to follow the tree channel from',
+    response: { status: 200, schema: treeSnapshotSchema },
   },
   queryStoredConversations: {
     effect: 'read',

@@ -422,6 +422,7 @@ operation carries `security: []`:
 | `POST /conversations/{id}/approvals/{approval}`      | bearer | `AnswerApprovalRequest`    | nothing (`204`)               |
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
 | `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |
+| `GET /conversations/{id}/tree`                       | bearer | none                       | `TreeSnapshot`                |
 | `QUERY /stored-conversations`                        | bearer | `StoredConversationsQuery` | `StoredConversationsResponse` |
 | `POST /stored-conversations/{id}/reopen`             | bearer | none                       | `StartConversationResponse`   |
 | `GET /setup`                                         | bearer | none                       | `Setup`                       |

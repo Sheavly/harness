@@ -115,6 +115,7 @@ export function apiHandlers(
         answersApprovals: body.approvals === true,
       });
     },
+    getTree: async ({ c, id }) => c.json(await conversations.tree(id)),
     // A request that cannot be served is refused here, before a stream opens, as an HTTP failure.
     streamChannels: async ({ c, id, body }) => {
       const gone = c.req.raw.signal;

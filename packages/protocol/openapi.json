@@ -355,7 +355,7 @@
     "/conversations/{id}/subscribe": {
       "query": {
         "operationId": "streamChannels",
-        "summary": "Follow node channels: the stored history each position asks for, then what is stored next, as entry, head and end frames",
+        "summary": "Follow channels, a node's or the conversation's tree: the stored history each position asks for (the tree as it stands, for the tree from snapshot), then what is stored next, as entry, head, end and snapshot frames",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -372,6 +372,29 @@
               "text/event-stream": {
                 "itemSchema": { "$ref": "#/components/schemas/SubscribeFrame" }
               }
+            }
+          },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/tree": {
+      "get": {
+        "operationId": "getTree",
+        "summary": "The tree as it stands: every node, ended ones included, and every approval waiting, with the cursor to follow the tree channel from",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TreeSnapshot" } }
             }
           },
           "default": {
