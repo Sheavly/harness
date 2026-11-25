@@ -42,7 +42,7 @@ const expected = [
     description:
       'Start a sub-agent on a self-contained task. It runs in the background; its complete ' +
       'report comes to you automatically when it finishes. No need to poll: when you have nothing else ' +
-      'to do, end your turn and you will be woken with the reply. Steer it with message_agent, ' +
+      'to do, end your turn and you will be woken with the reply; await_tasks is not needed for it. Steer it with message_agent, ' +
       `stop it with cancel_task. Sub-agents nest at most ${MAX_SESSION_DEPTH} levels deep.`,
     parameters: {
       title: 'A short name, e.g. "Update ESLint rules"',
@@ -83,8 +83,9 @@ const expected = [
   {
     name: 'await_tasks',
     description:
-      'Group background tasks so their results arrive together after every member finishes. ' +
-      'Returns immediately; it does not block this call or poll. Finish independent work, then end your turn without tool calls to wait. ' +
+      'Optional, and rarely needed: every finished finite background task is delivered to you automatically and wakes you, so never call this for one task or just to wait. ' +
+      'Use it only when two or more results must reach you together before you can act: it holds their results back until every member finishes. ' +
+      'Returns immediately; it does not block this call or poll. Then finish independent work and end your turn without tool calls. ' +
       'Give your future self enough context to use the results after a summary: explain what decision or next step depends on them. ' +
       'Do not use a generic reason such as "waiting for results". Inspect task_status only for requested updates or diagnosis.',
     parameters: {

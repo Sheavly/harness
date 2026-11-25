@@ -122,7 +122,7 @@ describe('start_agent task lifecycle', () => {
 
     expect(result.content).toBe(
       `Started sub-agent "Review" as background task t1 (session ${child.id}, depth ${child.depth}). Its complete report comes to you automatically: ` +
-        "don't poll task_status for it; once you have nothing else to do, end your turn and wait. " +
+        "don't poll task_status for it, and don't call await_tasks for it alone; once you have nothing else to do, end your turn and you will be woken. " +
         'Use message_agent with its session id to steer it, cancel_task to stop it.',
     );
     expect(tasks.hasPendingTasks(parent.id)).toBe(true);

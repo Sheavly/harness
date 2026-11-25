@@ -20,7 +20,10 @@ sub-agents ([sub-agents.md](sub-agents.md)), which run as tasks too.
 - Status calls are immediate snapshots for requested updates or diagnosis, not waits. The
   description and every running snapshot tell the agent not to poll: finish independent work,
   then end a turn without tool calls to let the loop wait for required results.
-- `await_tasks` requires at least one id and a trimmed, nonempty `reason`. The reason explains
+- `await_tasks` is optional and rarely needed: every finished finite task is delivered and wakes
+  the agent without it, so its description and result tell the agent never to call it for one task or
+  just to wait, only to hold two or more results back until they can arrive together. It
+  requires at least one id and a trimmed, nonempty `reason`. The reason explains
   why the results belong together and what decision or next step depends on them, so the agent's
   future self can use them after a summary. Guidance rejects lazy reasons such as "waiting for
   results"; validation checks presence and nonempty text, not a brittle wording rule.
