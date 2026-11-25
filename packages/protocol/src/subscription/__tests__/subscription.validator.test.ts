@@ -8,6 +8,7 @@ import {
   MAX_SUBSCRIPTIONS,
   MAX_TAIL,
   MAX_TAIL_BYTES,
+  SNAPSHOT_EVENT,
 } from '../subscription.constants.js';
 import {
   channelEndFrameSchema,
@@ -128,8 +129,23 @@ describe('a frame of a subscribe stream', () => {
     node: { kind: 'agent', id: 'agent-1', title: 'Main', state: 'running', startedAt: 1 },
   };
 
+  const main = { kind: 'agent', id: 'agent-1', title: 'Main', state: 'running', startedAt: 1 };
+  const snapshot = {
+    channel: 'tree',
+    cursor: 's4',
+    at: 9,
+    type: SNAPSHOT_EVENT,
+    nodes: [main],
+    approvals: [],
+  };
+
   it.each([
     ['an entry of a channel', opened],
+    [
+      'an entry of the tree channel',
+      { channel: 'tree', cursor: 's1', at: 2, type: 'node_opened', node: main },
+    ],
+    ['the tree as it stands', snapshot],
     ['where a channel stood at now', { type: HEAD_EVENT, channel: 'agent-1', cursor: 's7' }],
     [
       'the end of a channel that closed',
@@ -171,9 +187,40 @@ describe('a frame of a subscribe stream', () => {
       { type: END_EVENT, channel: 'agent-1', reason: 'completed', cursor: 'x' },
     ],
     ['an entry no channel holds', { channel: 'agent-1', cursor: 's4', at: 1, type: 'event' }],
+    ['a snapshot of a channel that is not the tree', { ...snapshot, channel: 'agent-1' }],
+    ['a snapshot at a byte offset', { ...snapshot, cursor: 'b4' }],
+    ['a snapshot that does not hold together: a node twice', { ...snapshot, nodes: [main, main] }],
+    [
+      'a snapshot whose approval is asked by a node it does not have',
+      {
+        ...snapshot,
+        approvals: [
+          {
+            node: 'agent-9',
+            request: {
+              id: 'a1',
+              callId: 'call_1',
+              tool: 'run_command',
+              command: 'ls',
+              concerns: [],
+              options: ['approve', 'skip'],
+            },
+          },
+        ],
+      },
+    ],
+    ['a snapshot with no cursor', { ...snapshot, cursor: undefined }],
     ['nothing', {}],
   ])('is not %s', (_name, value) => {
     expect(frame(value)).toBe(false);
+  });
+
+  it('keeps the snapshot apart from the control frames and from every entry', () => {
+    expect(channelHeadFrameSchema.safeParse(snapshot).success).toBe(false);
+    expect(channelEndFrameSchema.safeParse(snapshot).success).toBe(false);
+    expect(subscribeFrameSchema.safeParse({ ...snapshot, type: 'node_opened' }).success).toBe(
+      false,
+    );
   });
 
   it('keeps an entry apart from the two control frames: neither parses as the other', () => {
@@ -185,8 +232,8 @@ describe('a frame of a subscribe stream', () => {
     ).toBe(false);
   });
 
-  it('names its event the way its data names its type, for the two control frames', () => {
-    expect([HEAD_EVENT, END_EVENT]).toEqual(['head', 'end']);
+  it('names its event the way its data names its type, for the three frames that are not entries', () => {
+    expect([HEAD_EVENT, END_EVENT, SNAPSHOT_EVENT]).toEqual(['head', 'end', 'snapshot']);
     expect(CHANNEL_END_REASONS).toEqual(['completed', 'cut_off', 'failed']);
   });
 });

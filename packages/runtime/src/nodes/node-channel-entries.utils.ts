@@ -24,7 +24,52 @@ export function byteCursor(offset: number): string {
 }
 
 /** An agent's node as its channel holds it: what the registry keeps of it is the whole of it. */
-const agentNodeOf = (node: NodeRecord) => ({ ...node, kind: 'agent' });
+export const agentNodeOf = (node: NodeRecord) => ({ ...node, kind: 'agent' });
+
+/**
+ * `build(command)` with `command` cut in half until the entry it makes is at most
+ * `MAX_CHANNEL_ENTRY_CHARS` of JSON, as a store requires: the one field of a node with no bound of
+ * its own near that (`MAX_NODE_COMMAND_CHARS` is far above it). An entry that does not fit even with
+ * no command is returned as it is, for the store to refuse.
+ */
+function fittedEntry(params: {
+  command: string;
+  build: (command: string) => ChannelEntry;
+}): ChannelEntry {
+  const { build } = params;
+  let command = params.command;
+  let entry = build(command);
+
+  while (JSON.stringify(entry).length > MAX_CHANNEL_ENTRY_CHARS && command.length > 0) {
+    command = command.slice(0, Math.floor(command.length / 2));
+    entry = build(command);
+  }
+
+  return entry;
+}
+
+/**
+ * A command's or a service's node as its entries hold it: the registry keeps only its title and
+ * times, so the command, the description and the reason come from the task, and `output` is what
+ * the entry says of it (empty when it opens, since the complete output is the output store's).
+ */
+export function workNodeOf(params: {
+  node: NodeRecord;
+  task: TaskInfo;
+  command: string;
+  output: string;
+}) {
+  const { node, task, command, output } = params;
+
+  return {
+    ...node,
+    command,
+    description: task.description.slice(0, MAX_NODE_DESCRIPTION_CHARS),
+    output,
+    ...(task.reason !== undefined && { reason: task.reason.slice(0, MAX_NODE_REASON_CHARS) }),
+    ...(task.outputLog && { outputLog: task.outputLog }),
+  };
+}
 
 /**
  * The entry that opens an agent's channel: the agent as it was. Its cursor is the start of a
@@ -59,29 +104,17 @@ export function openedWorkEntry(params: {
   at: number;
 }): ChannelEntry {
   const { node, task, at } = params;
-  const build = (command: string): ChannelEntry => ({
-    channel: node.id,
-    cursor: byteCursor(0),
-    at,
-    type: 'opened',
-    node: {
-      ...node,
-      command,
-      description: task.description.slice(0, MAX_NODE_DESCRIPTION_CHARS),
-      output: '',
-      ...(task.reason !== undefined && { reason: task.reason.slice(0, MAX_NODE_REASON_CHARS) }),
-      ...(task.outputLog && { outputLog: task.outputLog }),
-    },
+
+  return fittedEntry({
+    command: task.command.slice(0, MAX_NODE_COMMAND_CHARS),
+    build: (command) => ({
+      channel: node.id,
+      cursor: byteCursor(0),
+      at,
+      type: 'opened',
+      node: workNodeOf({ node, task, command, output: '' }),
+    }),
   });
-  let command = task.command.slice(0, MAX_NODE_COMMAND_CHARS);
-  let opened = build(command);
-
-  while (JSON.stringify(opened).length > MAX_CHANNEL_ENTRY_CHARS && command.length > 0) {
-    command = command.slice(0, Math.floor(command.length / 2));
-    opened = build(command);
-  }
-
-  return opened;
 }
 
 /** A change to a live agent: the node as it is now. Only an agent's channel has them. */

@@ -3159,8 +3159,10 @@
       "SubscribeFrame": {
         "anyOf": [
           { "$ref": "#/components/schemas/ChannelEntry" },
+          { "$ref": "#/components/schemas/TreeChannelEntry" },
           { "$ref": "#/components/schemas/ChannelHeadFrame" },
-          { "$ref": "#/components/schemas/ChannelEndFrame" }
+          { "$ref": "#/components/schemas/ChannelEndFrame" },
+          { "$ref": "#/components/schemas/TreeSnapshot" }
         ]
       },
       "MessageNodeRequest": {

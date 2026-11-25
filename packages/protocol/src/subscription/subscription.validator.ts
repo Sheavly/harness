@@ -6,6 +6,7 @@ import {
 } from '../channel/channel.validator.js';
 import { cursorKind } from '../channel/channel.utils.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
+import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import {
   CHANNEL_END_REASONS,
   END_EVENT,
@@ -126,12 +127,15 @@ export const channelEndFrameSchema = z.object({
 
 /**
  * What one frame of a subscribe stream holds, as JSON: an entry of a channel (event `entry`; its
- * envelope carries its own channel and cursor), where a channel stood (`head`), or the end of a
- * channel (`end`). A frame has no `id`: one id cannot carry several cursors, so a client keeps
- * the last cursor of each channel and sends them again on a reconnect.
+ * envelope carries its own channel and cursor), where a channel stood (`head`), the end of a
+ * channel (`end`), or the tree as it stands (`snapshot`, the tree channel only). An entry is a
+ * node's channel's, or the tree channel's. A frame has no `id`: one id cannot carry several
+ * cursors, so a client keeps the last cursor of each channel and sends them again on a reconnect.
  */
 export const subscribeFrameSchema = z.union([
   channelEntrySchema,
+  treeChannelEntrySchema,
   channelHeadFrameSchema,
   channelEndFrameSchema,
+  treeSnapshotSchema,
 ]);

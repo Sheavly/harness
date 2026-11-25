@@ -151,10 +151,15 @@ each frame is one envelope: it carries its **channel and its cursor**. A closed 
 what remains and then completes. A slow consumer is cut off per channel and resumes from its
 cursor.
 
-A stream has three kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
+A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
 
 - **`entry`**: one entry of a channel, as it is stored (`opened`, an agent's `updated`, `closed`,
-  as `ChannelEntry` says). Its own `channel` and `cursor` are the frame's.
+  as `ChannelEntry` says; on the tree channel, `TreeChannelEntry`). Its own `channel` and `cursor`
+  are the frame's.
+- **`snapshot`** (`TreeSnapshot`): for `from: snapshot` on the tree channel, the tree as it stands,
+  sent first, with the cursor of the entry it covers up to; the entries after that cursor follow.
+  `applyTreeEntry` is the one rule from entries to tree, so a client that starts from a snapshot
+  and one that replays every entry from the start end with the same tree.
 - **`head`** (`ChannelHeadFrame`): where a channel stood when a subscription at `now` opened,
   the cursor of its newest entry, sent first, once per such channel. A client that hears no entry
   before the connection drops still has a cursor to resume after, and misses nothing written
@@ -348,7 +353,10 @@ message as it is, so **whoever builds a node's body for the wire shortens each**
 would have no valid node (the node registry holds only a node's title and status, and shortens
 those). A snapshot holds at most 1,000 nodes and as many approvals: the node registry refuses a
 node past the first bound and the approval registry a request past the second, so a snapshot never
-has to be refused instead. A node id is lowercase, so
+has to be refused instead. The tree keeps every ended node, so over a long conversation it would
+outgrow the first bound while the registry does not: `applyTreeEntry` drops the oldest ended node
+that no node under it needs once the tree holds more, so a snapshot and a replay stay the same
+tree and a child never points at a node that is gone. A node id is lowercase, so
 two cannot differ by case on a disk that ignores it.
 
 What they do not bound, so a front end and a server must: an approval's own fields (`id`, `tool`,

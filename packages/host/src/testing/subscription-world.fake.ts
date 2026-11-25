@@ -2,12 +2,28 @@ import type { ChannelFrom, ChannelLog } from '@sheavly/core/store/store.types';
 import { channelNameSchema } from '@sheavly/protocol/channel/channel.validator';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
+import { subscribeRequestSchema } from '@sheavly/protocol/subscription/subscription.validator';
 import { conversation, conversationId } from '@sheavly/runtime/testing/stored-conversation.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { HeldBytes } from '../subscriptions/held-bytes.service.js';
 import { Subscription } from '../subscriptions/subscription.service.js';
 
 type World = ReturnType<typeof conversation>;
+
+/** Test-only: a request for one channel from `from`, as the contract parses it. */
+export const requestOf = (channel: string, from = 'start') =>
+  subscribeRequestSchema.parse({ subscriptions: [{ channel, from }] });
+
+/** Test-only: what a promise that is refused rejects with, or undefined if it was not. */
+export async function refusalOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (caughtError) {
+    return caughtError;
+  }
+
+  return undefined;
+}
 
 /** A read budget and a pool no test comes near. */
 const BUDGET = 1_000_000;

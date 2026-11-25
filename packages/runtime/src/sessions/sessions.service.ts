@@ -103,9 +103,7 @@ export class SessionRegistry {
    * Reads a stored conversation's entries once, in order, for `new SessionRegistry({ store,
    * resume })` to carry on from. Throws a `StoreError` when the entries have a gap.
    */
-  static readStoredLog(store: EntryStore): Promise<StoredLog> {
-    return readStoredLog(store);
-  }
+  static readonly readStoredLog: (store: EntryStore) => Promise<StoredLog> = readStoredLog;
 
   /** The registry every node of this conversation is in: sessions, and the tasks that share it. */
   get nodes(): NodeRegistry {
@@ -149,6 +147,12 @@ export class SessionRegistry {
     this.#require(context.sessionId);
     this.#messageContexts.set(context);
   }
+
+  /**
+   * The user message session `id`'s activity is associated with now (`setMessage`): the prompt it
+   * answers. None before a prompt, and for a sub-agent started before one. Unknown ids read as none.
+   */
+  readonly messageOf = (id: SessionId) => this.#messageContexts.get(id);
 
   /** Starts the main session (depth 1). */
   startMain(params: { title: string; id?: SessionId }): SessionRef {

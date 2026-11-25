@@ -14,6 +14,10 @@ const entriesOf = async (params: {
   channel: string;
 }) => readChannel(params);
 
+/** The conversation's node channels: every stored channel but the tree's, which has its own tests. */
+const nodeChannelsOf = async (params: { store: MemoryConversationStore; id: ConversationId }) =>
+  (await params.store.channels(params.id)).filter((channel) => channel !== 'tree');
+
 /** Lets every write of the conversation's node channels finish, as an app waits for its disk. */
 async function written(conversations: Conversations, id: ConversationId) {
   await conversations.get(id).harness.nodeChannels?.flush();
@@ -109,9 +113,9 @@ describe('a conversation’s node channels in its store', () => {
   it('stores the main agent’s channel as the conversation runs', async () => {
     const store = new MemoryConversationStore();
     const { id } = await stoppedConversation(store);
-    const [channel] = await store.channels(id);
+    const [channel] = await nodeChannelsOf({ store, id });
 
-    expect(await store.channels(id)).toHaveLength(1);
+    expect(await nodeChannelsOf({ store, id })).toHaveLength(1);
 
     const entries = await entriesOf({ store, id, channel: channel ?? '' });
 
@@ -131,7 +135,7 @@ describe('a conversation’s node channels in its store', () => {
 
     await first.conversations.close(id);
 
-    const [channel] = await store.channels(id);
+    const [channel] = await nodeChannelsOf({ store, id });
     const entries = await entriesOf({ store, id, channel: channel ?? '' });
 
     expect(entries.at(-1)).toMatchObject({ type: 'closed' });
@@ -141,7 +145,7 @@ describe('a conversation’s node channels in its store', () => {
   it('waits for a conversation being closed before it reopens it: its channel closes, and is not lost', async () => {
     const store = slowChannels();
     const { id, first } = await stoppedConversation(store);
-    const [channel] = await store.channels(id);
+    const [channel] = await nodeChannelsOf({ store, id });
 
     // Not awaited in between: the reopen starts while the close is still writing.
     await Promise.all([first.conversations.close(id), first.conversations.reopen(id)]);
@@ -159,7 +163,7 @@ describe('a conversation’s node channels in its store', () => {
   it('has written the channel’s end when a close whose release throws reports it', async () => {
     const store = slowChannels();
     const { id, first } = await stoppedConversation(store);
-    const [channel] = await store.channels(id);
+    const [channel] = await nodeChannelsOf({ store, id });
     const live = first.conversations.get(id);
 
     live.dispose = () => Promise.reject(new Error('cannot release'));
@@ -176,7 +180,7 @@ describe('a conversation’s node channels in its store', () => {
   it('reopens a conversation whose channel file is damaged, and says so once on its stream', async () => {
     const store = new WrappedChannels();
     const { id } = await stoppedConversation(store);
-    const [damaged] = await store.channels(id);
+    const [damaged] = await nodeChannelsOf({ store, id });
 
     damageChannels({ store, damaged: (channel) => channel === damaged });
 
@@ -201,7 +205,7 @@ describe('a conversation’s node channels in its store', () => {
       at: 1,
       node: { id: 'other-node', title: 'x' },
     });
-    damageChannels({ store, damaged: () => true });
+    damageChannels({ store, damaged: (channel) => channel !== 'tree' });
 
     const second = setup({ store, replies: [say('two')] });
 
@@ -253,7 +257,7 @@ describe('a conversation’s node channels in its store', () => {
   it('closes the channel a stopped process left open as lost when the conversation is reopened', async () => {
     const store = new MemoryConversationStore();
     const { id } = await stoppedConversation(store);
-    const [old] = await store.channels(id);
+    const [old] = await nodeChannelsOf({ store, id });
     const before = shapeOf(await entriesOf({ store, id, channel: old ?? '' }));
     // A new host on the same store: the first process is gone, and never closed anything.
     const second = setup({ store, replies: [say('two')] });
@@ -268,7 +272,7 @@ describe('a conversation’s node channels in its store', () => {
     expect(entries.at(-1)).not.toHaveProperty('outcome');
 
     // The reopened conversation goes on with a node of its own, and so a channel of its own.
-    const channels = await store.channels(id);
+    const channels = await nodeChannelsOf({ store, id });
 
     expect(channels).toHaveLength(2);
 
@@ -280,7 +284,7 @@ describe('a conversation’s node channels in its store', () => {
   it('does nothing more when it is reopened again: what was closed stays as it was', async () => {
     const store = new MemoryConversationStore();
     const { id } = await stoppedConversation(store);
-    const [old] = await store.channels(id);
+    const [old] = await nodeChannelsOf({ store, id });
     const second = setup({ store, replies: [say('two')] });
 
     await second.conversations.reopen(id);
@@ -302,7 +306,7 @@ describe('a conversation’s node channels in its store', () => {
     // How much room the first line of the agent's channel takes, from a run on a store with no limit.
     const measured = new MemoryConversationStore();
     const { id: measuredId } = await stoppedConversation(measured);
-    const [measuredChannel] = await measured.channels(measuredId);
+    const [measuredChannel] = await nodeChannelsOf({ store: measured, id: measuredId });
     const [opened] = await entriesOf({
       store: measured,
       id: measuredId,
@@ -314,7 +318,7 @@ describe('a conversation’s node channels in its store', () => {
     // channel holds only `opened`, and the entry that would close it is refused too.
     const store = new MemoryConversationStore({ limits: { channelBytes: line } });
     const { id } = await stoppedConversation(store);
-    const [channel] = await store.channels(id);
+    const [channel] = await nodeChannelsOf({ store, id });
     const second = setup({ store, replies: [say('two')] });
 
     expect(await second.conversations.reopen(id)).toBe(id);

@@ -2,11 +2,45 @@ import { describe, expect, it } from 'vitest';
 import { SessionRegistry } from '../sessions.service.js';
 import { readStoredLog } from '../stored-log.helper.js';
 import { messageIdSchema, callIdSchema } from '@sheavly/protocol/message/message.validator';
+import type { SessionId } from '@sheavly/protocol/session/session.types';
+import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { ENTRY_TAIL_SIZE } from '../sessions.constants.js';
 
 const first = messageIdSchema.parse('00000000-0000-4000-8000-000000000001');
 const second = messageIdSchema.parse('00000000-0000-4000-8000-000000000002');
+
+/** A sub-agent that `parent` starts, as a tool call `launch` does. */
+const launchChild = (params: { sessions: SessionRegistry; parent: SessionId }) =>
+  params.sessions.startChild({
+    parentId: params.parent,
+    startedByCall: callIdSchema.parse('launch'),
+    title: 'Child',
+  });
+
+describe('the message a session answers', () => {
+  it('is none before a prompt, the prompt’s message after it, and moves on with the next; a sub-agent keeps the one it started under', () => {
+    const sessions = new SessionRegistry();
+    const main = sessions.startMain({ title: 'Chat' });
+
+    expect(sessions.messageOf(main.id)).toBeUndefined();
+
+    sessions.setMessage({ sessionId: main.id, messageId: first });
+
+    expect(sessions.messageOf(main.id)).toBe(first);
+
+    const child = launchChild({ sessions, parent: main.id });
+
+    expect(sessions.messageOf(child.id)).toBe(first);
+
+    sessions.setMessage({ sessionId: main.id, messageId: second });
+
+    expect(sessions.messageOf(main.id)).toBe(second);
+    expect(sessions.messageOf(child.id)).toBe(first);
+    // A session the registry never had answers no message.
+    expect(sessions.messageOf(sessionIdSchema.parse('nobody'))).toBeUndefined();
+  });
+});
 
 describe('session message correlation', () => {
   it('keeps a child linked to its starting message while the main session moves on', () => {
@@ -16,11 +50,7 @@ describe('session message correlation', () => {
 
     sessions.subscribeEntries((entry) => entries.push(entry));
     sessions.setMessage({ sessionId: main.id, messageId: first });
-    const child = sessions.startChild({
-      parentId: main.id,
-      startedByCall: callIdSchema.parse('launch'),
-      title: 'Child',
-    });
+    const child = launchChild({ sessions, parent: main.id });
 
     sessions.setMessage({ sessionId: main.id, messageId: second });
     sessions.publish({
