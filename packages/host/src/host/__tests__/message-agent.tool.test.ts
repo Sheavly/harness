@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Provider, ProviderRequest } from '@sheavly/core/provider/provider.types';
 import type { StreamEvent } from '@sheavly/core/message/message.types';
 import { runSession, streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
+import { MAX_QUEUED_MESSAGES } from '@sheavly/runtime/sessions/sessions.constants';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import {
@@ -274,6 +275,24 @@ describe('message_agent: steering a running sub-agent', () => {
         context: { callId, description: 'd', session: main },
       }),
     ).rejects.toThrow('was released');
+  });
+
+  it('refuses a message while the sub-agent still holds all it may, which the loop shows the model as a tool error', async () => {
+    const { sessions, main, child } = mainWithChild('Busy');
+    const tool = createMessageAgentTool({ sessions, children: sessions });
+    const send = () =>
+      tool.execute({
+        input: { session: child.id, message: 'more' },
+        signal: new AbortController().signal,
+        context: { callId, description: 'd', session: main },
+      });
+
+    for (let each = 0; each < MAX_QUEUED_MESSAGES; each += 1) await send();
+
+    await expect(send()).rejects.toThrow('already has messages waiting');
+    expect(sessions.takeMessages(child.id)).toHaveLength(MAX_QUEUED_MESSAGES);
+    // Taken, the sub-agent can be messaged again.
+    await expect(send()).resolves.toContain('Sent to sub-agent');
   });
 
   it('refuses to message a session the caller did not start', async () => {

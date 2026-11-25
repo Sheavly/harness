@@ -1,10 +1,8 @@
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
-import type {
-  ConversationId,
-  SendPromptRequest,
-  SendPromptResponse,
-} from '@sheavly/protocol/server/server.types';
+import type { MessageId } from '@sheavly/protocol/message/message.types';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
+import type { ConversationId, SendPromptRequest } from '@sheavly/protocol/server/server.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import type { LiveConversation, PromptFailure, SentPrompt } from './conversations.types.js';
 import { partsText } from '@sheavly/protocol/message/message.utils';
@@ -80,7 +78,9 @@ export class ConversationInputs {
       restored,
       conversation: live.conversation,
       preparing: () => this.#preparing.get(id),
-      start: ({ text, taken }) => this.#startLine({ id, live, prompt: { text }, left: taken }),
+      start: async ({ text, taken }) => {
+        await this.#startLine({ id, live, prompt: { text }, left: taken });
+      },
       publish: (update) => publishQueueUpdate({ live, update }),
       keep: (lines) => this.#queues.replace({ id, queued: lines }),
       onStoreFailure: (failure) => announceStorageFailure({ live, failure }),
@@ -116,15 +116,25 @@ export class ConversationInputs {
     id: ConversationId;
     live: LiveConversation;
     prompt: SendPromptRequest;
-  }): Promise<SendPromptResponse> {
+  }): Promise<PromptSent> {
     const { id, live, prompt } = params;
     const queue = this.#queueOf(id);
+    const { harness } = live;
+    // The agent whose channel carries the run: the main agent's, which every prompt runs on.
+    const node = harness.sessions.nodeIdOf(harness.mainSession.id);
+
+    if (node === undefined) {
+      throw new ConversationsError({
+        reason: 'not_found',
+        message: `Conversation ${id} has no main agent node: it was closed`,
+      });
+    }
 
     if (live.conversation.state === 'idle' && !this.#preparing.has(id) && !queue.busy) {
       // Lines sent while this one prepared its skills wait behind it: the answer says so.
-      await this.#startLine({ id, live, prompt, left: () => queue.lines });
+      const messageId = await this.#startLine({ id, live, prompt, left: () => queue.lines });
 
-      return { status: 'started', queued: queue.lines };
+      return { status: 'started', node, messageId, queued: queue.lines };
     }
 
     if (!('text' in prompt)) {
@@ -137,7 +147,7 @@ export class ConversationInputs {
 
     this.#storage.assertHealthy(id);
 
-    return { status: 'queued', queued: await queue.add(prompt.text) };
+    return { status: 'queued', node, queued: await queue.add(prompt.text) };
   }
 
   /** The lines waiting in conversation `id`, oldest first. */
@@ -240,26 +250,40 @@ export class ConversationInputs {
 
   /**
    * Starts `prompt` as the next prompt, says so on the stream (`prompt_started`, with the lines
-   * `left` behind it as it starts, read then), and reads its run: nobody else does.
+   * `left` behind it as it starts, read then), and reads its run: nobody else does. Returns the
+   * user message the prompt became, which the main session has as the prompt starts.
    */
   async #startLine(params: {
     id: ConversationId;
     live: LiveConversation;
     prompt: SendPromptRequest;
     left: () => readonly string[];
-  }): Promise<void> {
+  }): Promise<MessageId> {
     const { id, live, prompt, left } = params;
     const text = 'text' in prompt ? prompt.text : partsText(prompt.parts);
+    let messageId: MessageId | undefined;
     const { events } = await this.#send({
       ...params,
-      onStarted: () =>
+      onStarted: () => {
+        messageId = live.harness.sessions.messageOf(live.harness.mainSession.id);
         publishQueueUpdate({
           live,
           update: { type: 'prompt_started', text, queued: [...left()] },
-        }),
+        });
+      },
     });
 
     void this.#readToEnd({ id, events });
+
+    // `send` starts the prompt, and `onStarted` runs after it: the message exists by then.
+    if (messageId === undefined) {
+      throw new ConversationsError({
+        reason: 'not_found',
+        message: `Conversation ${id} did not start the prompt: it was closed`,
+      });
+    }
+
+    return messageId;
   }
 
   /** Reads a run nobody else reads; a failed one is on the stream already, and the app logs it. */

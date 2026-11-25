@@ -61,6 +61,17 @@ entries reach every UI on the combined stream, with a `queue` entry for each cha
 Lines kept with a stored conversation are parked when it is reopened, until the user sends the
 next one; so is a queued line a stop reached while it prepared its skills.
 
+`submit` answers with the ids of what it made (`PromptSent`): the main agent's `node`, which carries
+every run, and for a prompt that started the `messageId` of the user message it became, read as the
+prompt starts. `cancelNode({ id, node })` and `messageNode({ id, node, text })` command a node by
+its id: a command, a service or a sub-agent is killed and waited for, the main agent is stopped as
+`stop` does and is the one node that takes the user's message. They resolve the node first
+(`NodeCommands`, runtime) and refuse as `ConversationsError`: `not_found` for a node the
+conversation does not have (another conversation's, one never made, an id of no node's shape),
+`node_ended` for one that ended (released ones too), `bad_request` for what its kind cannot do,
+which includes messaging a sub-agent, as only the agent that started it may, and `cannot_queue` for
+a message to an agent whose inbox is full.
+
 A host serving several conversations (the HTTP server, or a UI in-process) keeps them in a
 `Conversations`, built on a function the app gives that composes each one (provider, tools,
 hooks, skills, and the `run` it reports: workspace, models and trust, for `details` and

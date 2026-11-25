@@ -2,8 +2,10 @@ import type { StreamEvent } from '@sheavly/core/message/message.types';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
 import { blockTool } from '@sheavly/runtime/testing/block-tool.fake';
+import { toolCall } from '@sheavly/testing/provider/routed-provider.fake';
 import { scriptedProvider } from '@sheavly/testing/provider/scripted-provider.fake';
 import type { Message } from '@sheavly/protocol/message/message.types';
+import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { createConversation } from '../conversation/conversation.helper.js';
 import { Conversations } from '../conversations/conversations.service.js';
 import type {
@@ -20,6 +22,38 @@ export const say = (text: string): StreamEvent[] => [
   { type: 'text_delta', text },
   { type: 'done', stopReason: 'end_turn' },
 ];
+
+/**
+ * Test-only: the replies of a model that calls the `block` tool, which waits until the prompt is
+ * stopped, and answers `next` to the prompt after it.
+ */
+export const blockedThenNext = (): StreamEvent[][] => [
+  [toolCall({ id: 'b1', name: 'block', input: {} }), { type: 'done', stopReason: 'tool_use' }],
+  say('next'),
+];
+
+/**
+ * Test-only: sends a prompt to a conversation whose model blocks (`blockedThenNext`), calls `stop`
+ * once its tool call has started, and returns the type of the last event the run gave and the
+ * roles of the history it left: a stopped prompt ends `done` with its tool call answered.
+ */
+export async function stopWhenBlocked(params: {
+  conversations: Conversations;
+  id: ConversationId;
+  stop: () => Promise<void> | void;
+}): Promise<{ last: string | undefined; roles: string[] }> {
+  const { conversations, id } = params;
+  const { events } = await conversations.send({ id, prompt: { text: 'wait' } });
+  let last: string | undefined;
+
+  for await (const event of events) {
+    last = event.type;
+
+    if (event.type === 'tool_call_started') await params.stop();
+  }
+
+  return { last, roles: conversations.messages(id).map((message) => message.role) };
+}
 
 /**
  * Test-only: `Conversations` on a scripted model, each conversation built as a backend builds

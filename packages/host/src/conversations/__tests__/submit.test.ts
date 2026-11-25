@@ -184,7 +184,7 @@ describe('submitting a prompt', () => {
     const id = await conversations.start();
     const entries = follow({ conversations, id });
 
-    expect(await conversations.submit({ id, prompt: { text: 'hi' } })).toEqual({
+    expect(await conversations.submit({ id, prompt: { text: 'hi' } })).toMatchObject({
       status: 'started',
       queued: [],
     });
@@ -203,7 +203,7 @@ describe('submitting a prompt', () => {
     const { conversations, prompts, release, id, send } = await runningFirst();
     const entries = follow({ conversations, id });
 
-    expect(await send('second')).toEqual({ status: 'queued', queued: ['second'] });
+    expect(await send('second')).toMatchObject({ status: 'queued', queued: ['second'] });
     expect(await conversations.queue(id)).toEqual(['second']);
     release(1);
     await until(() => prompts.length === 2);
@@ -224,7 +224,7 @@ describe('submitting a prompt', () => {
     await until(() => conversations.get(id).conversation.state === 'wake' && prompts.length === 2);
 
     // Before, a send here waited for the woken run, past any client's patience.
-    expect(await conversations.submit({ id, prompt: { text: 'meanwhile' } })).toEqual({
+    expect(await conversations.submit({ id, prompt: { text: 'meanwhile' } })).toMatchObject({
       status: 'queued',
       queued: ['meanwhile'],
     });
@@ -315,7 +315,7 @@ describe('submitting a prompt, at the edges', () => {
     const third = send('third');
 
     held.release();
-    expect(await third).toEqual({ status: 'queued', queued: ['third'] });
+    expect(await third).toMatchObject({ status: 'queued', queued: ['third'] });
     await until(() => prompts.length === 3);
 
     expect(prompts).toEqual(['first', 'second', 'third']);
@@ -343,13 +343,13 @@ describe('submitting a prompt, at the edges', () => {
     const first = conversations.submit({ id, prompt: { text: 'slow' } });
 
     await until(() => conversations.get(id).harness.sessions.nextSeq() > 0);
-    expect(await conversations.submit({ id, prompt: { text: 'meanwhile' } })).toEqual({
+    expect(await conversations.submit({ id, prompt: { text: 'meanwhile' } })).toMatchObject({
       status: 'queued',
       queued: ['meanwhile'],
     });
     prepared.resolve(undefined);
 
-    expect(await first).toEqual({ status: 'started', queued: ['meanwhile'] });
+    expect(await first).toMatchObject({ status: 'started', queued: ['meanwhile'] });
     expect(queueOf(entries)).toContain('prompt_started slow [meanwhile]');
   });
 
@@ -471,7 +471,7 @@ describe('submitting a prompt, at the edges', () => {
 
     expect(conversations.get(id).conversation.state).toBe('idle');
     slow.resolve(undefined);
-    expect(await answered).toEqual({ status: 'started', queued: [] });
+    expect(await answered).toMatchObject({ status: 'started', queued: [] });
     await until(() => prompts.length === 2);
   });
 });
