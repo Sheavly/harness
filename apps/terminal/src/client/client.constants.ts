@@ -11,7 +11,7 @@ export const GROUP_POLL_MS = 25;
 export const GROUP_REAP_MS = 2000;
 
 /** The line a backend prints once it listens: `→ listening on <url>`. */
-export const LISTENING_LINE = /^→ listening on (\S+)$/m;
+export const LISTENING_LINE = /(?:^|[\r\n])→ listening on (\S+)(?=[\r\n]|$)/;
 
 /**
  * How many ended task ids a conversation remembers, so an entry the prompt's stream and the live
