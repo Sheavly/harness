@@ -43,5 +43,13 @@ export const CUT_APPROVAL_OPTIONS = ['skip', 'skip_with_message'] as const;
 /** The longest tool name an approval request keeps when it is cut to fit the tree channel. */
 export const MAX_CUT_TOOL_CHARS = 200;
 
+/**
+ * How long a cancel by node waits for the node to exit before it answers anyway: the kill was sent,
+ * and the node's channel says when it ended. A process that cannot be killed (one that has left its
+ * process group and holds its output open) never ends the task, and a cancel must not hold a
+ * connection for ever.
+ */
+export const NODE_CANCEL_WAIT_MS = 10_000;
+
 /** The largest byte offset a cursor may hold: fifteen digits, so it reads back exactly. */
 export const MAX_BYTE_OFFSET = 999_999_999_999_999;

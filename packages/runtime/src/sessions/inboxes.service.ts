@@ -3,7 +3,11 @@ import { SessionError } from '../errors/sessions.errors.js';
 import { abortableWait } from '../wait/abortable-wait.helper.js';
 import { parseQueuedNotice } from './queued-notice.validator.js';
 import { assertOpen } from './send-check.helper.js';
-import { MAX_QUEUED_NOTICES } from './sessions.constants.js';
+import {
+  MAX_QUEUED_MESSAGE_CHARS,
+  MAX_QUEUED_MESSAGES,
+  MAX_QUEUED_NOTICES,
+} from './sessions.constants.js';
 import type { QueuedNotice } from './sessions.types.js';
 
 /**
@@ -51,11 +55,33 @@ export class Inboxes {
     return notices;
   }
 
-  /** Queues `message` for `id`, oldest first, and wakes a loop waiting for one. */
+  /**
+   * Queues `message` for `id`, oldest first, and wakes a loop waiting for one. Throws `inbox_full`
+   * when `MAX_QUEUED_MESSAGES` messages already wait, or the new one would take them past
+   * `MAX_QUEUED_MESSAGE_CHARS` characters: nothing is queued, and the sender is told, never
+   * silently dropped. A message is always queued when none waits, however long: the bound is on what
+   * piles up behind an agent that has not taken its messages, and one message is the sender's own
+   * to size (the API's route caps it, a model's `message_agent` text is as long as it wrote).
+   */
   add(params: { id: SessionId; message: InboxMessage }): void {
     const { id, message } = params;
+    const queued = this.#messages.get(id) ?? [];
+    const chars = queued.reduce((total, each) => total + each.content.length, 0);
 
-    this.#messages.set(id, [...(this.#messages.get(id) ?? []), message]);
+    if (
+      queued.length > 0 &&
+      (queued.length >= MAX_QUEUED_MESSAGES ||
+        chars + message.content.length > MAX_QUEUED_MESSAGE_CHARS)
+    ) {
+      throw new SessionError({
+        reason: 'inbox_full',
+        sessionId: id,
+        message: `Session ${id} already has messages waiting for its next model call (up to ${String(MAX_QUEUED_MESSAGES)}, or ${String(MAX_QUEUED_MESSAGE_CHARS)} characters): this one was not queued`,
+      });
+    }
+
+    queued.push(message);
+    this.#messages.set(id, queued);
     this.wake(id);
   }
 

@@ -3,8 +3,9 @@ import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
-import type { RunOutcome } from '@sheavly/protocol/session/session.types';
+import type { RunOutcome, SessionId } from '@sheavly/protocol/session/session.types';
 import type { StateOf } from '@sheavly/protocol/status/status.types';
+import type { TaskId } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 
 /** Where a node is: the protocol's one lifecycle, whatever its kind. */
@@ -129,6 +130,17 @@ export type TreeStamp = { position: number; at: number };
 
 /** Where to start reading a channel: its first entry, only what comes, or a position. */
 export type ChannelStart = 'start' | 'now' | number;
+
+/**
+ * What a command to an open node reaches (`NodeCommands.target`): the main agent, whose cancel is
+ * the conversation's stop and which takes the user's messages; a sub-agent, stopped through its
+ * task; a command or a service, through its task; or a kind nothing can cancel (an extension's).
+ */
+export type NodeTarget =
+  | { kind: 'main-agent'; sessionId: SessionId }
+  | { kind: 'sub-agent'; sessionId: SessionId; taskId: TaskId }
+  | { kind: 'work'; taskId: TaskId }
+  | { kind: 'other'; nodeKind: NodeKind };
 
 /** Reads a channel's entries; the registry alone appends to it. */
 export type ReadableChannel = {
