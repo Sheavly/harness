@@ -28,6 +28,7 @@ without one (the contract marks them `public`; every other route needs the token
 | `GET /conversations/:id/queue`                                                | `{ queued }`: the lines waiting to start; kept across a restart, outside history, and never started by reopening                                                                                                                                  |
 | `PUT /conversations/:id/queue`, `{ queued }`                                  | `204`: replaces the waiting lines whole; they start in their new order                                                                                                                                                                            |
 | `QUERY /conversations/:id/stream`                                             | every entry, as SSE, while the client stays                                                                                                                                                                                                       |
+| `QUERY /conversations/:id/subscribe`, `{ subscriptions, approvals? }`         | node channels, as SSE: the stored history each position asks for, then what is stored next ([following channels](#following-channels))                                                                                                            |
 | `POST /conversations/:id/stop`                                                | `204`: the running prompt stops; history stays valid                                                                                                                                                                                              |
 | `POST /conversations/:id/approvals/:approval`                                 | `204`: the waiting approval is answered                                                                                                                                                                                                           |
 | `GET /conversations/:id/messages`                                             | `{ messages }`: the history, valid to continue from                                                                                                                                                                                               |
@@ -235,6 +236,57 @@ A client leaving ends its stream, never the prompt: a prompt runs to its end, an
 stops one. Closing the conversation (`DELETE`), or `serve.ts` calling `conversations.closeAll()`
 when it stops, stops its prompts, tasks and processes.
 
+## Following channels
+
+`QUERY /conversations/:id/subscribe` follows the node channels the server keeps beside the
+conversation's stream, one log per agent (the main agent's, each sub-agent's), as the
+[wire model](../../../packages/protocol/docs/wire-model.md) describes them. The body is
+`{ subscriptions: [{ channel, from }] }`: `channel` is a node's id, and `from` is `start`, `now`,
+`tail:<n>` (the last `n` entries of an agent's channel, the entries within the last `n` bytes of a
+command's) or a cursor the client was given (what follows it).
+
+```bash
+curl -N -X QUERY "$URL/conversations/$ID/subscribe" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"subscriptions":[{"channel":"<a node id>","from":"start"}]}'
+```
+
+It answers server-sent events: the stored history each position asks for, then each entry stored
+after, in order, with none missed and none sent twice. A frame is one JSON `data` under one event
+name, and has no `id`: one id cannot carry the cursors of several channels, so a client keeps each
+channel's last cursor and sends them again as `from` when it reconnects.
+
+- **`entry`**: an entry of a channel as it is stored: `opened`, an agent's `updated` (the node as
+  it is now) and `closed`.
+- **`head`**: a channel asked from `now` opens with where it stands, the cursor of its newest entry,
+  so a client that hears nothing before the connection drops can still resume after it.
+- **`end`**: one channel is over, and no more frames of it follow: `completed` (its `closed` entry
+  was sent), `cut_off` (the client did not keep up with that channel, or the conversation's
+  subscriptions hold as much as they may, and the client resumes after the `cursor` the frame
+  carries) or `failed` (no more entries will come: storing the channel failed, or no writer has
+  it). The other channels go on, and the stream ends after the last one. A conversation that closes
+  ends its channels with their `closed` entries, which the client reads like any other.
+
+What it serves is the channels the conversation stores for its nodes: an agent's, and a command's
+or a service's, which holds its `opened` and `closed` entries. A command's output is not in a
+channel and is not served. The tree channel is not served either, and a request for it is
+`not_found`, like any channel the conversation does not have. Another conversation's node, an
+unknown id and the tree are all one `404` with one message, so a request learns nothing about
+channels it cannot reach.
+
+A request is refused before the stream opens, with the status of any other route's failure (below):
+a position the channel cannot be asked for, or a cursor it does not hold, or a conversation that
+already serves 64 subscriptions. It reads at most 8 MiB of stored history for the whole request and
+refuses a request for more, never cutting it: subscribe from a cursor or a tail. What a
+conversation's subscriptions hold for clients that have not read it is bounded too, 128 MiB of JSON
+(the heap is up to about twice that) all together, counted from the moment the history is being
+read; what a paused read is told meanwhile is not counted, only bounded to 1,000 events a channel.
+History that does not fit is refused as `too_many_subscriptions`, and a channel with more
+than 1,000 live frames waiting, or whose next frame does not fit, is cut off on that channel only. A
+client leaving frees its place at once, also while its history is still being read, which stops. A
+quiet stream gets the same `: heartbeat` comment and `X-Accel-Buffering: no` as the conversation's
+stream.
+
 ## Several UIs on one conversation
 
 An editor and an agent window can be views of one conversation. One starts it; the other finds it
@@ -266,18 +318,20 @@ leaves a run waiting on an approval no one will give.
 
 Every failure is `{ error: { code, message } }` (`ServerError`):
 
-| Status | Code               | When                                                                                                                                                                                                                                                             |
-| ------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `bad_request`      | a body that doesn't parse or is over 5 MB, or an approval answer its request didn't offer; a handshake body over 1 KB, or a nonce that is missing, shorter than 22 or longer than 86 characters, or not unpadded base64url (the message never repeats the nonce) |
-| 401    | `unauthorized`     | no token, or a wrong one, on any route but `GET /health` and `QUERY /handshake`; also an unknown path, an `OPTIONS` request and another method on those two paths                                                                                                |
-| 403    | `forbidden`        | a request whose `Host` is not one of the server's names, or that carries an `Origin` the server does not list, on any route, before the token is looked at; also a setup that hands out access on a server that listens beyond this machine                      |
-| 404    | `not_found`        | no such conversation (or route), or one already closed                                                                                                                                                                                                           |
-| 404    | `unknown_approval` | no approval waiting with that id                                                                                                                                                                                                                                 |
-| 409    | `session_running`  | a prompt is still being prepared or running in that conversation, for a client that sends with `send` in-process                                                                                                                                                 |
-| 409    | `cannot_queue`     | the conversation is busy and this prompt cannot wait: it picks skills as `parts`, it is over 20,000 characters, or 100 lines already wait                                                                                                                        |
-| 422    | `unknown_skill`    | `parts` picked a skill no one has                                                                                                                                                                                                                                |
-| 422    | `unknown_model`    | `PUT /model` named an id the conversation hasn't                                                                                                                                                                                                                 |
-| 500    | `internal`         | the server failed; the message never holds its details                                                                                                                                                                                                           |
+| Status | Code                     | When                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `bad_request`            | a body that doesn't parse or is over 5 MB, or an approval answer its request didn't offer; a handshake body over 1 KB, or a nonce that is missing, shorter than 22 or longer than 86 characters, or not unpadded base64url (the message never repeats the nonce); a `QUERY /subscribe` for a position its channel cannot be asked for (a tail over 1,000 entries, a cursor of the other kind) or for more than 8 MiB of stored history |
+| 401    | `unauthorized`           | no token, or a wrong one, on any route but `GET /health` and `QUERY /handshake`; also an unknown path, an `OPTIONS` request and another method on those two paths                                                                                                                                                                                                                                                                      |
+| 403    | `forbidden`              | a request whose `Host` is not one of the server's names, or that carries an `Origin` the server does not list, on any route, before the token is looked at; also a setup that hands out access on a server that listens beyond this machine                                                                                                                                                                                            |
+| 404    | `not_found`              | no such conversation (or route), or one already closed; for `QUERY /subscribe`, a channel the conversation does not have, whatever the reason                                                                                                                                                                                                                                                                                          |
+| 404    | `unknown_approval`       | no approval waiting with that id                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 409    | `session_running`        | a prompt is still being prepared or running in that conversation, for a client that sends with `send` in-process                                                                                                                                                                                                                                                                                                                       |
+| 409    | `cannot_queue`           | the conversation is busy and this prompt cannot wait: it picks skills as `parts`, it is over 20,000 characters, or 100 lines already wait                                                                                                                                                                                                                                                                                              |
+| 422    | `unknown_skill`          | `parts` picked a skill no one has                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 422    | `unknown_model`          | `PUT /model` named an id the conversation hasn't                                                                                                                                                                                                                                                                                                                                                                                       |
+| 422    | `cursor_out_of_range`    | `QUERY /subscribe` named a cursor the channel does not hold; it is never clamped to the nearest, so ask again from `start` or a tail                                                                                                                                                                                                                                                                                                   |
+| 429    | `too_many_subscriptions` | the conversation already serves 64 subscriptions, or its subscriptions hold too much for the history asked for to fit; ask again when one has ended                                                                                                                                                                                                                                                                                    |
+| 500    | `internal`               | the server failed; the message never holds its details                                                                                                                                                                                                                                                                                                                                                                                 |
 
 A prompt that can't start is answered with an error before its stream opens.
 
