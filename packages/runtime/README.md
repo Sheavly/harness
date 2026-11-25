@@ -130,6 +130,17 @@ cancelled task's output stays readable. `formatTask` and the task-finished notic
 `output_ref` and, when the preview is shorter than the log, tell the model to use `read_output` or
 `search_output` instead of rerunning the command.
 
+The capture also tells whoever follows it: `OutputWriter.follow(listener)` calls `listener` with
+each chunk (`{ offset, text }`, the byte offset of its first byte) once it is stored, in order and
+each starting where the last ended, never one that was dropped for a limit or a failed write
+(`OutputFollowers` is the set of followers). A follower that registers and then reads the store
+reads every byte once: what the read held that is also told is dropped by offset. A follower that
+throws stops neither the capture nor the others. `TaskRegistry.followOutput({ nodeId, listener })`
+follows the capture of the command or service a node is, and answers nothing for a node with no
+capture; it is how the host serves a command's output as its node's channel. A command's or a
+service's `closed` entry in `NodeChannelWriter` says how its output ended (`complete`, or
+`incomplete` with the reason).
+
 A task's `output` is that bounded preview: progress, never a result to rely on. A task whose result
 is a document, such as a sub-agent's report, returns it as `report` from `run`. The registry keeps
 it whole, outside `OutputBuffer` and outside `TaskInfo`, so no limit applies and no task event

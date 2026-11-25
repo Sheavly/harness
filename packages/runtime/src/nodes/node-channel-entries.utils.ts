@@ -135,9 +135,25 @@ export function updatedEntry(params: {
 }
 
 /**
+ * How a task's output ended, for its channel's `closed` entry: `complete`, or `incomplete` with what
+ * was lost. None for a task that kept no output, and for a log still `capturing`, which a task that
+ * has ended never has (its log is closed before it settles).
+ */
+function outputEndOf(task: TaskInfo | undefined) {
+  const log = task?.outputLog;
+
+  if (!log || log.status === 'capturing') return undefined;
+
+  return {
+    status: log.status,
+    ...(log.reason !== undefined && { reason: log.reason.slice(0, MAX_NODE_REASON_CHARS) }),
+  };
+}
+
+/**
  * The entry that ends a node's channel: the state it ended in, and the detail the state does not
  * keep. An agent's last run's outcome, except for `lost`, which has none; a command's or a
- * service's exit code and error, from the task it was.
+ * service's exit code, error and how its output ended, from the task it was.
  */
 export function closedEntry(params: {
   node: NodeRecord;
@@ -147,6 +163,7 @@ export function closedEntry(params: {
 }): ChannelEntry {
   const { node, at, cursor, task } = params;
   const { state, lastOutcome } = node;
+  const output = outputEndOf(task);
 
   return {
     channel: node.id,
@@ -156,6 +173,7 @@ export function closedEntry(params: {
     state,
     ...(lastOutcome && state !== 'lost' && { outcome: lastOutcome }),
     ...(task?.exitCode !== undefined && { exitCode: task.exitCode }),
+    ...(output && { output }),
     ...(task?.error !== undefined && { error: task.error.slice(0, MAX_NODE_ERROR_CHARS) }),
   };
 }

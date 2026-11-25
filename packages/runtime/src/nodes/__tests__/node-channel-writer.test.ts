@@ -22,12 +22,18 @@ const ref = outputRefSchema.parse('77777777-7777-4777-8777-777777777777');
 
 useFixedClock();
 
-/** A capture that has taken `bytes` of output when it closes. */
-function capture(bytes: number): OutputWriter {
+/** A capture that has taken `bytes` of output when it closes: whole, or `incomplete` with `reason`. */
+function capture(bytes: number, reason?: string): OutputWriter {
   return {
     log: { ref, bytes: 0, status: 'capturing' },
     append: () => undefined,
-    close: () => Promise.resolve({ ref, bytes, status: 'complete' }),
+    follow: () => () => undefined,
+    close: () =>
+      Promise.resolve(
+        reason === undefined
+          ? { ref, bytes, status: 'complete' }
+          : { ref, bytes, status: 'incomplete', reason },
+      ),
   };
 }
 
@@ -301,11 +307,32 @@ describe('a command’s or a service’s channel in the store', () => {
     expect(entries.at(-1)).toMatchObject({ type: 'closed', state: 'cancelled' });
   });
 
-  it('closes at offset 0 when the command’s output was not captured', async () => {
+  it('closes at offset 0 when the command’s output was not captured, and says nothing of how it ended', async () => {
     const { entries } = await endedCommand({ exitCode: 0 });
 
     expect(shapeOf(entries)).toEqual(['opened b0', 'closed b0']);
     expect(entries[1]).toMatchObject({ state: 'completed', exitCode: 0 });
+    expect(entries[1]).not.toHaveProperty('output');
+  });
+
+  it('says its output ended complete, or incomplete with what was lost, at the size that was kept', async () => {
+    const whole = await endedCommand({ exitCode: 0, output: capture(100) });
+    const trimmed = await endedCommand({
+      exitCode: 0,
+      output: capture(64, 'the stored output reached its 64-byte limit; later output was not kept'),
+    });
+
+    expect(whole.entries[1]).toMatchObject({ cursor: 'b100', output: { status: 'complete' } });
+    expect(whole.entries[1]).not.toHaveProperty('output.reason');
+    expect(trimmed.entries[1]).toMatchObject({
+      cursor: 'b64',
+      output: {
+        status: 'incomplete',
+        reason: 'the stored output reached its 64-byte limit; later output was not kept',
+      },
+    });
+    expect(channelBoundarySchema.safeParse(whole.entries[1]).success).toBe(true);
+    expect(channelBoundarySchema.safeParse(trimmed.entries[1]).success).toBe(true);
   });
 
   it('shortens a command that is too long for a stored entry, and the entry is one the schema accepts', async () => {

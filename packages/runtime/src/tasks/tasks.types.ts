@@ -72,6 +72,8 @@ export type Entry = {
   delivery?: Delivery;
   /** Whole result, outside the bounded preview and task events. */
   report?: string | undefined;
+  /** Where the task's complete output goes, for something that follows it as it is stored. */
+  capture?: OutputWriter | undefined;
 };
 
 /** One completion notice: a single task, or a whole group in requested ID order. */

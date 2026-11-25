@@ -1,5 +1,5 @@
 import type { FileHandle } from 'node:fs/promises';
-import type { OutputWriter } from '@sheavly/core/output/output.types';
+import type { OutputWriter, StoredChunk } from '@sheavly/core/output/output.types';
 import {
   MAX_LOG_BYTES,
   MAX_PENDING_BYTES,
@@ -7,6 +7,7 @@ import {
 } from '@sheavly/protocol/output/output.constants';
 import type { OutputLog, OutputRef } from '@sheavly/protocol/output/output.types';
 import { errorCode } from '@sheavly/runtime/errors/errors.utils';
+import { OutputFollowers } from '@sheavly/runtime/output/output-followers.service';
 import type { WriterLimits } from './output-store.types.js';
 
 /**
@@ -25,6 +26,7 @@ export class FileOutputWriter implements OutputWriter {
   readonly #closeTimeoutMs: number;
   readonly #admit: (bytes: number) => boolean;
   readonly #release: (bytes: number) => void;
+  readonly #followers = new OutputFollowers();
   #chain: Promise<void> = Promise.resolve();
   #accepted = 0;
   #pending = 0;
@@ -86,7 +88,11 @@ export class FileOutputWriter implements OutputWriter {
 
     this.#accepted += bytes.length;
     this.#pending += bytes.length;
-    this.#chain = this.#chain.then(() => this.#write(bytes));
+    this.#chain = this.#chain.then(() => this.#write({ bytes, text: chunk }));
+  }
+
+  follow(listener: (chunk: StoredChunk) => void): () => void {
+    return this.#followers.follow(listener);
   }
 
   /** Every caller gets the one close: the handle closes and the record is written once. */
@@ -166,7 +172,9 @@ export class FileOutputWriter implements OutputWriter {
     }
   }
 
-  async #write(bytes: Buffer): Promise<void> {
+  async #write(chunk: { bytes: Buffer; text: string }): Promise<void> {
+    const { bytes, text } = chunk;
+
     // A limit only stops new chunks; what was accepted before it is still written. A failed or
     // timed-out write stops the rest, since the log would have a hole.
     if (this.#writeFailed) {
@@ -176,9 +184,13 @@ export class FileOutputWriter implements OutputWriter {
       return;
     }
 
+    const offset = this.#written;
+    let stored = false;
+
     try {
       await this.#handle.appendFile(bytes);
       this.#written += bytes.length;
+      stored = true;
     } catch (caughtError) {
       this.#writeFailed = true;
       this.#release(bytes.length);
@@ -186,6 +198,11 @@ export class FileOutputWriter implements OutputWriter {
     } finally {
       this.#pending -= bytes.length;
     }
+
+    // Told only once it can be read back, and after the bookkeeping above, so a follower that reads
+    // the log finds this chunk in it and the size it has. Not inside the `try`: a follower's own
+    // failure must not be taken for the file's.
+    if (stored) this.#followers.tell({ offset, text });
   }
 
   #fail(caughtError: unknown): void {

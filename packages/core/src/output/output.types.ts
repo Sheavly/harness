@@ -8,10 +8,21 @@ export type ByteSource = {
   read(params: { offset: number; length: number }): Promise<Buffer>;
 };
 
+/** A chunk of a capture once it is stored: the byte offset of its first byte, and its text. */
+export type StoredChunk = { offset: number; text: string };
+
 /** One capture in progress: what a command's output is appended to as it arrives. */
 export type OutputWriter = {
   /** What is stored so far; `capturing` until `close`. */
   readonly log: OutputLog;
+  /**
+   * Calls `listener` with each chunk from now on, once it is stored and so readable from the store:
+   * in order, each starting where the one before it ended, and never one that was dropped for a
+   * limit or a failed write. A reader that registers and then reads what is stored reads every byte
+   * there is, once (the chunks it hears below the offset it read are the ones it has). A listener
+   * that throws does not stop the capture. Returns the stop.
+   */
+  follow(listener: (chunk: StoredChunk) => void): () => void;
   /**
    * Stores `chunk` after everything before it. Never throws and never blocks the command: a
    * failure or a limit is recorded as `incomplete` with its reason and later chunks are dropped.

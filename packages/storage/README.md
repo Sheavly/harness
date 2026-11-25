@@ -72,6 +72,9 @@ Past the log count a new command still runs, and its result says its full output
 Closing a log waits at most 5 seconds for queued writes: a stalled disk marks it `incomplete` (the
 end may be missing) instead of holding the task or a cancel. A log with no final record (the
 process died mid-capture) is reported `incomplete`. Reads are by byte range and search is a literal
-scan in bounded windows, so neither holds a whole log in memory.
+scan in bounded windows, so neither holds a whole log in memory. A writer tells its followers
+(`OutputWriter.follow`) each chunk with the byte offset it starts at, after it is written and
+counted, so a follower that reads the log when it hears a chunk finds that chunk in it; a chunk
+dropped for a limit or after a failed write is never told.
 
 - [Design](docs/design.md): how it works, and how to extend it.
