@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { OutputWriter } from '@sheavly/core/output/output.types';
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
 import { MAX_CHANNEL_ENTRY_CHARS } from '@sheavly/protocol/channel/channel.constants';
@@ -8,18 +7,16 @@ import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { MAX_NODE_COMMAND_CHARS } from '@sheavly/protocol/node/node.constants';
 import { nodeInfoSchema } from '@sheavly/protocol/node/node.validator';
 import { outputRefSchema } from '@sheavly/protocol/output/output.validator';
-import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
-import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { useFixedClock } from '@sheavly/testing/clock/fixed-clock.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
-import { SessionRegistry } from '../../sessions/sessions.service.js';
 import { TaskRegistry } from '../../tasks/tasks.service.js';
 import { startControlledTask } from '../../testing/controlled-task.fake.js';
-import { readChannel, shapeOf } from '../../testing/stored-channels.fake.js';
+import { shapeOf } from '../../testing/stored-channels.fake.js';
+import { conversation, conversationId, entriesOf } from '../../testing/stored-conversation.fake.js';
 import { NodeChannelWriter } from '../node-channel-writer.service.js';
 import { NodeRegistry } from '../node-registry.service.js';
 
-const id = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000d1');
+const id = conversationId;
 const CALL = callIdSchema.parse('call_1');
 const ref = outputRefSchema.parse('77777777-7777-4777-8777-777777777777');
 
@@ -34,61 +31,7 @@ function capture(bytes: number): OutputWriter {
   };
 }
 
-/**
- * A conversation whose node channels are stored in a memory store, with a main agent running.
- * `attempts`, when given, hears each append the writer tries, as `type cursor`, whether the store
- * takes it or not: what the writer does is then told apart from what the store would refuse.
- */
-function conversation(
-  params: { store?: MemoryConversationStore; attempts?: string[] | undefined } = {},
-) {
-  const store = params.store ?? new MemoryConversationStore();
-  const sessions = new SessionRegistry();
-  const tasks = new TaskRegistry(sessions.nodeOwners);
-  const main = sessions.startMain({ title: 'Main', id: sessionIdSchema.parse('main') });
-  const failures: StoreError[] = [];
-  const writer = NodeChannelWriter.attach({
-    nodes: sessions.nodes,
-    tasks,
-    storage: {
-      log: (channel) => {
-        const log = store.channel({ id, channel });
-
-        if (!params.attempts) return log;
-
-        return {
-          read: (from) => log.read(from),
-          append: async (entry) => {
-            params.attempts?.push(`${entry.type} ${entry.cursor}`);
-            await log.append(entry);
-          },
-        };
-      },
-      onFailure: (failure) => failures.push(failure),
-    },
-  });
-  const nodeOf = (session: typeof main.id) => {
-    const node = sessions.nodeIdOf(session);
-
-    if (!node) throw new Error('no node');
-
-    return node;
-  };
-
-  return { store, sessions, tasks, main, writer, failures, nodeOf };
-}
-
 type World = ReturnType<typeof conversation>;
-
-/** Every entry of channel `channel`, once the writes so far have landed. */
-async function entriesOf(params: {
-  world: Pick<World, 'store' | 'writer'>;
-  channel: string;
-}): Promise<ChannelEntry[]> {
-  await params.world.writer.flush();
-
-  return readChannel({ store: params.world.store, id, channel: params.channel });
-}
 
 /** Starts a sub-agent of the main session, as a tool call `CALL` does. */
 function spawn(params: { world: World; title: string }) {

@@ -1,8 +1,19 @@
 import { z } from 'zod';
-import { channelNameSchema, cursorSchema } from '../channel/channel.validator.js';
+import {
+  channelEntrySchema,
+  channelNameSchema,
+  cursorSchema,
+} from '../channel/channel.validator.js';
 import { cursorKind } from '../channel/channel.utils.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
-import { MAX_SUBSCRIPTIONS, MAX_TAIL_BYTES, TAIL_PATTERN } from './subscription.constants.js';
+import {
+  CHANNEL_END_REASONS,
+  END_EVENT,
+  HEAD_EVENT,
+  MAX_SUBSCRIPTIONS,
+  MAX_TAIL_BYTES,
+  TAIL_PATTERN,
+} from './subscription.constants.js';
 import { tailCount, tailLimit } from './subscription.utils.js';
 
 /**
@@ -87,3 +98,40 @@ export const subscribeRequestSchema = z
     error: 'approvals needs the tree channel, where an approval is seen',
     path: ['approvals'],
   });
+
+/**
+ * Where a channel stood when a subscription at `now` opened: the cursor of the newest entry it
+ * held. Sent first, once per such channel, so a client that hears no entry before the connection
+ * drops still has a cursor to resume after, and misses nothing written meanwhile. Not an entry:
+ * it is not in the channel's log.
+ */
+export const channelHeadFrameSchema = z.object({
+  type: z.literal(HEAD_EVENT),
+  channel: channelNameSchema,
+  cursor: cursorSchema,
+});
+
+/**
+ * One channel of a subscription ended (`CHANNEL_END_REASONS`), and no more frames of it follow;
+ * the others go on, and the stream closes after the last. `cursor` is the cursor of the last frame
+ * delivered for it, an entry's or the head's: a client that was cut off resumes after it. Absent
+ * when nothing was delivered, and the client then asks again from the position it asked for.
+ */
+export const channelEndFrameSchema = z.object({
+  type: z.literal(END_EVENT),
+  channel: channelNameSchema,
+  reason: z.enum(CHANNEL_END_REASONS),
+  cursor: cursorSchema.exactOptional(),
+});
+
+/**
+ * What one frame of a subscribe stream holds, as JSON: an entry of a channel (event `entry`; its
+ * envelope carries its own channel and cursor), where a channel stood (`head`), or the end of a
+ * channel (`end`). A frame has no `id`: one id cannot carry several cursors, so a client keeps
+ * the last cursor of each channel and sends them again on a reconnect.
+ */
+export const subscribeFrameSchema = z.union([
+  channelEntrySchema,
+  channelHeadFrameSchema,
+  channelEndFrameSchema,
+]);

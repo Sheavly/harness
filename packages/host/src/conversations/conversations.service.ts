@@ -3,6 +3,10 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import { ConversationsError } from '../errors/conversations.errors.js';
+import { SubscriptionHub } from '../subscriptions/subscription-hub.service.js';
+import type { Subscription } from '../subscriptions/subscription.service.js';
+import { detailsOf } from './details.helper.js';
+import { skillsOf } from './skills.helper.js';
 import { ConversationKeeper } from './keeper.service.js';
 import { InFlight } from './in-flight.service.js';
 import { ConversationInputs } from './inputs.service.js';
@@ -18,7 +22,7 @@ import type {
 import { announceChannelFailures, closeLiveConversation } from './lifecycle.helper.js';
 import { announceStorageFailure, refuseWhenStorageFailed, storageOf } from './storage.helper.js';
 
-import { matchesSearch, matchesStored, summaryOf } from './conversations.utils.js';
+import { matchesStored, summaryOf } from './conversations.utils.js';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
@@ -31,6 +35,7 @@ import type {
 } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
+import type { SubscribeRequest } from '@sheavly/protocol/subscription/subscription.types';
 import type { StoredConversation } from '@sheavly/protocol/store/store.types';
 
 /**
@@ -54,6 +59,7 @@ export class Conversations {
   readonly #reopening = new InFlight<ConversationId, ConversationId>();
   /** Each conversation being closed: no longer live, but its writes are not all done. */
   readonly #closing = new InFlight<ConversationId, void>();
+  readonly #subscriptions: SubscriptionHub;
 
   constructor(params: {
     create: CreateConversation;
@@ -67,6 +73,7 @@ export class Conversations {
   }) {
     this.#create = params.create;
     this.#store = params.store;
+    this.#subscriptions = new SubscriptionHub({ store: params.store });
     this.#inputs = new ConversationInputs({
       store: params.store,
       storage: {
@@ -222,16 +229,7 @@ export class Conversations {
    * the id.
    */
   async details(id: ConversationId): Promise<ConversationDetails> {
-    const live = this.get(id);
-    const { run } = live;
-    const workingRoot = await run.workingRoot?.();
-
-    return {
-      ...summaryOf({ id, live }),
-      ...run.details(),
-      permissionMode: await run.permissionMode(),
-      ...(workingRoot && { workingRoot }),
-    };
+    return detailsOf({ id, live: this.get(id) });
   }
 
   /**
@@ -433,14 +431,23 @@ export class Conversations {
     search?: string | undefined;
     signal?: AbortSignal;
   }): Promise<SkillInfo[]> {
-    const { id, search, signal } = params;
-    const { skills } = this.get(id);
+    return skillsOf({ ...params, live: this.get(params.id) });
+  }
 
-    if (!skills) return [];
-
-    const listed = await skills.list({ ...(signal && { signal }) });
-
-    return search ? listed.filter((skill) => matchesSearch({ skill, search })) : listed;
+  /**
+   * Opens a subscription to the node channels `request` names in conversation `id`: the stored
+   * history each position asks for, then what is stored from then on (see `SubscriptionHub`).
+   * `not_found` when no conversation has the id, and, as `ConversationsError`, for a channel it
+   * does not have, whatever the reason; a request it cannot serve is a `SubscriptionError`. An
+   * aborted `signal` stops the reading of history, which rejects with its reason. The caller
+   * closes what it gets.
+   */
+  async subscribe(params: {
+    id: ConversationId;
+    request: SubscribeRequest;
+    signal?: AbortSignal | undefined;
+  }): Promise<Subscription> {
+    return this.#subscriptions.open({ ...params, live: this.get(params.id) });
   }
 
   /**

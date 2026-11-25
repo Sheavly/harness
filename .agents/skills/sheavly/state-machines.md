@@ -182,7 +182,10 @@ session and task rows describe what those views report.
   `NodeChannelWriter.closeLost` (called when `Conversations.reopen` reads the store, before the
   conversation has a node of its own) ends every channel with no `closed` entry as `lost`, once;
   only the main agent, which goes on, begins a channel of its own. The tree channel and the kinds an
-  extension adds are not stored.
+  extension adds are not stored. `NodeChannelWriter.follow` tells a follower each entry its channel
+  takes from then on, once the store has it, with its `ordinal` (its place in the log, 0 for the
+  first), and once more if the channel fails; what was stored before is the store's to read, and
+  the ordinal is how a reader joins the two (follow, then read, then skip what the read held).
 - **`idle` is for agents.** A command or service has no between-prompts state.
 - **The outcome keeps the detail the state does not.** For an agent it is today's `RunOutcome`
   (`completed`, `interrupted`, `max_turns`, `max_tokens`, `context_window_exceeded`, `failed`), for

@@ -150,6 +150,23 @@ each frame is one envelope: it carries its **channel and its cursor**. A closed 
 what remains and then completes. A slow consumer is cut off per channel and resumes from its
 cursor.
 
+A stream has three kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
+
+- **`entry`**: one entry of a channel, as it is stored (`opened`, an agent's `updated`, `closed`,
+  as `ChannelEntry` says). Its own `channel` and `cursor` are the frame's.
+- **`head`** (`ChannelHeadFrame`): where a channel stood when a subscription at `now` opened,
+  the cursor of its newest entry, sent first, once per such channel. A client that hears no entry
+  before the connection drops still has a cursor to resume after, and misses nothing written
+  meanwhile. It is not an entry of the channel's log.
+- **`end`** (`ChannelEndFrame`): one channel of the subscription ended, and no more frames of it
+  follow. `completed`: its `closed` entry was delivered. `cut_off`: this consumer did not keep up
+  with it, or the conversation's subscriptions hold as much as they may. `failed`: no more of its
+  entries will come, because storing the channel failed or no writer has it; a reopened
+  conversation closes it as `lost`. `cursor` is
+  that of the last frame delivered for the channel, an entry's or the head's, absent when none
+  was, and the client resumes after it, or asks again from its position when there is none. The
+  other channels go on, and the stream closes after the last one ends.
+
 The server keeps no resumable state: what a connection holds (a place in a queue, the flag below)
 goes with it. A frame's id cannot carry several cursors, so `Last-Event-ID` is no longer used for
 streams: on reconnect a client re-sends its last cursor for each channel in the body, and the

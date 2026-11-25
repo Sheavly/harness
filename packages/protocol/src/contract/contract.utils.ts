@@ -108,6 +108,7 @@ import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.vali
 import {
   byteCursorSchema,
   channelBoundarySchema,
+  channelEntrySchema,
   channelLogSchema,
   channelNameSchema,
   cursorSchema,
@@ -119,6 +120,9 @@ import {
   promptSentSchema,
 } from '../node-command/node-command.validator.js';
 import {
+  channelEndFrameSchema,
+  channelHeadFrameSchema,
+  subscribeFrameSchema,
   subscribeFromSchema,
   subscribeRequestSchema,
 } from '../subscription/subscription.validator.js';
@@ -205,11 +209,15 @@ function contractSchemas(): Record<string, z.ZodType> {
     Cursor: cursorSchema,
     ChannelName: channelNameSchema,
     ChannelBoundary: channelBoundarySchema,
+    ChannelEntry: channelEntrySchema,
     ChannelLog: channelLogSchema,
     TreeChannelEntry: treeChannelEntrySchema,
     TreeSnapshot: treeSnapshotSchema,
     SubscribeFrom: subscribeFromSchema,
     SubscribeRequest: subscribeRequestSchema,
+    ChannelHeadFrame: channelHeadFrameSchema,
+    ChannelEndFrame: channelEndFrameSchema,
+    SubscribeFrame: subscribeFrameSchema,
     MessageNodeRequest: messageNodeRequestSchema,
     PromptSent: promptSentSchema,
     ApprovalConcern: approvalConcernSchema,

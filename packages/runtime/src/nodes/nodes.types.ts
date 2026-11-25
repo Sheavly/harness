@@ -1,5 +1,5 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
-import type { ChannelLog } from '@sheavly/core/store/store.types';
+import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
@@ -81,6 +81,15 @@ export type NodeChannelStorage = {
   log: (channel: string) => ChannelLog;
   onFailure?: ((failure: StoreError) => void) | undefined;
 };
+
+/**
+ * What a follower of a stored channel is told, in the order the writes happened: an entry the
+ * store took, with its place in the channel's log (`ordinal`: 0 for the first, with no gap, so
+ * what a reader of the store holds and what a follower hears can be joined without a gap or a
+ * repeat), or that the channel failed and takes no more entries.
+ */
+export type ChannelEvent =
+  { type: 'stored'; entry: ChannelEntry; ordinal: number } | { type: 'failed' };
 
 /** What `closeLostChannels` did: the channels it closed, and the ones it could not. */
 export type LostChannels = {

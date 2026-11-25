@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_READ_BYTES } from '../../output/output.constants.js';
 import { serverErrorCodeSchema } from '../../server/server.validator.js';
-import { MAX_SUBSCRIPTIONS, MAX_TAIL, MAX_TAIL_BYTES } from '../subscription.constants.js';
-import { subscribeFromSchema, subscribeRequestSchema } from '../subscription.validator.js';
+import {
+  CHANNEL_END_REASONS,
+  END_EVENT,
+  HEAD_EVENT,
+  MAX_SUBSCRIPTIONS,
+  MAX_TAIL,
+  MAX_TAIL_BYTES,
+} from '../subscription.constants.js';
+import {
+  channelEndFrameSchema,
+  channelHeadFrameSchema,
+  subscribeFrameSchema,
+  subscribeFromSchema,
+  subscribeRequestSchema,
+} from '../subscription.validator.js';
 
 /** A request that follows `subscriptions`, each `[channel, from]`. */
 const request = (subscriptions: [string, string][], more: object = {}) => ({
@@ -105,6 +118,79 @@ describe('a subscribe request', () => {
   });
 });
 
+describe('a frame of a subscribe stream', () => {
+  const frame = (value: unknown) => subscribeFrameSchema.safeParse(value).success;
+  const opened = {
+    channel: 'agent-1',
+    cursor: 's0',
+    at: 1,
+    type: 'opened',
+    node: { kind: 'agent', id: 'agent-1', title: 'Main', state: 'running', startedAt: 1 },
+  };
+
+  it.each([
+    ['an entry of a channel', opened],
+    ['where a channel stood at now', { type: HEAD_EVENT, channel: 'agent-1', cursor: 's7' }],
+    [
+      'the end of a channel that closed',
+      { type: END_EVENT, channel: 'agent-1', reason: 'completed', cursor: 's9' },
+    ],
+    [
+      'the end of a channel the consumer fell behind',
+      { type: END_EVENT, channel: 'agent-1', reason: 'cut_off', cursor: 's4' },
+    ],
+    [
+      'the end of a channel with nothing delivered',
+      { type: END_EVENT, channel: 't1', reason: 'cut_off' },
+    ],
+    [
+      'the end of a channel whose storage failed',
+      { type: END_EVENT, channel: 'agent-1', reason: 'failed', cursor: 's4' },
+    ],
+  ])('is %s', (_name, value) => {
+    expect(frame(value)).toBe(true);
+  });
+
+  it.each([
+    ['a head frame with no cursor', { type: HEAD_EVENT, channel: 'agent-1' }],
+    [
+      'a head frame of a cursor that is not one',
+      { type: HEAD_EVENT, channel: 'agent-1', cursor: '7' },
+    ],
+    [
+      'an end frame with a reason it does not have',
+      { type: END_EVENT, channel: 'agent-1', reason: 'timeout' },
+    ],
+    ['an end frame with no reason', { type: END_EVENT, channel: 'agent-1' }],
+    [
+      'an end frame of a channel that is not a name',
+      { type: END_EVENT, channel: 'a/b', reason: 'completed' },
+    ],
+    [
+      'an end frame with a cursor that is not one',
+      { type: END_EVENT, channel: 'agent-1', reason: 'completed', cursor: 'x' },
+    ],
+    ['an entry no channel holds', { channel: 'agent-1', cursor: 's4', at: 1, type: 'event' }],
+    ['nothing', {}],
+  ])('is not %s', (_name, value) => {
+    expect(frame(value)).toBe(false);
+  });
+
+  it('keeps an entry apart from the two control frames: neither parses as the other', () => {
+    expect(channelHeadFrameSchema.safeParse(opened).success).toBe(false);
+    expect(channelEndFrameSchema.safeParse(opened).success).toBe(false);
+    expect(
+      channelEndFrameSchema.safeParse({ type: HEAD_EVENT, channel: 'agent-1', cursor: 's7' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('names its event the way its data names its type, for the two control frames', () => {
+    expect([HEAD_EVENT, END_EVENT]).toEqual(['head', 'end']);
+    expect(CHANNEL_END_REASONS).toEqual(['completed', 'cut_off', 'failed']);
+  });
+});
+
 describe('the limits', () => {
   it('keep the byte bound equal to the output store’s read bound, so a tail is one read', () => {
     expect(MAX_TAIL_BYTES).toBe(MAX_READ_BYTES);
@@ -113,5 +199,9 @@ describe('the limits', () => {
   it('give a position the log cannot start at an error of its own, not bad_request', () => {
     expect(serverErrorCodeSchema.options).toContain('cursor_out_of_range');
     expect(serverErrorCodeSchema.options).toContain('bad_request');
+  });
+
+  it('give a conversation that serves as many subscriptions as it may a code a client retries on', () => {
+    expect(serverErrorCodeSchema.options).toContain('too_many_subscriptions');
   });
 });

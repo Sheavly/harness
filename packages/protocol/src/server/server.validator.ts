@@ -242,6 +242,11 @@ export const serverErrorCodeSchema = z.enum([
    * it is longer than a queued line may be, or the queue is full.
    */
   'cannot_queue',
+  /**
+   * The conversation already serves as many subscriptions as it may. Nothing is wrong with the
+   * request: the client asks again when one of them has ended.
+   */
+  'too_many_subscriptions',
   'unknown_skill',
   'unknown_approval',
   /**
