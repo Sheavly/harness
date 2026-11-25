@@ -147,13 +147,7 @@
         "operationId": "querySkills",
         "summary": "The skills a prompt can run, all or those a search matches, for a / menu",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
           "required": true,
@@ -344,9 +338,40 @@
         },
         "responses": {
           "200": {
-            "description": "Server-sent events, one `entry` per stream entry",
+            "description": "Server-sent events: each frame’s data is one item",
             "content": {
               "text/event-stream": { "itemSchema": { "$ref": "#/components/schemas/StreamEntry" } }
+            }
+          },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/subscribe": {
+      "query": {
+        "operationId": "streamChannels",
+        "summary": "Follow node channels: the stored history each position asks for, then what is stored next, as entry, head and end frames",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SubscribeRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-sent events: each frame’s data is one item",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": { "$ref": "#/components/schemas/SubscribeFrame" }
+              }
             }
           },
           "default": {
@@ -362,14 +387,7 @@
       "query": {
         "operationId": "queryStoredConversations",
         "summary": "The kept conversations, oldest first, live or not; those a title search matches",
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -574,13 +592,7 @@
         "operationId": "queryModels",
         "summary": "A profile’s models with key state, or those a name, adapter or model search matches",
         "parameters": [
-          { "name": "profile", "in": "path", "required": true, "schema": { "type": "string" } },
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
+          { "name": "profile", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
           "required": true,
@@ -764,14 +776,7 @@
       "query": {
         "operationId": "queryWorkspaceProfile",
         "summary": "The profile a folder runs on, and whether it was chosen for the folder or is the default",
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -842,14 +847,7 @@
       "query": {
         "operationId": "queryTrustedWorkspaces",
         "summary": "The workspaces trusted to run their .sheavly hooks, or those a path search matches",
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -922,14 +920,7 @@
       "query": {
         "operationId": "queryPermissions",
         "summary": "The mode a folder is in and the commands the user allowed there, and the built-in ones",
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -1049,14 +1040,7 @@
         "operationId": "queryHandshake",
         "summary": "Prove the server holds the token and is this instance, for a nonce, without sending the token",
         "security": [],
-        "parameters": [
-          {
-            "name": "Last-Event-ID",
-            "in": "header",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
+        "parameters": [],
         "requestBody": {
           "required": true,
           "content": {

@@ -69,6 +69,38 @@ describe('openApiDocument', () => {
     });
   });
 
+  it('describes the channel stream as server-sent events of subscribe frames, from a subscribe request', () => {
+    const { paths } = openApiDocument();
+
+    expect(paths['/conversations/{id}/subscribe']?.query).toMatchObject({
+      operationId: 'streamChannels',
+      requestBody: {
+        content: {
+          'application/json': { schema: { $ref: '#/components/schemas/SubscribeRequest' } },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            'text/event-stream': { itemSchema: { $ref: '#/components/schemas/SubscribeFrame' } },
+          },
+        },
+      },
+    });
+  });
+
+  it('offers Last-Event-ID only on the stream whose frames have an id, never on a read with no stream', () => {
+    const { paths } = openApiDocument();
+    const headers = (path: string) =>
+      (paths[path]?.query as { parameters: { name: string }[] }).parameters
+        .filter((parameter) => parameter.name === 'Last-Event-ID')
+        .map((parameter) => parameter.name);
+
+    expect(headers('/conversations/{id}/stream')).toEqual(['Last-Event-ID']);
+    expect(headers('/conversations/{id}/subscribe')).toEqual([]);
+    expect(headers('/conversations/{id}/skills')).toEqual([]);
+  });
+
   it('answers a sent prompt with JSON at once, never with a stream that waits for its run', () => {
     const { paths } = openApiDocument();
 

@@ -7,6 +7,7 @@ import { conversationIdSchema } from '@sheavly/protocol/server/server.validator'
 import type { ApiHandlers, ConversationRouteName } from './api.types.js';
 import { parseLastEventId } from './api.utils.js';
 import { streamEntries } from './sse.helper.js';
+import { streamSubscription } from './subscription-stream.helper.js';
 
 /**
  * The conversation id in a route's path; routes without one (`/conversations`) never read it. An
@@ -113,6 +114,23 @@ export function apiHandlers(
         lastEventId,
         answersApprovals: body.approvals === true,
       });
+    },
+    // A request that cannot be served is refused here, before a stream opens, as an HTTP failure.
+    streamChannels: async ({ c, id, body }) => {
+      const gone = c.req.raw.signal;
+
+      try {
+        const subscription = await conversations.subscribe({ id, request: body, signal: gone });
+
+        return streamSubscription({ c, subscription });
+      } catch (caughtError) {
+        // The read stopped because the client left (it rejects with the signal's reason): nobody is
+        // there to read an answer. Any other failure, even of a client that left, is still thrown
+        // and logged.
+        if (gone.aborted && caughtError === gone.reason) return c.body(null, 204);
+
+        throw caughtError;
+      }
     },
   };
 }
