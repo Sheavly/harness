@@ -8,11 +8,13 @@ import { typescriptRuleTester } from '../testing/rule-tester.fake.js';
 // A multiline regex breaks lines at U+2028 and U+2029 too, which JSON leaves unescaped inside a
 // string: `.` and `$` stop there and `^` matches after it. A line starts where nothing but `\r` or
 // `\n` comes before, and ends before one.
-const ruleTester = typescriptRuleTester({ sourceType: 'module', ecmaVersion: 'latest' });
+const RULE = 'no-multiline-regex';
+const tester = typescriptRuleTester({ sourceType: 'module', ecmaVersion: 'latest' });
 
-const reports = (code) => ({ code, errors: [{ messageId: 'm0' }] });
+/** A case the rule reports exactly once. */
+const flagged = (code) => ({ code, errors: [{ messageId: 'm0' }] });
 
-ruleTester.run('no-multiline-regex', harnessPlugin.rules['no-multiline-regex'], {
+tester.run(RULE, harnessPlugin.rules[RULE], {
   valid: [
     // A line found without the flag: its start after a break, its end before the next.
     'const url = /(?:^|[\\r\\n])URL: (\\S+)/.exec(body)?.[1];',
@@ -40,20 +42,20 @@ ruleTester.run('no-multiline-regex', harnessPlugin.rules['no-multiline-regex'], 
     "const flags = 'm'; const held = new RegExp('^a', flags);",
   ],
   invalid: [
-    reports('const found = /^a$/m.test(text);'),
-    reports('const url = /^URL: (\\S+)/m.exec(body)?.[1];'),
-    reports('const all = text.replaceAll(/^#/gm, "x");'),
-    reports('const mixed = text.split(/^## /im);'),
-    reports("const made = new RegExp('^a', 'm');"),
-    reports("const called = RegExp('^a', 'gm');"),
-    reports("const spread = new RegExp(`^${name}`, 'my');"),
+    flagged('const found = /^a$/m.test(text);'),
+    flagged('const url = /^URL: (\\S+)/m.exec(body)?.[1];'),
+    flagged('const all = text.replaceAll(/^#/gm, "x");'),
+    flagged('const mixed = text.split(/^## /im);'),
+    flagged("const made = new RegExp('^a', 'm');"),
+    flagged("const called = RegExp('^a', 'gm');"),
+    flagged("const spread = new RegExp(`^${name}`, 'my');"),
     // Flags written as a template literal, and the constructor reached as a member.
-    reports('const ticks = new RegExp(pattern, `gm`);'),
-    reports("const member = globalThis.RegExp('^a', 'm');"),
-    reports("const window = new window.RegExp('^a', 'gm');"),
+    flagged('const ticks = new RegExp(pattern, `gm`);'),
+    flagged("const member = globalThis.RegExp('^a', 'm');"),
+    flagged("const window = new window.RegExp('^a', 'gm');"),
     // The modifier that turns the flag on for part of a pattern.
-    reports('const scoped = /(?m:^a)/;'),
-    reports('const mixed = /(?im-s:^a$)/;'),
+    flagged('const scoped = /(?m:^a)/;'),
+    flagged('const mixed = /(?im-s:^a$)/;'),
     // Two in one expression are two findings.
     {
       code: 'const both = [/^a/m, /b$/m];',
