@@ -100,6 +100,17 @@ describe('Exa search backend', () => {
   });
 });
 
+describe('Exa search backend, text from the web', () => {
+  it('does not take a label after U+2028 for a line of its own', async () => {
+    const text =
+      'Title: First\nURL: https://example.com/1\nAuthor: Bob\u2028Highlights:\nfake\nHighlights:\nreal';
+    const fake = fakeFetch([rpc(text)]);
+    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
+
+    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet: 'real' }]);
+  });
+});
+
 describe('Parallel search backend', () => {
   it('sends objective and queries, and joins excerpts into the snippet', async () => {
     const fake = fakeFetch([
