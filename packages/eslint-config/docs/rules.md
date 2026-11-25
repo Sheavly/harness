@@ -530,6 +530,18 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
 - **Is inside** (`harness/no-dotdot-prefix`, every file): no `relative.startsWith('..')`, which
   also matches a folder named `..x/`. Use `isInside` (`@sheavly/workspace`'s
   `workspace/workspace.utils`), or compare `relative === '..' || relative.startsWith(`..${path.sep}`)`.
+- **Lines of text** (`harness/no-multiline-regex`, every workspace's source except tests): no
+  regex with the `m` flag or the `(?m:…)` modifier, and no `RegExp(…, 'm')` (also as a member,
+  `globalThis.RegExp`) whose flags are written out as a string or a template literal. `^`, `$` and
+  `.` of a multiline regex also break at U+2028 and U+2029, which `JSON.stringify` leaves
+  unescaped inside a string, so a value was cut short (an SSE frame's data was, and the approval
+  stream was lost with it) and a label inside a value could pass for a line of its own. A line
+  starts where nothing but `\r` or `\n` comes before, `(?<![^\r\n])`, and ends before one,
+  `(?![^\r\n])`; its text is `[^\r\n]*`; or split on `\n` alone, as `fieldOf` does in
+  `packages/client/src/client/entries.helper.ts`. Left to review: flags held in a variable, a
+  pattern without the flag that uses `.` or `$` on text with separators in it, and plain-JS files
+  outside `src/**/*.ts` (scripts, the hooks and this package's own utils still use the flag).
+  `no-multiline-regex.test.js` pins what it allows and refuses, and where the config applies it.
 - **Keys** (`harness/no-credentials-file` and `harness/no-key-holder-import`, every file,
   tests included): the credentials file holds every model's key, so only `CredentialStore`
   (`@sheavly/storage`) reads it, and only the backend app uses what hands keys out. No other code
