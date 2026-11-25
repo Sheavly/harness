@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toolCall } from '@sheavly/testing/provider/routed-provider.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { readEntries } from '@sheavly/client/client/entries.helper';
+import { promptSentSchema } from '@sheavly/protocol/node-command/node-command.validator';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { DEEP_ID, FAST_ID } from '@sheavly/host/testing/run.fake';
@@ -28,8 +29,15 @@ describe('a conversation over HTTP', () => {
     const first = await send('wait');
 
     expect(first.headers.get('content-type')).toMatch(/application\/json/);
-    expect(await first.json()).toEqual({ status: 'started', queued: [] });
-    expect(await (await send('next')).json()).toEqual({ status: 'queued', queued: ['next'] });
+    // Both parse as the contract's answer: the node that carries the run, the message only for the
+    // prompt that started.
+    const started = promptSentSchema.parse(await first.json());
+    const queued = promptSentSchema.parse(await (await send('next')).json());
+
+    expect(started).toMatchObject({ status: 'started', queued: [] });
+    expect(started).toHaveProperty('messageId');
+    expect(queued).toMatchObject({ status: 'queued', node: started.node, queued: ['next'] });
+    expect(queued).not.toHaveProperty('messageId');
     expect(await (await request(`/conversations/${id}/queue`)).json()).toEqual({
       queued: ['next'],
     });
@@ -134,7 +142,7 @@ describe('a conversation over HTTP', () => {
           body: { text: 'too soon' },
         });
 
-        expect(await second.json()).toEqual({ status: 'queued', queued: ['too soon'] });
+        expect(await second.json()).toMatchObject({ status: 'queued', queued: ['too soon'] });
         // Taken back out, so only the stopped prompt is in the history below.
         await request(`/conversations/${id}/queue`, { method: 'PUT', body: { queued: [] } });
         expect((await request(`/conversations/${id}/stop`, { method: 'POST' })).status).toBe(204);
