@@ -21,11 +21,10 @@ describe('shared instructions', () => {
     const instructions = composeInstructions({ instructions: 'Extract the result.' });
 
     expect(instructions).toContain(
-      'end your turn without tool calls to wait for required background results',
+      'Finished finite background work wakes you, so never call a tool to wait',
     );
-    expect(instructions).toContain(
-      'Inspect status only for requested updates or diagnosis, never waiting',
-    );
+    expect(instructions).toContain('end your turn without tool calls');
+    expect(instructions).toContain('Inspect status only for requested updates or diagnosis');
     expect(instructions.match(/end your turn without tool calls/g)).toHaveLength(1);
   });
 
