@@ -2035,8 +2035,10 @@
     "SubscribeFrame": {
       "anyOf": [
         { "$ref": "#/$defs/ChannelEntry" },
+        { "$ref": "#/$defs/TreeChannelEntry" },
         { "$ref": "#/$defs/ChannelHeadFrame" },
-        { "$ref": "#/$defs/ChannelEndFrame" }
+        { "$ref": "#/$defs/ChannelEndFrame" },
+        { "$ref": "#/$defs/TreeSnapshot" }
       ]
     },
     "MessageNodeRequest": {

@@ -32,6 +32,13 @@ export const HEAD_EVENT = 'head';
 export const END_EVENT = 'end';
 
 /**
+ * The event name, and the `type`, of the frame that holds the tree as it stands: what a
+ * subscription to the tree channel from `snapshot` sends first, before the entries after its
+ * cursor.
+ */
+export const SNAPSHOT_EVENT = 'snapshot';
+
+/**
  * Why a channel of a subscription ended. `completed`: its `closed` entry was delivered and nothing
  * follows. `cut_off`: this consumer did not keep up with it, or what the conversation's
  * subscriptions hold for their consumers left no room for it, so it stopped and the client resumes

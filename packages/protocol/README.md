@@ -28,8 +28,8 @@ belong to the backend app; this package defines and validates only their wire sh
 | `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream      |
 | `node/`              | `NodeInfo`: one unit of work of any kind (agent, command, service, extension kind), its state |
 | `channel/`           | A node's channel: cursors, its `opened`, `updated`, `closed` entries, and a log's shape       |
-| `tree/`              | The conversation's tree channel: its entries (nodes, approvals, notices) and its snapshot     |
-| `subscription/`      | The subscribe request, the limits on it, and the frames of its stream (entry, head, end)      |
+| `tree/`              | The tree channel: its entries, its snapshot, and the fold from entries to a tree              |
+| `subscription/`      | The subscribe request, its limits, and its stream's frames (entry, head, end, snapshot)       |
 | `node-command/`      | Commands addressed by node: a message to an agent, and the ids a prompt send returns          |
 | `task/`              | Background task states                                                                        |
 | `status/`            | The one status table (session, run, task, node, turn stop) and `runEnd`: how a run ended      |
