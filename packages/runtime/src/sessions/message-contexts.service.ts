@@ -14,6 +14,11 @@ export class MessageContexts {
     this.#messages.set(sessionId, messageId);
   }
 
+  /** The user message a session's activity is associated with now, if it has one. */
+  get(id: SessionId): SessionMessage['messageId'] | undefined {
+    return this.#messages.get(id);
+  }
+
   /** Drops what is known about a session that was released. */
   forget(id: SessionId): void {
     this.#messages.delete(id);
