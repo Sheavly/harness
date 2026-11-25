@@ -26,7 +26,9 @@ export function owningWorktree(params: { worktrees: string[]; root: string }): s
 
 /** Where a `.git` file points: its `gitdir:` line, resolved against the folder holding the file. */
 export function parseGitdirFile(params: { content: string; dir: string }): string | undefined {
-  const target = /(?:^|[\r\n])gitdir:\s*([^\r\n]+?)\s*(?=[\r\n]|$)/.exec(params.content)?.[1];
+  // Greedy then trimmed: a lazy group followed by `\s*` retries from every position of a long
+  // run of spaces, and a hostile repo's `.git` file is read with no size cap.
+  const target = /(?<![^\r\n])gitdir:\s*([^\r\n]+)/.exec(params.content)?.[1]?.trim();
 
   return target ? path.resolve(params.dir, target) : undefined;
 }

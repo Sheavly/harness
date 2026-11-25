@@ -40,6 +40,18 @@ describe('parseGitdirFile', () => {
     );
   });
 
+  it('reads a line with a very long run of spaces in it without backtracking over it', () => {
+    // A lazy match followed by `\s*` is quadratic here: minutes for a file this size.
+    const content = `gitdir: a${' '.repeat(300_000)}b\n`;
+
+    expect(parseGitdirFile({ content, dir: '/p' })?.endsWith('b')).toBe(true);
+  });
+
+  it('trims the line and ignores a pointer that holds only spaces', () => {
+    expect(parseGitdirFile({ content: 'gitdir:  /x/y \t\r\n', dir: '/p' })).toBe('/x/y');
+    expect(parseGitdirFile({ content: 'gitdir:   \n', dir: '/p' })).toBeUndefined();
+  });
+
   it('is undefined for a file that is not a gitdir pointer', () => {
     expect(parseGitdirFile({ content: 'nope', dir: '/p' })).toBeUndefined();
   });
