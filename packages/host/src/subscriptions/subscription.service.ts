@@ -1,7 +1,9 @@
 import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { ChannelEvent } from '@sheavly/runtime/nodes/nodes.types';
 import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
+import type { ChannelEntry } from '@sheavly/core/store/store.types';
 import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
+import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
 import type {
   ChannelEndFrame,
   ChannelName,
@@ -9,6 +11,9 @@ import type {
 } from '@sheavly/protocol/subscription/subscription.types';
 import { FrameQueue } from './frame-queue.service.js';
 import type { HeldBytes } from './held-bytes.service.js';
+import { closedAt } from './output-chunks.utils.js';
+import { readOutputSelection } from './output-selection.helper.js';
+import { OutputTail } from './output-tail.service.js';
 import { readSelection, snapshotSelection, tooMuchHeld } from './subscription-read.helper.js';
 import {
   bytesOfFrame,
@@ -17,8 +22,14 @@ import {
   entryFrame,
   headFrame,
 } from './subscription-frames.utils.js';
-import { MAX_QUEUED_FRAMES } from './subscriptions.constants.js';
-import type { ChannelState, ResolvedChannel, Selection } from './subscriptions.types.js';
+import { MAX_QUEUED_FRAMES, OUTPUT_BATCH_MS } from './subscriptions.constants.js';
+import type {
+  ChannelState,
+  OutputSource,
+  ResolvedChannel,
+  Selection,
+  TailEnd,
+} from './subscriptions.types.js';
 
 /**
  * One subscribe request being served: the stored history of each of its channels, then what the
@@ -40,6 +51,7 @@ import type { ChannelState, ResolvedChannel, Selection } from './subscriptions.t
 export class Subscription {
   readonly #writer: NodeChannelWriter | undefined;
   readonly #tree: TreeChannelWriter | undefined;
+  readonly #output: OutputSource | undefined;
   readonly #pool: HeldBytes;
   readonly #queue = new FrameQueue();
   readonly #states = new Map<string, ChannelState>();
@@ -51,11 +63,13 @@ export class Subscription {
   constructor(params: {
     writer: NodeChannelWriter | undefined;
     tree?: TreeChannelWriter | undefined;
+    output?: OutputSource | undefined;
     pool: HeldBytes;
     onClose: () => void;
   }) {
     this.#writer = params.writer;
     this.#tree = params.tree;
+    this.#output = params.output;
     this.#pool = params.pool;
     this.#onClose = params.onClose;
   }
@@ -70,6 +84,8 @@ export class Subscription {
     writer: NodeChannelWriter | undefined;
     /** The conversation's tree channel's writer, which the tree channel is followed through. */
     tree?: TreeChannelWriter | undefined;
+    /** Where a command's complete output is read and followed, for a channel that kept it. */
+    output?: OutputSource | undefined;
     channels: readonly ResolvedChannel[];
     budget: { left: number };
     pool: HeldBytes;
@@ -147,17 +163,13 @@ export class Subscription {
     const selections = new Map<string, Selection>();
 
     // Following comes first: an entry stored while the store is read is told, and is joined after.
-    for (const { channel } of channels) this.#follow(channel);
+    for (const resolved of channels) this.#follow(resolved);
 
-    for (const { channel, log, from, kind } of channels) {
-      const pool = this.#pool;
-      const selection =
-        from === 'snapshot'
-          ? await snapshotSelection(this.#tree)
-          : await readSelection({ log, from, kind, budget, pool, signal });
+    for (const resolved of channels) {
+      const selection = await this.#select({ resolved, budget, signal });
 
       this.#readHeld += selection.held;
-      selections.set(channel, selection);
+      selections.set(resolved.channel, selection);
     }
 
     for (const resolved of channels) {
@@ -167,21 +179,90 @@ export class Subscription {
     }
   }
 
-  #follow(channel: ChannelName): void {
+  /** What the channel starts with: the tree as it stands, the output store's history, or the log's. */
+  #select(params: {
+    resolved: ResolvedChannel;
+    budget: { left: number };
+    signal?: AbortSignal | undefined;
+  }): Promise<Selection> {
+    const { resolved, budget, signal } = params;
+    const { channel, log, from, kind, output } = resolved;
+    const pool = this.#pool;
+
+    if (from === 'snapshot') return snapshotSelection(this.#tree);
+
+    if (output && this.#output) {
+      const outputs = this.#output.reader;
+
+      return readOutputSelection({
+        channel,
+        log,
+        from,
+        ref: output,
+        outputs,
+        budget,
+        pool,
+        signal,
+      });
+    }
+
+    return readSelection({ log, from, kind, budget, pool, signal });
+  }
+
+  #follow(resolved: ResolvedChannel): void {
+    const { channel } = resolved;
     const listener = (event: ChannelEvent) => this.#hear({ channel, event });
-    const stop =
+    const stopEntries =
       (channel === TREE_CHANNEL_NAME
         ? this.#tree?.follow(listener)
         : this.#writer?.follow({ channel, listener })) ?? (() => undefined);
+    const tail = this.#tailOf(resolved);
+    const stopOutput = tail && this.#followOutput({ channel, tail });
 
     this.#states.set(channel, {
-      stop,
+      stop: () => {
+        stopEntries();
+        stopOutput?.();
+        tail?.stop();
+      },
       early: [],
       overflowed: false,
       acceptFrom: 0,
       ended: false,
       delivered: undefined,
+      tail,
     });
+  }
+
+  /** The live output of a channel that kept it, which ends the channel when it can go no further. */
+  #tailOf(resolved: ResolvedChannel): OutputTail | undefined {
+    if (!resolved.output || !this.#output) return undefined;
+
+    const { channel } = resolved;
+
+    return new OutputTail({
+      channel,
+      delayMs: OUTPUT_BATCH_MS,
+      emit: (entry) => this.#emitOutput({ channel, entry }),
+      onEnd: (reason) => this.#end({ channel, reason }),
+    });
+  }
+
+  /** Follows the capture of the command `channel` is, if it still runs; the tail hears each chunk. */
+  #followOutput(params: { channel: ChannelName; tail: OutputTail }): (() => void) | undefined {
+    return this.#output?.follow({
+      nodeId: nodeIdSchema.parse(params.channel),
+      listener: (chunk) => params.tail.hear(chunk),
+    });
+  }
+
+  /** Queues an output entry as a live frame: nothing if it did, or why the channel must end. */
+  #emitOutput(params: { channel: ChannelName; entry: ChannelEntry }): TailEnd | undefined {
+    const frame = entryFrame(params.entry);
+
+    if (!frame) return 'failed';
+
+    return this.#enqueueLive({ channel: params.channel, frame }) ? undefined : 'cut_off';
   }
 
   /** Puts one channel's history on the queue, then what was told while it was read. */
@@ -227,6 +308,12 @@ export class Subscription {
 
       return;
     }
+
+    // The output that was stored while the history was read joins it by offset, before the writer's
+    // own `closed` event, which follows all of it.
+    state.tail?.join(selection.outputEnd ?? 0);
+
+    if (state.ended) return;
 
     const early = state.early ?? [];
 
@@ -276,7 +363,12 @@ export class Subscription {
 
     if (event.ordinal < state.acceptFrom) return;
 
-    const frame = entryFrame(event.entry);
+    const entry = this.#afterOutput({ state, entry: event.entry });
+
+    // Sending what waited can end the channel (the consumer is too slow for it).
+    if (state.ended) return;
+
+    const frame = entryFrame(entry);
 
     if (!frame) {
       this.#end({ channel, reason: 'failed' });
@@ -285,6 +377,21 @@ export class Subscription {
     } else if (frame.type === 'closed') {
       this.#end({ channel, reason: 'completed' });
     }
+  }
+
+  /**
+   * The entry a channel's writer told, for a channel with output: a `closed` entry comes after all
+   * of the output (what waits to be batched is sent first), and stands where the output ended. The
+   * capture closes before the node ends, so every chunk was told before this entry.
+   */
+  #afterOutput(params: { state: ChannelState; entry: ChannelEntry }): ChannelEntry {
+    const { state, entry } = params;
+
+    if (!state.tail || entry.type !== 'closed') return entry;
+
+    state.tail.flush();
+
+    return closedAt({ entry, end: state.tail.taken });
   }
 
   /** Queues a frame of `channel`, counted against the pool; false, queuing nothing, if it does not fit. */

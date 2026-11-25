@@ -1,6 +1,10 @@
+import { z } from 'zod';
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CursorKind } from '@sheavly/protocol/channel/channel.types';
 import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
+import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
+import type { OutputRef } from '@sheavly/protocol/output/output.types';
+import { outputRefSchema } from '@sheavly/protocol/output/output.validator';
 import { SNAPSHOT_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
 import { tailCount, tailLimit } from '@sheavly/protocol/subscription/subscription.utils';
 import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
@@ -14,6 +18,28 @@ import type { Selection } from './subscriptions.types.js';
 /** What the entry costs to hold: its JSON, as a store counts a line. */
 const sizeOf = (entry: ChannelEntry): number => JSON.stringify(entry).length;
 
+/**
+ * Charges `entry` to the request's read `budget` and to the conversation's `pool`, and counts it in
+ * `taken`, what the read holds of the pool: past either the request is refused, never cut.
+ */
+export function holdEntry(params: {
+  entry: ChannelEntry;
+  budget: { left: number };
+  pool: HeldBytes;
+  taken: { bytes: number };
+}): void {
+  const { entry, budget, pool, taken } = params;
+  const size = sizeOf(entry);
+
+  budget.left -= size;
+
+  if (budget.left < 0) throw tooLarge();
+
+  if (!pool.take(size)) throw tooMuchHeld();
+
+  taken.bytes += size;
+}
+
 /** What a channel's cursors count, from its first entry; none for a channel with no entry. */
 export async function kindOf(log: ChannelLog): Promise<CursorKind | undefined> {
   const entries = log.read('start')[Symbol.asyncIterator]();
@@ -22,6 +48,39 @@ export async function kindOf(log: ChannelLog): Promise<CursorKind | undefined> {
     const first = await entries.next();
 
     return first.done ? undefined : cursorKind(first.value.cursor);
+  } finally {
+    await entries.return?.();
+  }
+}
+
+/** What a command's or a service's `opened` entry holds of its output: the log's reference. */
+const openedWithOutputSchema = z.object({
+  node: z.object({
+    id: nodeIdSchema,
+    kind: z.enum(['command', 'service']),
+    outputLog: z.object({ ref: outputRefSchema }),
+  }),
+});
+
+/**
+ * The reference of the output log the node of `channel` kept, read from the channel's first entry:
+ * none for a channel with no entry, an agent's or an extension's (whatever it holds), a node that
+ * is not the channel's own, or a command whose output was not stored. Only a command or a service
+ * exposes a log, and only its own.
+ */
+export async function outputRefOf(params: {
+  log: ChannelLog;
+  channel: string;
+}): Promise<OutputRef | undefined> {
+  const entries = params.log.read('start')[Symbol.asyncIterator]();
+
+  try {
+    const first = await entries.next();
+    const opened = first.done ? undefined : openedWithOutputSchema.safeParse(first.value);
+
+    if (!opened?.success || opened.data.node.id !== params.channel) return undefined;
+
+    return opened.data.node.outputLog.ref;
   } finally {
     await entries.return?.();
   }
@@ -115,15 +174,7 @@ async function readInto(params: {
     taken.bytes -= size;
   };
   const hold = (entry: ChannelEntry) => {
-    const size = sizeOf(entry);
-
-    budget.left -= size;
-
-    if (budget.left < 0) throw tooLarge();
-
-    if (!pool.take(size)) throw tooMuchHeld();
-
-    taken.bytes += size;
+    holdEntry({ entry, budget, pool, taken });
     kept.push(entry);
   };
 
@@ -203,7 +254,7 @@ export function tooMuchHeld(): SubscriptionError {
 }
 
 /** The refusal for a request that would hold more history than one request may. */
-function tooLarge(): SubscriptionError {
+export function tooLarge(): SubscriptionError {
   return new SubscriptionError({
     reason: 'bad_request',
     message: `This request would send more than ${String(MAX_SUBSCRIBE_READ_BYTES)} bytes of stored history: subscribe from a cursor or a tail`,

@@ -1718,6 +1718,14 @@
                 { "type": "null" }
               ]
             },
+            "output": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["complete", "incomplete"] },
+                "reason": { "type": "string", "maxLength": 1000 }
+              },
+              "required": ["status"]
+            },
             "error": { "type": "string", "maxLength": 2000 }
           },
           "required": ["cursor", "at", "channel", "type", "state"]
@@ -1757,6 +1765,18 @@
             "node": { "$ref": "#/$defs/NodeInfo" }
           },
           "required": ["cursor", "at", "channel", "type", "node"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cursor": { "$ref": "#/$defs/Cursor" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "channel": { "$ref": "#/$defs/NodeId" },
+            "type": { "type": "string", "const": "output" },
+            "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "text": { "type": "string", "minLength": 1, "maxLength": 16384 }
+          },
+          "required": ["cursor", "at", "channel", "type", "offset", "text"]
         }
       ]
     },

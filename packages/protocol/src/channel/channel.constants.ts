@@ -16,6 +16,15 @@ export const BYTE_CURSOR_PATTERN = /^b(?:0|[1-9]\d{0,14})$/;
 export const MAX_ENTRY_TYPE_CHARS = 128;
 
 /**
+ * The most bytes of a command's or a service's output one `output` entry carries: 16 KiB of UTF-8.
+ * Small enough that a client shows output as it comes and a slow one holds little for each frame,
+ * and one read (`MAX_TAIL_BYTES`, the output store's read bound) is several of them. An entry is
+ * not stored, so it is not held to `MAX_CHANNEL_ENTRY_CHARS`: a chunk of control characters is up to
+ * six times its size as JSON, which a subscription counts against what a conversation may hold.
+ */
+export const MAX_OUTPUT_CHUNK_BYTES = 16_384;
+
+/**
  * The most one entry of a channel may be as stored: its JSON, in characters. A node and an
  * extension's `data` (`MAX_EXTENSION_DATA_BYTES`, 16 KiB) fit with room to spare, and it is far
  * under the line a stored file can be read back (storage's `MAX_LINE_CHARS`, which a test pins), so

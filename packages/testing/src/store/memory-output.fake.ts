@@ -8,6 +8,7 @@ import type {
   OutputSearchParams,
   OutputStore,
   OutputWriter,
+  StoredChunk,
 } from '@sheavly/core/output/output.types';
 import type { OutputLog, OutputRef } from '@sheavly/protocol/output/output.types';
 import { outputRefSchema } from '@sheavly/protocol/output/output.validator';
@@ -53,12 +54,20 @@ export class MemoryOutputStore implements OutputStore {
 
     const ref = outputRefSchema.parse(randomUUID());
     const entry: CapturedLog = { chunks: [], status: 'capturing' };
+    const followers = new Set<(chunk: StoredChunk) => void>();
 
     this.#logs.set(ref, entry);
 
     return {
       get log() {
         return snapshot({ ref, entry });
+      },
+      follow: (listener) => {
+        followers.add(listener);
+
+        return () => {
+          followers.delete(listener);
+        };
       },
       append: (chunk) => {
         if (entry.status !== 'capturing') return;
@@ -70,7 +79,21 @@ export class MemoryOutputStore implements OutputStore {
           return;
         }
 
+        const offset = snapshot({ ref, entry }).bytes;
+
         entry.chunks.push(Buffer.from(chunk, 'utf8'));
+
+        // Stored the moment it is appended: this store has no disk to wait for. A follower that
+        // throws does not stop the others or the capture; its error is rethrown on its own.
+        for (const listener of [...followers]) {
+          try {
+            listener({ offset, text: chunk });
+          } catch (caughtError) {
+            queueMicrotask(() => {
+              throw caughtError;
+            });
+          }
+        }
       },
       close: async () => {
         if (entry.status === 'capturing') entry.status = 'complete';

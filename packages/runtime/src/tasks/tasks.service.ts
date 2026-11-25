@@ -1,5 +1,6 @@
 /** Background work and completion notices shared by tools and session-scoped loops. */
 import { now } from '@sheavly/core/clock/clock.helper';
+import type { StoredChunk } from '@sheavly/core/output/output.types';
 import { NodeRegistry } from '../nodes/node-registry.service.js';
 import { endTaskNode, newTaskEntry, releaseTaskNode } from './task-nodes.helper.js';
 import type {
@@ -18,7 +19,7 @@ import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId, TaskInfo, TaskStatus, TaskUpdate } from '@sheavly/protocol/task/task.types';
 import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { TaskError } from '../errors/tasks.errors.js';
-import { groupMemberError, unknownTaskError } from './group-member.helper.js';
+import { assertGroupMember, unknownTaskError } from './group-member.helper.js';
 import { ReleasedAgents } from './released-agents.service.js';
 import { SettleWaiters } from './settle-waiters.service.js';
 import { groupedPendingOf, hasPendingFiniteWork, runningTasksOf } from './running-tasks.helper.js';
@@ -83,6 +84,7 @@ export class TaskRegistry {
       agentSessionId,
     });
 
+    entry.capture = capture;
     entry.settled = runTask({
       info,
       signal: controller.signal,
@@ -279,6 +281,18 @@ export class TaskRegistry {
   }
 
   /**
+   * Follows the complete output of the command or service `nodeId` is, as it is stored: `listener`
+   * gets each chunk from now on (`OutputWriter.follow`). Returns the stop, or none when the node is
+   * no task of this registry with a capture: it is no command, kept no output, or was released. A
+   * task that has ended told all it had before it did, so a follower of one has nothing more coming.
+   */
+  followOutput(params: { nodeId: NodeId; listener: (chunk: StoredChunk) => void }) {
+    const entry = [...this.#tasks.values()].find((each) => each.nodeId === params.nodeId);
+
+    return entry?.capture?.follow(params.listener);
+  }
+
+  /**
    * The sub-agent sessions of the tasks `owner` had released since it last asked, each once, for
    * the owner to release as well (see `ReleasedAgents`).
    */
@@ -382,16 +396,8 @@ export class TaskRegistry {
 
     // A released id has no entry, so `#entry` refuses it like one that never existed.
     const entry = this.#entry(id);
-    const error = groupMemberError({
-      id,
-      duplicate: seen.has(id),
-      grouped: entry.group !== undefined,
-      service: !isFiniteKind(entry.backgroundKind),
-      owned: this.#owns({ entry, sessionId }),
-      delivered: entry.delivery?.delivered === true,
-    });
 
-    if (error) throw error;
+    assertGroupMember({ id, seen, entry, owned: this.#owns({ entry, sessionId }) });
   }
 
   #enqueueSettledGroup(group: Delivery): boolean {

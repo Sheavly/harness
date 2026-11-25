@@ -7,7 +7,7 @@ import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionError } from '../errors/subscription.errors.js';
 import type { LiveConversation } from '../conversations/conversations.types.js';
 import { HeldBytes } from './held-bytes.service.js';
-import { checkPosition, kindOf } from './subscription-read.helper.js';
+import { checkPosition, kindOf, outputRefOf } from './subscription-read.helper.js';
 import { Subscription } from './subscription.service.js';
 import {
   MAX_HELD_BYTES,
@@ -15,7 +15,7 @@ import {
   MAX_SUBSCRIPTION_CONNECTIONS,
   NO_SUCH_CHANNEL,
 } from './subscriptions.constants.js';
-import type { ResolvedChannel } from './subscriptions.types.js';
+import type { OutputSource, ResolvedChannel } from './subscriptions.types.js';
 
 const noSuchChannel = () =>
   new ConversationsError({ reason: 'not_found', message: NO_SUCH_CHANNEL });
@@ -96,6 +96,7 @@ export class SubscriptionHub {
       return await Subscription.open({
         writer: live.harness.nodeChannels,
         tree: live.harness.treeChannel,
+        output: this.#outputOf({ id, live }),
         channels,
         budget: { left: MAX_SUBSCRIBE_READ_BYTES },
         pool,
@@ -106,6 +107,18 @@ export class SubscriptionHub {
       release();
       throw caughtError;
     }
+  }
+
+  /** Where a command's complete output of conversation `id` is read and followed; none when the host stores nothing. */
+  #outputOf(params: { id: ConversationId; live: LiveConversation }): OutputSource | undefined {
+    const { id, live } = params;
+
+    return (
+      this.#store && {
+        reader: this.#store.outputs(id),
+        follow: (follow) => live.harness.tasks.followOutput(follow),
+      }
+    );
   }
 
   /**
@@ -162,7 +175,11 @@ export class SubscriptionHub {
       if (!log || !kind) throw noSuchChannel();
 
       checkPosition({ from, kind });
-      channels.push({ channel, from, log, kind });
+
+      // Only a command's or a service's channel, which counts bytes, has output to read.
+      const output = kind === 'byte' ? await outputRefOf({ log, channel }) : undefined;
+
+      channels.push({ channel, from, log, kind, output });
     }
 
     return channels;

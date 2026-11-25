@@ -11,6 +11,7 @@ function brokenCapture(): OutputWriter {
   return {
     log: { ref, bytes: 3, status: 'capturing' },
     append: () => undefined,
+    follow: () => () => undefined,
     close: () =>
       Promise.reject(Object.assign(new Error('disk gone at /home/me/secret'), { code: 'EIO' })),
   };
