@@ -97,6 +97,19 @@ describe('maskOldToolOutput', () => {
     expect(contentOf(masked[2])).not.toContain('yyyy');
   });
 
+  it('keeps the whole reference line when it holds U+2028, which is no line end here', () => {
+    const stored = result(
+      'c0',
+      `${'y'.repeat(2_000)}\nFull output: output_ref=abc123 (9000\u2028bytes stored, complete)\nmore`,
+    );
+    const masked = maskOldToolOutput({
+      view: [prompt, call('c0'), stored, ...pairs(30, 2_000)],
+      window: 30_000,
+    });
+
+    expect(contentOf(masked[2])).toContain('(9000\u2028bytes stored, complete)');
+  });
+
   it('leaves a short result alone, since the note would be as long', () => {
     const view = [prompt, call('s'), result('s', 'ok'), ...pairs(30, 2_000)];
     const masked = maskOldToolOutput({ view, window: 30_000 });

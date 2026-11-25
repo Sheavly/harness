@@ -386,6 +386,23 @@ export const SYNTAX_RULES = {
         "Do not locate the hooks' chat state yourself. `chat-state.utils.mjs` is its only reader and writer (`getChatState`, `updateChatState`, `changeChatState`, `keepShownInChat`): a schema for every field, a version, a lock, an atomic write and expiry. A new field is a line in its `SCHEMA`; a read-modify-write of one field is a `changeChatState`.",
     },
   ],
+  // Text is split into lines at `\n` and `\r` only. A multiline regex (`m`) also breaks at U+2028
+  // and U+2029, which JSON.stringify leaves unescaped inside a string: `.` and `$` stop at one, so
+  // a value is cut short (an SSE frame's data was, and its stream was lost), and `^` matches after
+  // one, so a label inside a value passes for a line of its own. Applies to workspace source, not
+  // tests. Matches a regex literal with the flag or the `(?m:…)` modifier, and `RegExp(…)` /
+  // `new RegExp(…)` (also as a member, `globalThis.RegExp`) whose flags are a string or a template
+  // literal with `m`. Not covered: flags held in a variable, a pattern without the flag that
+  // still uses `.` or `$` on text with separators in it (`/^x(.*)$/` finds nothing past one), and
+  // plain-JS files outside `src/**/*.ts`, which review carries.
+  'no-multiline-regex': [
+    {
+      selector:
+        ":matches(Literal[regex.flags=/m/], Literal[regex.pattern=/\\(\\?[ims]*m[ims]*(-[ims]*)?:/], :matches(NewExpression, CallExpression):matches([callee.name='RegExp'], [callee.property.name='RegExp']):matches([arguments.1.value=/m/], [arguments.1.quasis.0.value.cooked=/m/]))",
+      message:
+        "Do not match lines with the `m` flag: its `^`, `$` and `.` also break at U+2028 and U+2029, which JSON leaves unescaped in a string, so a value is cut short, or a label inside a value is taken for a line of its own. Without it, a line starts where nothing but `\\r` or `\\n` comes before (`(?<![^\\r\\n])`) and ends before one (`(?![^\\r\\n])`), and its text is `[^\\r\\n]*`; or split on `\\n` alone, as `fieldOf` does in `packages/client/src/client/entries.helper.ts`. Text whose line structure is only ever yours is a `files:` override with its reason in this workspace's eslint.config.js.",
+    },
+  ],
   // `relative.startsWith('..')` also matches a folder named `..x/`, so an "is inside" check built
   // on it lets that folder count as outside (or refuses it as inside).
   'no-dotdot-prefix': [

@@ -6,7 +6,8 @@
  * the harness inserts as data inside a fixed envelope.
  */
 export function neutralize(text: string): string {
-  return escapeTags(text).replaceAll(/^([ \t]*)#/gm, '$1\\#');
+  // A line starts after any of these, U+2028 and U+2029 included: a reader may take them for a break.
+  return escapeTags(text).replaceAll(/(^|[\n\r\u2028\u2029])([ \t]*)#/g, '$1$2\\#');
 }
 
 /**

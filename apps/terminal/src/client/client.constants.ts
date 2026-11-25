@@ -10,8 +10,12 @@ export const GROUP_POLL_MS = 25;
 /** How long a stop waits, after SIGKILL, for the killed group to be reaped before it gives up. */
 export const GROUP_REAP_MS = 2000;
 
-/** The line a backend prints once it listens: `→ listening on <url>`. */
-export const LISTENING_LINE = /^→ listening on (\S+)$/m;
+/**
+ * The line a backend prints once it listens: `→ listening on <url>`. Only a whole line counts,
+ * its newline included: output read in chunks can end in the middle of the address, and the
+ * terminal sends its token to whatever address it takes from here.
+ */
+export const LISTENING_LINE = /(?<![^\r\n])→ listening on (\S+)(?=[\r\n])/;
 
 /**
  * How many ended task ids a conversation remembers, so an entry the prompt's stream and the live

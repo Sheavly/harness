@@ -160,6 +160,12 @@ export function baseConfig(params) {
       ignores: testFiles,
       rules: { 'harness/no-adhoc-unknown-approval': 'error' },
     },
+    // --- Lines end at `\n` and `\r`, never at U+2028 or U+2029: no multiline regex on text ---
+    {
+      files: SOURCE_FILES,
+      ignores: testFiles,
+      rules: { 'harness/no-multiline-regex': 'error' },
+    },
     // --- Background work starts through `startWork` and a kind's factory, not `TaskRegistry.start` ---
     {
       files: SOURCE_FILES,

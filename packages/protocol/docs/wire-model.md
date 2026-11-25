@@ -285,10 +285,12 @@ in the [storage design](../../storage/docs/design.md).
 
 HTTP with server-sent events. The envelope does not depend on the transport. A WebSocket is
 reserved for an interactive attach to a task, if input to tasks is ever built; it is not part of
-this design. The server's missing `Origin` and `Host` check is added regardless (#435). **Proposed:**
-it lands before or with the subscribe endpoint (#426) and the complete output (#428), which expose
-more through the same bearer token, so that output with secrets is never newly readable on a
-server without the check. The issues do not say so: #435 is independent in #438's list.
+this design. The server checks the `Origin` and `Host` of every request (#435, built): it lands
+before the subscribe endpoint (#426) and the complete output (#428), which expose more through the
+same bearer token, so that output with secrets is never newly readable on a server without the
+check. A request for a name the server does not list, or that carries an origin it does not list,
+is `403 forbidden` before any route, public ones included; the names and origins are
+`SERVER_ALLOWED_HOSTS` and `SERVER_ALLOWED_ORIGINS` ([the API](../../../apps/backend/docs/api.md#security)).
 
 ## Free text in the schemas
 

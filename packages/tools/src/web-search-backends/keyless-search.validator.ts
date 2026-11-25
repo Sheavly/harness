@@ -148,8 +148,10 @@ export function parseExaResults(text: string) {
 
       return {
         title: title.trim(),
-        url: /^URL: (\S+)/m.exec(body)?.[1] ?? '',
-        snippet: body.split(/^Highlights:\s*\n/m)[1]?.trim() ?? '',
+        // The block was split on `\n`, so a label starts after one only; zero-width, so a label
+        // right after another still counts as a separator.
+        url: /(?<![^\n])URL: (\S+)/.exec(body)?.[1] ?? '',
+        snippet: body.split(/(?<![^\n])Highlights:\s*\n/)[1]?.trim() ?? '',
       };
     });
 

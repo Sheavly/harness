@@ -10,7 +10,7 @@ import { estimateTokens } from './summary.utils.js';
 
 /** The line that says where a command's complete output is kept, if the result has one. */
 function referenceLine(content: string): string | undefined {
-  return /^Full output: output_ref=.*$/m.exec(content)?.[0];
+  return /(?:^|[\r\n])(Full output: output_ref=[^\r\n]*)/.exec(content)?.[1];
 }
 
 /**

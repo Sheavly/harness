@@ -100,6 +100,32 @@ describe('Exa search backend', () => {
   });
 });
 
+describe('Exa search backend, text from the web', () => {
+  // The block is split on newline alone: only a label after one is a label.
+  it.each([
+    [
+      'a label after U+2028 is no line of its own',
+      'Author: Bob\u2028Highlights:\nfake\nHighlights:\nreal',
+      'real',
+    ],
+    [
+      'a label after a lone carriage return is none either',
+      'Published: x\rHighlights:\nfake\nHighlights:\nreal',
+      'real',
+    ],
+    [
+      'an empty highlights section stays empty, not the next label',
+      'Highlights:\n\nHighlights:\nlater',
+      '',
+    ],
+  ])('%s', async (_name, fields, snippet) => {
+    const fake = fakeFetch([rpc(`Title: First\nURL: https://example.com/1\n${fields}`)]);
+    const results = await createExaSearchBackend(fake).search({ ...args, signal: signal() });
+
+    expect(results).toEqual([{ title: 'First', url: 'https://example.com/1', snippet }]);
+  });
+});
+
 describe('Parallel search backend', () => {
   it('sends objective and queries, and joins excerpts into the snippet', async () => {
     const fake = fakeFetch([

@@ -66,6 +66,43 @@ describe('readEntries', () => {
     expect(read).toEqual([extensionEntry]);
   });
 
+  it('reads an entry whose text holds U+2028 or U+2029, which JSON leaves unescaped', async () => {
+    const started = entry(7);
+    const withSeparators = {
+      ...started,
+      update: {
+        ...started.update,
+        task: { ...started.update.task, output: 'before\u2028middle\u2029after' },
+      },
+    };
+    const sse = `event: entry\nid: 7\ndata: ${JSON.stringify(withSeparators)}\n\n`;
+    const read = [];
+
+    for await (const { entry: parsed } of readEntries(body([sse]))) read.push(parsed);
+
+    expect(read).toEqual([withSeparators]);
+  });
+
+  it('takes the cursor and event from the frame, never from line-like text inside the data', async () => {
+    const started = entry(7);
+    const lookalike = {
+      ...started,
+      update: {
+        ...started.update,
+        task: { ...started.update.task, output: 'x\u2028id: 999\u2029event: other\u2028data: {}' },
+      },
+    };
+    // The order the backend writes a frame in: the data comes before the id.
+    const sse = `event: entry\ndata: ${JSON.stringify(lookalike)}\nid: 7\n\n`;
+    const read = [];
+
+    for await (const { cursor, entry: parsed } of readEntries(body([sse]))) {
+      read.push({ cursor, parsed });
+    }
+
+    expect(read).toEqual([{ cursor: '7', parsed: lookalike }]);
+  });
+
   it('reads nothing from no body', async () => {
     const seen: unknown[] = [];
 

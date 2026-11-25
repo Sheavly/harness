@@ -479,18 +479,25 @@ of this work and has no issue yet; it is recorded here as a known weakness, not 
 solved.
 
 What a web page can do: reach the port, but not read the token and not send an `Authorization`
-header without a cross-origin preflight, which the server answers with `401`. The server has no
-`Origin` or `Host` check; the token is the only defence, and a check that allows only the server's
-own host names and refuses a request that carries an `Origin` would be a second one. Without a
-`Host` check, DNS rebinding works: a page whose name is made to resolve to the loopback address
-reaches the two public routes as if it were same-origin, and can read their answers. They are
-public anyway, and from there the page still cannot call a private route without the token.
+header without a cross-origin preflight. The server checks the `Host` and the `Origin` of every
+request first, before the public routes and the token (`createApiApp`, `request-origin.utils.ts`),
+and answers `403 forbidden` with a fixed message to a request that fails either. So DNS rebinding,
+a page whose name is made to resolve to the loopback address and which sends its own name as
+`Host`, reaches nothing, the two public routes included. The names a request may use are
+`localhost`, `127.0.0.1` and `[::1]`, the name the server is bound to, and `SERVER_ALLOWED_HOSTS`
+(never `0.0.0.0`, which a page can reach a server through); the origins are `SERVER_ALLOWED_ORIGINS`
+(none by default), and listing one only lifts the refusal: the server sends no CORS headers, so a
+listed page still cannot read an answer or send the token. Only the name is compared, never the
+port, because a port forwarded over SSH carries the port it forwards. The token stays the defence for everything else: this check keeps a
+web page out, and does nothing about another process on the machine, which sends its own `Host`.
 
 A server reachable from other machines is planned, but not for a while. Until then a terminal on
 another machine can use `BACKEND_URL` and `BACKEND_TOKEN`, which it already accepts, with a port
-forwarded over SSH to the server's loopback address. The routes that set up credentials and trust
-keep working that way, because the server's check looks at the address it is bound to and not at
-the client.
+forwarded over SSH to the server's loopback address (a `Host` of `localhost` or `127.0.0.1`, which
+the check allows). A client that reaches the server by another name, such as `BACKEND_URL` set to
+the machine's name, is refused until the server lists that name in `SERVER_ALLOWED_HOSTS`. The
+routes that set up credentials and trust keep working over the forward, because the server's check
+looks at the address it is bound to and not at the client.
 
 ### Trust
 

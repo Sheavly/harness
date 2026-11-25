@@ -1,6 +1,8 @@
 import { createClient } from '@sheavly/client/client/client.helper';
 import { createDefaultRegistry } from '@sheavly/providers/registry/default-registry.helper';
 import { createApiApp } from '../api/api.helper.js';
+import type { AllowedRequests } from '../api/api.types.js';
+import { allowedRequests } from '../api/request-origin.utils.js';
 import { createBackend } from '../backend.helper.js';
 import { parseCliSettings, parseRunEnv } from '../harness/settings.validator.js';
 import { TEST_INSTANCE_ID } from './identity.fake.js';
@@ -20,8 +22,11 @@ export function testBackend(params: {
   env?: Record<string, string>;
   remoteSetupAllowed?: boolean;
   token?: string;
+  /** Which `Host` names and `Origin`s the app answers; by default `backend.test` (the fake client's). */
+  allowed?: AllowedRequests;
 }) {
   const { home, workspace, fetch, remoteSetupAllowed = true, token = TEST_TOKEN } = params;
+  const { allowed = allowedRequests({ hosts: ['backend.test'] }) } = params;
   const env = { ...params.env, SHEAVLY_HOME: home, WORKSPACE_ROOT: workspace };
   const logged: string[] = [];
   const { conversations, setup, workspaces, permissions, logs } = createBackend({
@@ -37,6 +42,7 @@ export function testBackend(params: {
     workspaces,
     permissions,
     token,
+    allowed,
     instanceId: TEST_INSTANCE_ID,
     serverVersion: TEST_SERVER_VERSION,
     logs,

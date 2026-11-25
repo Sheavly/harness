@@ -9,6 +9,16 @@ import type { PermissionSetup } from '../profiles/permission-setup.service.js';
 import type { ProfileSetup } from '../profiles/setup.service.js';
 import type { WorkspaceSetup } from '../profiles/workspace-setup.service.js';
 
+/**
+ * The host names and browser origins the server answers (`allowedRequests`). Host names are
+ * canonical (lower case, no trailing dot, an IPv6 literal in brackets) and carry no port: a client
+ * reaching the server through a forwarded port sends the port it forwards, not the server's.
+ */
+export type AllowedRequests = {
+  hosts: ReadonlySet<string>;
+  origins: ReadonlySet<string>;
+};
+
 /** What the backend's API serves: the live conversations, and the token every request carries. */
 export type ApiOptions = {
   /** The live conversations, built the backend's way (`new Conversations({ create })`). */
@@ -24,6 +34,11 @@ export type ApiOptions = {
    * contract marks `public`. Never logged.
    */
   token: string;
+  /**
+   * Which `Host` names and `Origin`s a request may carry, checked before every route, public ones
+   * included. Unset: this machine's names only, and no origin.
+   */
+  allowed?: AllowedRequests;
   /** This server start's id (`newInstanceId`). Never returned by any route: it only salts the handshake proof. */
   instanceId: InstanceId;
   /** The backend's own version, as `GET /health` reports it (`readServerVersion`). */
