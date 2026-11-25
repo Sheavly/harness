@@ -2,6 +2,7 @@ import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
 import type { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { ApprovalRegistry } from '../approvals/approvals.service.js';
+import type { ResumedTree } from '../nodes/nodes.types.js';
 import { TreeChannelWriter } from '../nodes/tree-channel-writer.service.js';
 import { readChannel } from './stored-channels.fake.js';
 import { conversation, conversationId } from './stored-conversation.fake.js';
@@ -11,8 +12,10 @@ import { conversation, conversationId } from './stored-conversation.fake.js';
  * store, with an approval registry that has a listener, so a request waits instead of failing for
  * want of one. `treeFailures` hears what the tree writer reports; the node channels' is `failures`.
  */
-export function treeConversation(params: { store?: MemoryConversationStore } = {}) {
-  const world = conversation(params);
+export function treeConversation(
+  params: { store?: MemoryConversationStore; resumed?: ResumedTree | undefined } = {},
+) {
+  const world = conversation({ ...(params.store && { store: params.store }) });
   const approvals = new ApprovalRegistry();
   const treeFailures: StoreError[] = [];
 
@@ -26,10 +29,21 @@ export function treeConversation(params: { store?: MemoryConversationStore } = {
     storage: {
       log: (channel) => world.store.channel({ id: conversationId, channel }),
       onFailure: (failure) => treeFailures.push(failure),
+      resumedTree: params.resumed,
     },
   });
 
   return { ...world, approvals, tree, treeFailures };
+}
+
+/**
+ * Test-only: the same conversation reopened by another process: a new set of registries (a main
+ * agent of its own) on `store`, whose tree writer goes on from what the stopped process stored.
+ */
+export async function reopenedTreeConversation(store: MemoryConversationStore) {
+  const resumed = await TreeChannelWriter.readStored({ store, id: conversationId });
+
+  return treeConversation({ store, resumed });
 }
 
 /** Test-only: every entry of the tree channel, once the writes so far have landed. */

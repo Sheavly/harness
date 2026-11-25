@@ -1,11 +1,12 @@
 import { now } from '@sheavly/core/clock/clock.helper';
 import { StoreError } from '@sheavly/core/errors/store.errors';
-import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
+import type { ChannelEntry, ChannelLog, ConversationStore } from '@sheavly/core/store/store.types';
 import { toStoreError } from '@sheavly/core/store/store.utils';
 import type { ApprovalId, ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
 import type { MessageId } from '@sheavly/protocol/message/message.types';
 import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
+import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TreeSnapshot, TreeView } from '@sheavly/protocol/tree/tree.types';
 import { applyTreeEntry, emptyTree, treeSnapshotOf } from '@sheavly/protocol/tree/tree.utils';
@@ -15,13 +16,20 @@ import { notifyAll } from '../sessions/listeners.helper.js';
 import type { TaskRegistry } from '../tasks/tasks.service.js';
 import { ChannelFollowers } from './channel-followers.service.js';
 import type { NodeRegistry } from './node-registry.service.js';
-import type { ChannelEvent, NodeChannelStorage, NodeEntry, TreeStamp } from './nodes.types.js';
+import type {
+  ChannelEvent,
+  NodeChannelStorage,
+  NodeEntry,
+  ResumedTree,
+  TreeStamp,
+} from './nodes.types.js';
 import { isOpenState } from './nodes.utils.js';
 import {
   agentNodeEntry,
   approvalCancelledEntry,
   approvalRequestedEntry,
   approvalResolvedEntry,
+  lostNodeEntry,
   promptRefusedEntry,
   promptStartedEntry,
   queueChangedEntry,
@@ -66,9 +74,66 @@ export class TreeChannelWriter {
   constructor(storage: {
     log: ChannelLog;
     onFailure?: ((failure: StoreError) => void) | undefined;
+    resumed?: ResumedTree | undefined;
   }) {
     this.#log = storage.log;
     this.#onFailure = storage.onFailure;
+
+    const { resumed } = storage;
+
+    if (resumed && 'failure' in resumed) {
+      // Gone on from nothing it can read: the channel is left as it is, and the failure is told.
+      this.#ended = true;
+      this.#fail(resumed.failure);
+    } else if (resumed) {
+      this.#next = resumed.next;
+      this.#tree = resumed.tree;
+      this.#last = resumed.last;
+    }
+  }
+
+  /**
+   * The stored tree channel of a conversation being reopened, for `NodeChannelStorage.resumedTree`:
+   * where it stands and the tree its entries build. Undefined when none is stored (a conversation
+   * kept before it was). A channel it cannot go on from, because an entry is damaged, it ends in
+   * `closed` (a closed channel takes no more) or the store fails, is a failure instead, so the
+   * conversation still reopens and the writer reports why it writes nothing.
+   */
+  static async readStored(params: {
+    store: Pick<ConversationStore, 'channel' | 'channels'>;
+    id: ConversationId;
+  }): Promise<ResumedTree | undefined> {
+    const { store, id } = params;
+
+    try {
+      if (!(await store.channels(id)).includes(TREE_CHANNEL_NAME)) return undefined;
+
+      let tree = emptyTree();
+      let last: { cursor: string; at: number } | undefined;
+
+      for await (const stored of store.channel({ id, channel: TREE_CHANNEL_NAME }).read()) {
+        const parsed = treeChannelEntrySchema.safeParse(stored);
+
+        if (!parsed.success || parsed.data.type === 'closed') {
+          return {
+            failure: new StoreError({
+              reason: 'invalid',
+              message:
+                'The stored tree channel cannot be gone on from: an entry is damaged or it is closed',
+            }),
+          };
+        }
+
+        tree = applyTreeEntry({ tree, entry: parsed.data });
+        last = { cursor: parsed.data.cursor, at: parsed.data.at };
+      }
+
+      return last ? { next: Number(last.cursor.slice(1)) + 1, last, tree } : undefined;
+    } catch (caughtError) {
+      if (!(caughtError instanceof StoreError)) throw caughtError;
+
+      return { failure: caughtError };
+    }
   }
 
   /**
@@ -89,10 +154,12 @@ export class TreeChannelWriter {
     const writer = new TreeChannelWriter({
       log: storage.log(TREE_CHANNEL_NAME),
       onFailure: storage.onFailure,
+      resumed: storage.resumedTree,
     });
     const rootId = () => nodes.list().find((node) => node.parent === undefined)?.id;
 
-    writer.#tell((stamp) => treeOpenedEntry(stamp));
+    if (storage.resumedTree) writer.#closeStale();
+    else writer.#tell((stamp) => treeOpenedEntry(stamp));
 
     // Parents before children: the registry lists nodes in the order they were made.
     for (const node of nodes.list()) {
@@ -211,6 +278,23 @@ export class TreeChannelWriter {
     });
 
     return this.#written;
+  }
+
+  /**
+   * A reopened conversation finds, in the tree it goes on from, what the stopped process left: nodes
+   * still open, which nobody saw end, are closed as `lost`, and approvals still waiting, which
+   * nobody can answer now, are given up. The channel then goes on with this process's own nodes.
+   */
+  #closeStale(): void {
+    const { nodes, approvals } = this.#tree;
+
+    for (const node of nodes) {
+      if (isOpenState(node.state)) this.#tell((stamp) => lostNodeEntry({ ...stamp, node }));
+    }
+
+    for (const { node, request } of approvals) {
+      this.#tell((stamp) => approvalCancelledEntry({ ...stamp, node, id: request.id }));
+    }
   }
 
   /** An agent opened, changed or closed. A node of another kind is not on this channel here. */

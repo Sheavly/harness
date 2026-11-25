@@ -5,6 +5,7 @@ import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunOutcome } from '@sheavly/protocol/session/session.types';
 import type { StateOf } from '@sheavly/protocol/status/status.types';
+import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 
 /** Where a node is: the protocol's one lifecycle, whatever its kind. */
 export type NodeState = StateOf<'node'>;
@@ -80,7 +81,22 @@ export type NodeEntry = {
 export type NodeChannelStorage = {
   log: (channel: string) => ChannelLog;
   onFailure?: ((failure: StoreError) => void) | undefined;
+  /**
+   * What the stored tree channel left when the conversation was reopened (`TreeChannelWriter.readStored`):
+   * the tree writer goes on from it. Absent for a new conversation, and for one that has no tree
+   * channel stored yet.
+   */
+  resumedTree?: ResumedTree | undefined;
 };
+
+/**
+ * The stored tree channel as a reopened conversation finds it: where it stands (`next` is the
+ * position of the next entry, `last` the entry before it) and the tree its entries build, or why it
+ * cannot be gone on from (a damaged entry, a channel that ends in `closed`, a disk that fails), in
+ * which case the tree channel is not written and the failure is told.
+ */
+export type ResumedTree =
+  { next: number; last: { cursor: string; at: number }; tree: TreeView } | { failure: StoreError };
 
 /**
  * What a follower of a stored channel is told, in the order the writes happened: an entry the

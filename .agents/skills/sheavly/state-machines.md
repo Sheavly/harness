@@ -202,7 +202,14 @@ session and task rows describe what those views report.
   was cut says so as a concern, so a client that shows only the tree never takes it for the whole
   command (the conversation's stream has the whole). A write that fails ends the channel as it was,
   and stopping ends it as it stands; `follow` tells the followers once either way. The fold keeps
-  at most `MAX_TREE_NODES` nodes, dropping the oldest ended one nothing hangs from.
+  at most `MAX_TREE_NODES` nodes, dropping the oldest ended one nothing hangs from. A reopened
+  conversation goes on from the stored channel (`TreeChannelWriter.readStored`, handed to the new
+  writer as `NodeChannelStorage.resumedTree`): the entries keep their numbers, the nodes the
+  stopped process left open are closed as `lost` and the approvals it left waiting are given up
+  (`node_closed`, `approval_cancelled`), then this process's main agent opens, so a snapshot taken
+  after a reopen has no node that reads as running that is not. A stored channel it cannot go on from
+  (an entry no client could read, or one that ends in `closed`) is not written, and the failure is
+  told once, as for any channel that cannot be stored.
 - **`idle` is for agents.** A command or service has no between-prompts state.
 - **The outcome keeps the detail the state does not.** For an agent it is today's `RunOutcome`
   (`completed`, `interrupted`, `max_turns`, `max_tokens`, `context_window_exceeded`, `failed`), for

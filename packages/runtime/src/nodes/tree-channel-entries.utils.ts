@@ -16,6 +16,7 @@ import {
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { MAX_QUEUED_LINE_CHARS } from '@sheavly/protocol/server/server.constants';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
+import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import {
   agentNodeOf,
   fittedEntry,
@@ -44,6 +45,20 @@ export function agentNodeEntry(
   },
 ): ChannelEntry {
   return { ...stamped(params), type: params.type, node: agentNodeOf(params.node) };
+}
+
+/**
+ * A node the stopped process left open, closed as `lost`: the node as the tree last had it, with
+ * the time it was found. Nobody saw it end, so it keeps whatever outcome it had and gets no more.
+ */
+export function lostNodeEntry(
+  params: TreeStamp & { node: TreeView['nodes'][number] },
+): ChannelEntry {
+  return {
+    ...stamped(params),
+    type: 'node_closed',
+    node: { ...params.node, state: 'lost', endedAt: params.at },
+  };
 }
 
 /**

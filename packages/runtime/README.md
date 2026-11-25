@@ -107,7 +107,11 @@ closes (the channel is not closed, so a reopen goes on from it). `snapshot()` is
 stored entries build, with the cursor of the last (the protocol's `applyTreeEntry` is the fold), so
 a client that starts from it and follows after that cursor gets what a replay gets; `follow` tells
 each entry the store takes, with its place in the log. A command too long for an entry is cut, and
-an approval whose command was cut says so as a concern.
+an approval whose command was cut says so as a concern. A reopened conversation hands the writer
+what `TreeChannelWriter.readStored({ store, id })` found as `storage.resumedTree`: it goes on
+from the stored channel, closing the nodes the stopped process left open as `lost` and giving up
+its waiting approvals, and writes nothing (telling the failure once) if the stored channel cannot
+be gone on from.
 
 `SessionRegistry.setMessage` associates stream activity with the originating user message. New
 children inherit that identity; existing children keep it as the parent moves on. Correlation is
