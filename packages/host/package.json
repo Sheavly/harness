@@ -51,7 +51,8 @@
     "./*.utils": {
       "@sheavly/source": "./src/*.utils.ts",
       "default": "./dist/*.utils.js"
-    }
+    },
+    "./subscriptions/*": null
   },
   "files": [
     "dist",

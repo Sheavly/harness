@@ -138,6 +138,24 @@ stays damaged is announced again on each reopen. A `reopen`
 of a conversation that is still being closed waits for the close to finish its writes.
 `Harness.nodeChannels` is the writer, which `close` waits for.
 
+**Following a channel.** `await conversations.subscribe({ id, request })` serves the channels a
+`SubscribeRequest` names: the stored history each position asks for (`start`, `now`, `tail:n` or
+after a cursor), then each entry the writer stores from then on, as the frames of
+`@sheavly/protocol`'s `SubscribeFrame` (`for await (const frame of subscription.frames())`; the
+caller `close`s it when done, whether or not it read). It follows each channel before it reads the
+store and joins the two by the entry's place in its log, so none is missed or sent twice. A channel
+is the conversation's own only if its store lists it: another conversation's node, an unknown id and
+the tree channel (not stored) all answer `not_found` with one message. A request is refused before
+anything is read for a position its channel cannot be asked for (`bad_request`), and while reading
+for a cursor it does not hold (`cursor_out_of_range`) or history over 8 MiB, never cut
+(`bad_request`); a conversation serves at most 64 subscriptions (`too_many_subscriptions`), and its
+subscriptions hold at most 128 MiB together for consumers that have not read it: history that does
+not fit is refused the same way, and a live frame that does not fit, or a consumer more than 1,000
+frames behind on a channel, cuts that channel off (`end` with `cut_off`, and the cursor to resume
+after) while the others go on. A channel whose storage failed, or that no writer has, ends as
+`failed`; a conversation that closes ends its channels with their `closed` entries. An aborted
+`signal` given to `subscribe` stops the reading of history, so a client that left costs no more.
+
 ## Docs
 
 Normal prompts sent with `send` have stable UUID `id`s, persisted in history and attached to stream
