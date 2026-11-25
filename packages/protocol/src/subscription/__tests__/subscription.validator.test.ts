@@ -200,4 +200,8 @@ describe('the limits', () => {
     expect(serverErrorCodeSchema.options).toContain('cursor_out_of_range');
     expect(serverErrorCodeSchema.options).toContain('bad_request');
   });
+
+  it('give a conversation that serves as many subscriptions as it may a code a client retries on', () => {
+    expect(serverErrorCodeSchema.options).toContain('too_many_subscriptions');
+  });
 });

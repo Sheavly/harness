@@ -3687,6 +3687,7 @@
           "not_found",
           "session_running",
           "cannot_queue",
+          "too_many_subscriptions",
           "unknown_skill",
           "unknown_approval",
           "cursor_out_of_range",
