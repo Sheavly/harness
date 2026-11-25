@@ -56,6 +56,20 @@ function stepsOf(palette: Palette): Omit<Look, 'fileChange' | 'failure'> {
       paint.status.error(`✗ hook ${hook} failed in ${handler}: ${error}\n`),
     storageFailed: (error) =>
       paint.status.error(`✗ This chat could not be saved: ${error}\n  The next prompt retries.\n`),
+    // The provider's error text is stored in the stream and shown in the plain log, not here.
+    modelConnection: (connection) => {
+      if (connection.state === 'restored') return paint.status.success('✓ Reconnected\n');
+
+      if (connection.state === 'offline') {
+        return paint.status.warning(
+          '… Reconnecting… no internet connection, waiting for it to come back · Ctrl+C to stop\n',
+        );
+      }
+
+      return paint.status.warning(
+        `… The model provider is not responding, retrying (${connection.attempt}/${connection.retries})\n`,
+      );
+    },
     extensionEvent: ({ extension, text }) => paint.text.secondary(`⬡ ${extension}: ${text}\n`),
     turnEnd: () => '',
     awaitingTasks: (count) =>

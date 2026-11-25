@@ -487,12 +487,26 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   protocol. The shared reader is the one `files:` exception, in `packages/providers/eslint.config.js`;
   `no-handrolled-reply-reader.test.js` pins where the rule is on and off. It sees the import only,
   so a reader that reads the body another way (`response.body.getReader()`) is left to review.
+- **Sending a model call** (`harness/no-handrolled-model-send`, the providers workspace's source,
+  enabled in `packages/providers/eslint.config.js`): no call of a `fetch` (`config.fetch(…)`,
+  `deps.fetch(…)`, a destructured `fetch(…)`, a call through a quoted
+  property name (`deps['fetch']`), and `.call`, `.apply` or `.bind` on either). It does not see a
+  template-literal key, an optional chain (`deps.fetch?.call`) or `Reflect.apply`: review. A model call goes out through `sendRequest`
+  (`packages/providers/src/http/request.helper.ts`), read with `yield*`: its retries, its wait for a lost connection (with
+  the `model_connection` reports a provider streams), its response timeout and its signing. A
+  protocol that calls the injected `fetch` itself fails the run on the first network error instead
+  of waiting for the connection, and its reports never reach a UI. `request.helper.ts` and
+  `connectivity.helper.ts` (a bare `HEAD` probe) are the two `files:` exceptions;
+  `no-handrolled-model-send.test.js` pins where the rule is on and off. It does not see a `fetch`
+  passed on and called elsewhere, or held in a variable under another name: review.
 - **Provider policy** (`harness/no-handrolled-provider-policy`, the providers workspace's source,
   enabled in `packages/providers/eslint.config.js`): no `getReader()`, no `'retry-after'` string
   and no `item.source ===` comparison. A body is read by `readReply`, a wait is decided by
   `retry-policy.helper.ts`, and stored reasoning is checked by `ownReplay`
-  (`packages/providers/src/http/replay.utils.ts`). `retry-policy.helper.ts` (reads the header) and
-  `replay.utils.ts` (compares the source) are the two `files:` exceptions; `no-handrolled-provider-policy.test.js` pins where
+  (`packages/providers/src/http/replay.utils.ts`). `retry-policy.helper.ts` (reads the header),
+  `replay.utils.ts` (compares the source) and `stream-chunks.helper.ts` (the one place a reply's
+  body is read with a reader, so it can be cancelled when it goes silent) are the three `files:`
+  exceptions; `no-handrolled-provider-policy.test.js` pins where
   the rule is on and off. It matches these spellings only: a status compared as a number
   (`=== 429`), or a header name held in a variable, is left to review.
 - **Command deadlines** (`harness/no-adhoc-command-deadline`, the process package's

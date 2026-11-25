@@ -44,8 +44,10 @@ export type AnswerOf<N extends JsonRoute> = RouteOf<N>['response'] extends { sch
 
 /** How a stream reconnects after a drop; the defaults are `reconnect.constants.ts`. */
 export type ReconnectPolicy = {
-  /** How many attempts in a row, without an entry arriving, before the stream is lost. */
+  /** How many attempts in a row, without an entry arriving, before the stream is lost; none: only the budget. */
   attempts?: number;
+  /** How long attempts in a row may fail before the stream is lost (`RECONNECT_BUDGET_MS` unless set). */
+  budgetMs?: number;
   /** Replaces the wait between attempts, for a test that must not sleep. */
   wait?: (params: { ms: number; signal: AbortSignal }) => Promise<void>;
 };

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { apiKeySchema, baseUrlSchema, reasoningSchema } from '../adapter-config.validator.js';
+import {
+  apiKeySchema,
+  baseUrlSchema,
+  reasoningSchema,
+  requestPolicySchema,
+} from '../adapter-config.validator.js';
 
 describe('adapter config schemas', () => {
   it('strips trailing slashes from a base URL', () => {
@@ -21,4 +26,42 @@ describe('adapter config schemas', () => {
     expect(reasoningSchema.safeParse('true').success).toBe(false);
     expect(reasoningSchema.parse(false)).toBe(false);
   });
+});
+
+describe('the request policy’s probe addresses', () => {
+  const policy = (probeUrls: string[]) =>
+    requestPolicySchema.safeParse({
+      responseTimeoutMs: 1000,
+      retries: 0,
+      retryDelayMs: 0,
+      offlineTimeoutMs: 1000,
+      probeUrls,
+    }).success;
+
+  it('take an http or https address, and none at all', () => {
+    expect(policy([])).toBe(true);
+    expect(policy(['https://1.1.1.1', 'http://probe.test/ping'])).toBe(true);
+  });
+
+  it.each(['file:///etc/passwd', 'data:text/plain,hi', 'ftp://probe.test', 'probe.test'])(
+    'refuse %s, which a probe cannot ask',
+    (address) => {
+      expect(policy([address])).toBe(false);
+    },
+  );
+
+  it('take at most five, since every failed call asks them all', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, index) => `https://probe${String(index)}.test`);
+
+    expect(policy(many(5))).toBe(true);
+    expect(policy(many(6))).toBe(false);
+  });
+
+  it.each(['https://user:secret@probe.test', 'https://user@probe.test'])(
+    'refuse %s: an address with a user name or password',
+    (address) => {
+      expect(policy([address])).toBe(false);
+    },
+  );
 });

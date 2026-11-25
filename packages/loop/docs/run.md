@@ -22,7 +22,11 @@ update; the original exception still ends iteration. Diagnostics never enter mod
    the messages this one call sends), then the model is called. Text and reasoning stream out as
    they arrive. A provider's `reasoning_activity` signal goes out through the same queue as
    deduplicated start and end transitions, and the loop ends one a cut stream, abort or failure
-   left open. It never enters history.
+   left open. It never enters history. A provider that cannot reach its backend says so with
+   `model_connection` (`offline`, `provider_unreachable`, `restored`) before anything of the
+   reply, and the loop sends it on as it comes, in order, without it ever entering history: the
+   call is only slow, so the run, its tools and its sub-agents go on as soon as the provider gets
+   through, and fail only when the provider gives up.
 3. Tool calls start the moment the model asks for them, each wrapped by `aroundToolCall` hooks.
    Their results are released after the turn ends (`tool_batch`, then one `tool_result` per call),
    each as its tool finishes, so a fast tool is not held behind a slow one called before it.
@@ -164,6 +168,21 @@ are needed. Provider-bound reasoning is replayed only when its original prefix s
 The same notice is emitted as `harness_notice` before the model call, with its attempt and an
 optional explicit maximum. Each UI chooses its own presentation; the terminal shows no interruption.
 Exhausting an explicit allowance ends with `max_tokens`, not `completed`.
+A reply cut by a lost connection (a provider's `ConnectionLostError`: the body broke, or sent
+nothing for minutes, after the reply started) is recovered in the same spirit, by the `dropped`
+contribution `continue-after-lost-connection`, but it is not an output-limit recovery and shares
+none of its counters: it has a count of its own (at most `MAX_LOST_CONNECTIONS_IN_A_ROW` calls in
+a row, however much each kept; a call that completes starts the count again) and never spends
+`maxOutputContinuations`. The text and whole tool calls that arrived are kept, the tools the model
+already called are left to finish (not stopped as a failed call's are), and the next request
+carries an `output-continuation` notice with `reason: 'connection'`, which tells the model its
+reply was cut by the connection, not by the token limit. A drop before anything arrived leaves no
+empty reply behind and the call is made again, and a reply that kept only reasoning is dropped
+too (a provider does not take a reasoning item back with nothing after it). The cut turn ends
+with `turn_end` `connection_lost` (not `interrupted`) and does not run `afterTurn` or the limits,
+and a later call that waits for the network says so with `model_connection`. Once a bound is
+reached the run fails with the `ConnectionLostError`, and every other provider failure still
+fails it at once.
 Context exhaustion ends with `context_window_exceeded` without
 retrying: a larger output budget cannot repair a full context window. Without the `summary`
 option the loop does not summarize history or discard messages; with it, see below.
@@ -293,19 +312,19 @@ A turn is a fixed sequence of phases; each phase that holds features is a list o
 The phases in bold are lists; the others are one step each (the hooks and the model call, which
 have their own failure path).
 
-| Phase | What happens                                                                             | Failure / abort                                |
-| ----- | ---------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| 1     | abort check                                                                              | `interrupted`                                  |
-| 2     | **`delivery` contributions**: steering, finished work, `hook-failed` notices, then hooks | contribution policy; delivery hooks raced      |
-| 3     | **`room` contributions**: the threshold summary (`full` ends `context_window_exceeded`)  | contribution policy; `summary_failed` events   |
-| 4     | `beforeTurn` hooks                                                                       | reported, skipped; raced                       |
-| 5     | **`view` contributions** (masking), then `beforeModelCall` hooks                         | contribution policy; hooks reported, skipped   |
-| 6     | model call, tools start as they stream                                                   | provider failure fails the run                 |
-| 7     | **`overflow` contributions** (summarize and retry)                                       | contribution policy                            |
-| 8     | reply and tool results into history                                                      | none                                           |
-| 9     | `afterTurn` hooks                                                                        | reported, skipped; raced                       |
-| 10    | **`limit` contributions**: window exceeded, then output-limit recovery                   | contribution policy                            |
-| 11    | **`completion` contributions**: running tools, inbox, yield, `await_tasks`, settled      | contribution policy; abort gives `interrupted` |
+| Phase | What happens                                                                                      | Failure / abort                                |
+| ----- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1     | abort check                                                                                       | `interrupted`                                  |
+| 2     | **`delivery` contributions**: steering, finished work, `hook-failed` notices, then hooks          | contribution policy; delivery hooks raced      |
+| 3     | **`room` contributions**: the threshold summary (`full` ends `context_window_exceeded`)           | contribution policy; `summary_failed` events   |
+| 4     | `beforeTurn` hooks                                                                                | reported, skipped; raced                       |
+| 5     | **`view` contributions** (masking), then `beforeModelCall` hooks                                  | contribution policy; hooks reported, skipped   |
+| 6     | model call, tools start as they stream                                                            | provider failure fails the run                 |
+| 7     | **`overflow` contributions** (summarize and retry), **`dropped`** (go on after a lost connection) | contribution policy                            |
+| 8     | reply and tool results into history                                                               | none                                           |
+| 9     | `afterTurn` hooks                                                                                 | reported, skipped; raced                       |
+| 10    | **`limit` contributions**: window exceeded, then output-limit recovery                            | contribution policy                            |
+| 11    | **`completion` contributions**: running tools, inbox, yield, `await_tasks`, settled               | contribution policy; abort gives `interrupted` |
 
 `delivery` is in this order because finished work and failures must be in history before any hook
 sees them: `steering-messages`, `finished-tasks`, `hook-failures`, `extension-notices`,

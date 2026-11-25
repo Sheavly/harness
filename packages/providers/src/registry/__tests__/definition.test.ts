@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { createDefaultRegistry } from '../default-registry.helper.js';
 
 const registry = createDefaultRegistry();
-const HOST = { request: { responseTimeoutMs: 60_000, retries: 2, retryDelayMs: 1000 } };
+const HOST = {
+  request: {
+    responseTimeoutMs: 60_000,
+    retries: 2,
+    retryDelayMs: 1000,
+    offlineTimeoutMs: 3_600_000,
+    probeUrls: ['https://probe.test'],
+  },
+};
 const azure = {
   baseUrl: 'https://acme.openai.azure.com/openai/v1',
   deployment: 'gpt-5',

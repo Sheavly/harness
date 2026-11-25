@@ -114,6 +114,8 @@ export type TurnContext = RunContext & {
     fruitless: number;
     pending: Extract<HarnessNotice, { kind: 'output-continuation' }> | undefined;
   };
+  /** Model calls in a row a lost connection cut, whatever each kept (`MAX_LOST_CONNECTIONS_IN_A_ROW`). */
+  connectionLosses: { inARow: number };
   /** The run's stored history; the turn appends to it, and a summary appends a checkpoint. */
   messages: HistoryMessage[];
   /**
@@ -165,5 +167,9 @@ export type SampleContext = ToolStart & {
   events: AgentEvents;
 };
 
-/** A failed model call: the error to fail the run with, after its started tools are recorded. */
-export type SampleFailure = { error: unknown };
+/**
+ * A failed model call: the error to fail the run with, after its started tools are recorded.
+ * `stopTools` stops them: already done for any failure but a lost connection, whose tools are
+ * left running in case the turn goes on from what arrived.
+ */
+export type SampleFailure = { error: unknown; stopTools: () => void };

@@ -4,7 +4,14 @@ import { ChangeLog } from '../changes/change-log.service.js';
 import { FailureLog } from '../failures/failure-log.service.js';
 import { logLook } from './log-look.utils.js';
 import type { Expandable, Look, ReplySink, RunningTool, Section, Write } from './render.types.js';
-import { commandOf, firstLine, oneLine, seconds, shortId } from './render.utils.js';
+import {
+  commandOf,
+  firstLine,
+  oneLine,
+  seconds,
+  shortId,
+  terminalConnection,
+} from './render.utils.js';
 import { drawToolResult } from './tool-result.helper.js';
 import { MAX_EXTENSION_TEXT_CHARS } from '@sheavly/protocol/extension/extension.constants';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
@@ -109,6 +116,9 @@ export class Renderer {
         break;
       case 'reasoning_activity':
         this.#thinking = event.active; // content-free; shown only by the live indicator
+        break;
+      case 'model_connection':
+        this.#activity(this.look.modelConnection(terminalConnection(event.connection)));
         break;
 
       case 'tool_call_started':

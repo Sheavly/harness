@@ -27,9 +27,38 @@ export type ReplyProtocol<TEvent> = {
  * or 5xx); never after, since the turn may have started tools. `retryDelayMs`: the first wait
  * between attempts, doubled each time and cut by jitter to between half and all of it (or the
  * server's `retry-after`, in seconds or as an HTTP date, if longer; one over a minute isn't
- * waited for, and the error is reported instead).
+ * waited for, and the error is reported instead). `offlineTimeoutMs`: how long a call waits for
+ * this machine's connection to come back, counting only time the machine was awake (0: it does not
+ * wait, and the retries above are all there is). `probeUrls`: addresses, none of them the
+ * provider's, that tell a lost connection from an unreachable provider: a call that cannot reach
+ * its provider waits only when none of them answers (any HTTP answer counts, whatever its
+ * status). With none, a lost connection can't be told from a provider that is down, so it never waits.
  */
 export type RequestPolicy = z.infer<typeof requestPolicySchema>;
+
+/** What a call says about reaching its provider while `sendRequest` waits or retries. */
+export type ConnectionReport = Extract<StreamEvent, { type: 'model_connection' }>;
+
+/** What `sendRequest` is given: the call, how to send it, and the signal that interrupts it. */
+export type SendRequestParams = {
+  api: string;
+  fetch: typeof fetch;
+  url: URL;
+  init: RequestInit;
+  policy: RequestPolicy;
+  signal: AbortSignal;
+  sign?: RequestSigner | undefined;
+};
+
+/**
+ * Where a call stands with its provider: the last thing it reported (undefined before any), and
+ * what a lost connection has cost so far: time awake without one, and the rounds of waiting.
+ */
+export type Standing = {
+  last: ConnectionReport['connection']['state'] | undefined;
+  offlineAwakeMs: number;
+  offlineRounds: number;
+};
 
 /**
  * Signs one attempt of a request: given what is about to be sent, returns the headers to add. A

@@ -13,9 +13,28 @@ export default [
   },
   {
     // The one place each decision is made: the retry policy reads `retry-after`, the replay check
-    // compares a reasoning item's `source`. `request.helper.ts` needs no exemption.
-    files: ['src/http/retry-policy.helper.ts', 'src/http/replay.utils.ts'],
+    // compares a reasoning item's `source`, and the chunk reader reads a reply's body (it alone
+    // can stop waiting on a silent one and cancel it, and `readReply` reads through it).
+    // `request.helper.ts` needs no exemption.
+    files: [
+      'src/http/retry-policy.helper.ts',
+      'src/http/replay.utils.ts',
+      'src/http/stream-chunks.helper.ts',
+    ],
     rules: { 'harness/no-handrolled-provider-policy': 'off' },
+  },
+  {
+    // A model call goes out through `sendRequest` (its retries, its wait for a lost connection, its
+    // timeout and signing), never through a `fetch` a protocol calls itself.
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/__tests__/**', 'src/testing/**'],
+    rules: { 'harness/no-handrolled-model-send': 'error' },
+  },
+  {
+    // The two places that call the injected `fetch`: `sendRequest`, and the connectivity probe,
+    // which sends a bare HEAD to an address that is not the provider's.
+    files: ['src/http/request.helper.ts', 'src/http/connectivity.helper.ts'],
+    rules: { 'harness/no-handrolled-model-send': 'off' },
   },
   {
     // The one reader of server-sent events: every protocol's reply goes through `readReply`.

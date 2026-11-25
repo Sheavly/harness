@@ -22,6 +22,8 @@ describe('harness notices on the wire', () => {
   it.each([
     { kind: 'output-continuation', attempt: 1 },
     { kind: 'output-continuation', attempt: 2, maxAttempts: 5 },
+    { kind: 'output-continuation', attempt: 1, reason: 'connection' },
+    { kind: 'output-continuation', attempt: 1, reason: 'output_limit' },
   ])('preserves structured recovery data in %j for every UI', (notice) => {
     const event = { type: 'harness_notice', seq: 0, notice };
 
@@ -35,6 +37,7 @@ describe('harness notices on the wire', () => {
     { attempt: 1.5 },
     { attempt: 1, maxAttempts: 0 },
     { attempt: 1, maxAttempts: Infinity },
+    { attempt: 1, reason: 'weather' },
   ])('rejects invalid recovery data in %j', (data) => {
     expect(harnessNoticeSchema.safeParse({ kind: 'output-continuation', ...data }).success).toBe(
       false,

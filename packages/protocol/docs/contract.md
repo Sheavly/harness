@@ -224,6 +224,17 @@ opaque replay state late and stays in history. The activity event carries no rea
 only as transitions. A provider that cannot observe reasoning sends none, so a UI keeps its
 generic busy state rather than claiming the model thinks.
 
+## Model connection
+
+`model_connection` (`{ connection }`) says live that a model call cannot reach its provider. The
+`connection` is one of three states: `offline` (this machine has no connection, so the call waits
+for it, with the last `error`), `provider_unreachable` (the connection works and the provider does
+not answer: the retry about to be made as `attempt` of `retries`, with the `error`) and `restored`
+(the call got through; it ends either state). It is sent before anything of the reply it belongs
+to, `offline` once however long the wait, and is never stored in history. A UI shows the state
+until `restored`, the next event of the run or `done`. A run that gave up ends with `run_failed`
+as before, whose error names how long the call waited. A provider that never waits sends none.
+
 ## Run state
 
 `run_state` (`{ state: 'working' | 'waiting', groupedTasks: number }`) says live whether the run
@@ -263,8 +274,10 @@ count must be known. Used tokens are nonnegative whole numbers; the window is a 
 number within the model contract's bound. Zero usage and usage exceeding capacity are valid.
 
 `output-continuation` carries a positive integer `attempt` and optional positive integer
-`maxAttempts`. An absent maximum means recovery is not capped by a continuation allowance.
-Context and recovery notices each have their own ordered `harness_notice` event before the call.
+`maxAttempts`. An absent maximum means recovery is not capped by a continuation allowance. An
+optional `reason` says why the reply stopped: `output_limit` (also when absent) or `connection`,
+a lost connection to the provider, which has its own count (`attempt` is the loss's number) and
+spends none of the output limit's allowance. Context and recovery notices each have their own ordered `harness_notice` event before the call.
 There is no separate continuation event: a stream holding the old `output_continuation` entry no longer parses.
 
 `running-tasks` carries a bounded live snapshot: `{ kind: 'running-tasks', tasks, total, omitted }`.

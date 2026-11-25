@@ -1,4 +1,5 @@
 import { now } from '@sheavly/core/clock/clock.helper';
+import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
 import { toDefinition } from '@sheavly/core/tool/tool.utils';
 import { describeCall } from '@sheavly/core/tool/tool.validator';
 import { untilAborted, whenAborted } from '../abort/abort.utils.js';
@@ -85,6 +86,9 @@ export async function sample(context: SampleContext) {
         case 'reasoning_activity':
           activity.set(event.active);
           break;
+        case 'model_connection':
+          events.enqueue(event);
+          break;
 
         case 'tool_call': {
           const described = { call: event.call, description: describeCall(event.call) };
@@ -102,11 +106,8 @@ export async function sample(context: SampleContext) {
       }
     }
   } catch (caughtError) {
-    // A real provider failure, not our interrupt: stop the tools it started, then report it.
-    if (!signal.aborted) {
-      failure = { error: caughtError };
-      stopTools.abort(caughtError);
-    }
+    // A real provider failure, not our interrupt.
+    if (!signal.aborted) failure = failedWith({ error: caughtError, stopTools });
   }
 
   activity.close();
@@ -119,7 +120,7 @@ export async function sample(context: SampleContext) {
     type: 'usage',
     usage: window === undefined ? reported : { ...reported, contextWindow: window },
   });
-  if (signal.aborted || failure) stopReason = 'interrupted';
+  if (signal.aborted || failure) stopReason = stopReasonOfFailure({ signal, failure });
 
   const message: Message = {
     role: 'assistant',
@@ -130,6 +131,36 @@ export async function sample(context: SampleContext) {
   };
 
   return { message, stopReason, running, failure };
+}
+
+/**
+ * A failed model call, with the tools it started stopped. A lost connection leaves them running:
+ * the turn may go on from what arrived, and stops them itself (`stopTools`) if it does not.
+ */
+function failedWith(params: { error: unknown; stopTools: AbortController }): SampleFailure {
+  const { error, stopTools } = params;
+  const stop = () => {
+    stopTools.abort(error);
+  };
+
+  if (!(error instanceof ConnectionLostError)) stop();
+
+  return { error, stopTools: stop };
+}
+
+/**
+ * How a turn that did not finish ended: `connection_lost` for a lost connection (when the run was
+ * not interrupted, which outranks it), otherwise `interrupted`, as any other failure ends it.
+ */
+function stopReasonOfFailure(params: {
+  signal: AbortSignal;
+  failure: SampleFailure | undefined;
+}): TurnStopReason {
+  const { signal, failure } = params;
+
+  if (!signal.aborted && failure?.error instanceof ConnectionLostError) return 'connection_lost';
+
+  return 'interrupted';
 }
 
 /**

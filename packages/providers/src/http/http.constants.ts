@@ -14,6 +14,49 @@ export const MS_PER_SECOND = 1000;
  */
 export const MAX_RETRY_AFTER_MS = 60_000;
 
+/** Milliseconds in a minute: an outage is reported in minutes once it is a minute long. */
+export const MS_PER_MINUTE = 60_000;
+
+/** How long one connectivity probe waits for any answer before it counts as failed. */
+export const PROBE_TIMEOUT_MS = 5000;
+
+/** The longest wait between two attempts while offline: a connection that is back is noticed within it. */
+export const OFFLINE_MAX_DELAY_MS = 30_000;
+
+/**
+ * The shortest wait between two attempts while offline, whatever `retryDelayMs` is (0 is allowed):
+ * a call that sends and probes again at once would spin for the whole budget.
+ */
+export const OFFLINE_MIN_DELAY_MS = 1000;
+
+/** Doublings of the retry delay while offline stop here, so `2 ** round` never grows without bound. */
+export const OFFLINE_MAX_BACKOFF_ROUNDS = 8;
+
+/**
+ * How long a started reply may send nothing before its connection is taken for lost. Long, because
+ * a model may think a while without streaming a byte, and only a connection that died without
+ * saying so (a sleep, a dead route) is stopped by it.
+ */
+export const STREAM_IDLE_MS = 300_000;
+
+/** A wait while offline is cut into slices this long, so a machine that slept is noticed at its first. */
+export const WAKE_CHECK_MS = 1000;
+
+/**
+ * A step that took this much longer than it was meant to is taken for the machine having slept:
+ * timers stop while it does, and the wall clock does not.
+ */
+export const WAKE_GAP_MS = 5000;
+
+/**
+ * A host on this machine or its own network, which losing the internet does not cut off: a name
+ * with no dot (`localhost`, `ollama`, and one written with a final dot), `.local`, `.internal` and
+ * `.localhost` names, `::1`, `::` and the private ranges of IPv6 (`fc00::/7`, `fe80::/10`, as a URL
+ * writes them, in brackets), and `0.0.0.0` and the loopback, private and link-local ranges of IPv4.
+ */
+export const LOCAL_HOST =
+  /^(?:[^.:[\]]+\.?|.+\.(?:local|internal|localhost)\.?|\[?::1?\]?|\[(?:f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):.*\]|0\.0\.0\.0|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2})$/i;
+
 /** Query parameter names that carry a credential, so an endpoint URL is stored without them. */
 export const SECRET_QUERY_NAME =
   /(?:^|[-_])(?:api[-_]?key|key|token|secret|sig|signature|auth|authorization|password|credential)s?(?:$|[-_])/i;

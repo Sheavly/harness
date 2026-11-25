@@ -325,8 +325,21 @@ What stays in the environment is how this process runs, not who the user is. `se
 `process.env` in:
 
 - `SHEAVLY_HOME`: the user's folder (default `.sheavly` in their home).
-- `parseRequestEnv`: how each model call is sent, `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES` and
-  `MODEL_RETRY_DELAY_MS`, defaulting to `REQUEST` (60s, 2 retries, 1s). See
+- `parseRequestEnv`: how each model call is sent, `MODEL_RESPONSE_TIMEOUT_MS`, `MODEL_RETRIES`,
+  `MODEL_RETRY_DELAY_MS` and `MODEL_OFFLINE_TIMEOUT_MS`, defaulting to `REQUEST` (60s, 2 retries,
+  1s, and an hour). The last is how long a call waits for this machine's lost connection to come
+  back, counting only time the computer was awake (sleep never counts, and a call resumes when it
+  wakes); `0` switches the wait off. A provider that is down while the internet is up is not
+  waited for, only retried and reported: `MODEL_PROBE_URLS` (comma-separated http or https
+  addresses, at most five, with no user name or password, default `REQUEST.probeUrls`) are what it
+  asks to tell the two apart, and any answer from one means the internet is up. By default that is a
+  bare `HEAD` (no body, no headers of its own, no redirect followed) to `gstatic.com` and `1.1.1.1`
+  from the user's own address, after a model call fails with no HTTP answer. Name addresses you
+  trust in `MODEL_PROBE_URLS` to ask others, or set `MODEL_OFFLINE_TIMEOUT_MS=0` to ask none and
+  never wait. Where those addresses are blocked (an egress-restricted network) a provider that is
+  down reads as "offline" and is waited for, so set one of the two. A model on this machine or
+  its own network (`localhost`, a private address, a `.local` name) is never probed or waited for.
+  See
   [sending a call](../../../packages/providers/docs/backends.md#sending-a-call-timeouts-and-retries).
 - `parseServerEnv` and `parseRunEnv`: where it listens, and how each conversation runs
   ([serve.md](serve.md#settings)).

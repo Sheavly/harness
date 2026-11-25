@@ -124,8 +124,8 @@ late subscriber gets the completed items plus a snapshot of the item in progress
 That is the principle. The work is scheduled in two phases so nothing waits for it: the first
 phase wraps today's events, unchanged in content, in the new per-channel envelope, and stores
 every entry as today does (the entry log keeps all of them, live-only ones included); the item
-model comes later (#434). `text_delta`, `reasoning_activity` and `run_state` are the entries that
-become live only in the item model, and until then are stored with the rest.
+model comes later (#434). `text_delta`, `reasoning_activity`, `model_connection` and `run_state`
+are the entries that become live only in the item model, and until then are stored with the rest.
 
 ### Command and service channels
 
@@ -349,7 +349,7 @@ the caveat should say, and whether profiles are ever to be a boundary, is a deci
 
 ## Where each current entry goes
 
-Every entry the stream carries today, 39 in all, has a place in the model: see
+Every entry the stream carries today, 40 in all, has a place in the model: see
 [the mapping](wire-model-mapping.md). It also lists the three decisions the mapping leaves for the
 schema and registry work.
 

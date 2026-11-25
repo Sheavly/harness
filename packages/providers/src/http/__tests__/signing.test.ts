@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { sendRequest } from '../request.helper.js';
+import { TEST_REQUEST } from '../../testing/request.constants.js';
+import { sendCollecting } from '../../testing/send.fake.js';
 import type { RequestSigner } from '../http.types.js';
 
-const policy = { responseTimeoutMs: 1000, retries: 2, retryDelayMs: 0 };
+const policy = { ...TEST_REQUEST, responseTimeoutMs: 1000, retries: 2 };
 const url = new URL('https://signed.test/v1/messages');
 const init = {
   method: 'POST',
@@ -23,7 +24,7 @@ function fetchAnswering(statuses: number[]) {
 }
 
 const send = (params: { fetch: typeof globalThis.fetch; sign?: RequestSigner; body?: string }) =>
-  sendRequest({
+  sendCollecting({
     api: 'Test API',
     fetch: params.fetch,
     url,
@@ -70,7 +71,7 @@ describe('sendRequest with a signer', () => {
 
   it('refuses to sign what a signature cannot cover, without sending anything', async () => {
     const { fetch, sent } = fetchAnswering([200]);
-    const unsigned = sendRequest({
+    const unsigned = sendCollecting({
       api: 'Test API',
       fetch,
       url,

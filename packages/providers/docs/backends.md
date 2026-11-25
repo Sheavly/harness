@@ -12,7 +12,13 @@ import { createDefaultRegistry } from '@sheavly/providers/registry/default-regis
 import { ProviderSwitch } from '@sheavly/providers/switch/switch.service';
 
 const registry = createDefaultRegistry();
-const request = { responseTimeoutMs: 60_000, retries: 2, retryDelayMs: 1000 };
+const request = {
+  responseTimeoutMs: 60_000,
+  retries: 2,
+  retryDelayMs: 1000,
+  offlineTimeoutMs: 3_600_000, // wait up to an hour for a lost connection (0: never)
+  probeUrls: ['https://www.gstatic.com/generate_204', 'https://1.1.1.1'],
+};
 
 // A provider is added under the model's id, never its display name: the id is what is switched by.
 const SOL = '4b1f9a52-3c5e-4a77-9d64-0e2b7f1c8a30';
@@ -260,9 +266,38 @@ and types without including text, arguments or signatures.
   `retries` more times, waiting `retryDelayMs`, doubled each time and cut by jitter to between
   half and all of it (or the server's `retry-after`, in seconds or as an HTTP date, if longer).
   The policy is `http/retry-policy.helper.ts`. It retries a request that never reached the server, one that timed out, HTTP 429
-  and 5xx; any other HTTP error fails at once. Once an event has streamed it never retries, since
-  the turn may have started tools: a stream cut off mid-reply fails the run.
+  and 5xx; any other HTTP error fails at once. Once an event has streamed the provider never
+  retries, since the turn may have started tools. What it does throw is `ConnectionLostError`
+  (`@sheavly/core/errors/connection.errors`) when the body of a started reply breaks (a reset, a
+  timeout) or sends nothing for `STREAM_IDLE_MS` (five minutes, `http/stream-chunks.helper.ts`: a
+  connection that died without saying so, as one does across a sleep), carrying what had been
+  streamed: the loop recovers from it by keeping that partial reply and asking the model to go on.
+  A reply that is wrong (an error event, a payload that is not JSON) or ends without its end
+  marker (`cut_off`) is a `ModelApiError` and fails the run.
 - An interrupt (the run's `signal`) stops the wait and every attempt, and is never retried.
+- `offlineTimeoutMs` and `probeUrls`: a call that gets no HTTP answer at all (a network error or a
+  timeout) is either this machine having lost its connection or the provider being down, and
+  only the first is waited for (`http/outage.helper.ts`). After such a failure the call asks every
+  `probeUrls` address, over the same `fetch`, for its headers (`http/connectivity.helper.ts`: a
+  bare `HEAD` that follows no redirect, and the addresses still waiting are stopped once one has
+  answered; any HTTP answer, a 3xx included, whatever its status, shows the path is up). If one
+  answers, the provider is the problem: the retries above apply and the error is reported, never
+  an hour's wait, and an outage that comes later starts its budget again. If none does, the call
+  waits for the connection and asks again, never less than a second apart (`OFFLINE_MIN_DELAY_MS`,
+  whatever `retryDelayMs` is) and doubling from `retryDelayMs` up to 30s, for up to
+  `offlineTimeoutMs`. Only time the machine was awake counts: the wait is cut into one-second
+  slices, and a slice that ran `WAKE_GAP_MS` over means the machine slept, so the count starts over
+  and the next attempt is made at once. It never waits for a model on this machine or its own
+  network (`isLocalHost`: a name with no dot, `.local` and `.internal` names, and the loopback,
+  private and link-local ranges), with no `probeUrls` (a lost connection can't be told from a
+  provider that is down), or with `offlineTimeoutMs` 0. It gives up with the failure and how long it
+  waited, or when `signal` aborts. A probe address is http or https with no user name or
+  password (`requestPolicySchema`).
+- While it waits or retries, `sendRequest` yields `model_connection` reports (`offline` once;
+  `provider_unreachable`, with the retry's number, before each retry of the provider's own
+  failures, 429 and 5xx included; `restored` once a call that reported got through), and each
+  provider streams them before the reply. Without `probeUrls` a dropped request is reported as
+  `provider_unreachable`, since the call cannot tell.
 
 A call that still fails throws a `ModelApiError` (its message names the API) whose `reason` says why (`network`,
 `timeout`, `http` with its `status`), with the original error as `cause` and Node's own reason

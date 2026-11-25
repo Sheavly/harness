@@ -31,6 +31,9 @@ export type OverflowInput = {
   started: boolean;
 };
 
+/** A model call that failed after its reply started: a contribution returns true when it can go on from what was kept. */
+export type DropInput = { context: TurnContext; error: unknown };
+
 /** What a finished turn knows: a contribution returns why the run ends, or undefined to go on. */
 export type LimitInput = {
   context: TurnContext;
@@ -68,6 +71,11 @@ export type TurnContributions = {
   view: readonly Contribution<ViewInput, readonly Message[]>[];
   /** After a rejected (too long) call: recover and retry. The first to return true wins. */
   overflow: readonly Contribution<OverflowInput, boolean>[];
+  /**
+   * After a call failed with the reply half sent (a lost connection): keep what arrived and go on,
+   * or fail the run with the error. The first to return true wins.
+   */
+  dropped: readonly Contribution<DropInput, boolean>[];
   /** After a turn's results: recover from the stop reason, or end the run. First answer wins. */
   limit: readonly Contribution<LimitInput, LimitOutcome | undefined>[];
   /**

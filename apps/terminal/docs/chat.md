@@ -84,6 +84,14 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   the classic status line say `thinking...` instead of `working`, without printing any reasoning.
   A provider with no signal keeps `working`, a sub-agent's reasoning is ignored, and `waiting for
 you` keeps its own words.
+  When the model call cannot reach its provider the run does not fail: the transcript says so
+  (`model_connection`). `… Reconnecting… no internet connection, waiting for it to come back`
+  is written once while this machine is offline, however long the wait (the backend's
+  `MODEL_OFFLINE_TIMEOUT_MS`, an hour of time awake by default, so a sleeping computer picks the
+  work up when it wakes), `… The model provider is not responding, retrying (2/3)` is written
+  for each retry of a provider that is down while the internet is up (a failure the user should
+  look into), and `✓ Reconnected` ends either. The plain log (demo, workbook, replay) also gives
+  the provider's error text, as one plain line.
   The classic screen shows no step, and neither does the plain line chat. The editor and approval state machine are shared with the previous renderer, selected with
   `SHEAVLY_TUI=classic`. `NO_COLOR` removes styling from React's conversation and editor. No alternate
   screen or mouse capture is used. Static history is not replayed on resize: the terminal owns

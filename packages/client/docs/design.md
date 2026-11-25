@@ -103,9 +103,13 @@ stream after a `lastEventId`, yields each entry once and in order (an entry at o
 one seen is skipped), and on a drop waits (250 ms, doubling to 5 s) and opens again. A stream
 that ends cleanly ends it (unless it is `endless`, a conversation's whole stream, which only the
 client leaves: its end is a cut by the backend, a slow consumer, and so a drop), and so does the
-`signal`. After six attempts in a row, with no entry arriving and no connection staying up for 30
-s between them, it throws `StreamLostError`, with the `lastEventId` it reached and the `cause`, so
-a UI can show that it lost the stream instead of guessing. A refusal (4xx) or an entry off the
+`signal`. When the attempts in a row, with no entry arriving and no connection staying up for 30
+s between them, have failed for an hour (`RECONNECT_BUDGET_MS`, or `ReconnectPolicy.budgetMs`; the
+count of `attempts` is the other way to bound it), it throws `StreamLostError`, with the
+`lastEventId` it reached and the `cause`, so a UI can show that it lost the stream instead of
+guessing. The hour is read from `performance.now()`, which on Linux and macOS stops while the
+machine sleeps: a stream followed across a sleep, however long, is opened again on waking, and the
+time asleep is not spent. A refusal (4xx) or an entry off the
 contract is not retried. `watchApprovals` uses it. While the stream is down nobody listens for
 approvals, so a request made then is refused, not held.
 

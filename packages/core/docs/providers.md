@@ -21,6 +21,16 @@ A provider (`packages/core/src/provider/`) is one method, `stream(request)`, ret
 turns (an edited AGENTS.md) without touching history. The Responses client sends them as the
 API's `instructions` field.
 
+## Connection reports
+
+A provider that cannot reach its backend says so on the stream with `model_connection`
+(`ModelConnection`, `@sheavly/protocol/connection/connection.types`) and goes on waiting or
+retrying instead of failing the call: `offline` (this machine has no connection), `provider_unreachable`
+(the connection works and the provider does not answer; a retry count is attached) and `restored`
+once the call got through. They come before any text of the reply, repeat nothing already said, and are never
+kept in history. A provider that never waits sends none. How the built-in backends decide is in
+[@sheavly/providers](../../providers/docs/backends.md).
+
 ## Harness notices
 
 `HarnessNotice` (`@sheavly/protocol/notice/notice.types`) separates transient harness data from user

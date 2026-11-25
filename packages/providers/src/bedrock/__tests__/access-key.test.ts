@@ -98,7 +98,7 @@ describe('signing in to Bedrock with an access key pair', () => {
     const provider = bedrockAnthropicAdapter.create({
       config: bedrockAnthropicAdapter.configSchema.parse({
         ...claude,
-        request: { responseTimeoutMs: 1000, retries: 1, retryDelayMs: 0 },
+        request: { ...TEST_REQUEST, responseTimeoutMs: 1000, retries: 1 },
       }),
       deps: { fetch },
     });

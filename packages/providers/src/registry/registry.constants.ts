@@ -1,3 +1,4 @@
+import type { RequestPolicy } from '../http/http.types.js';
 import type { FailedCheck } from './registry.types.js';
 
 /** Stands in for a secret while a definition is checked, so the key itself is never needed. */
@@ -11,13 +12,16 @@ export const CHECK_SERVER_ERROR_FROM = 500;
 
 /**
  * How a check sends its one call. Not the host's chat policy: a check that is wrong should say so
- * at once, so there are no retries, and the response timeout is the check's own, in `check`.
+ * at once, so there are no retries and no waiting for a connection (an unreachable provider is
+ * the answer), and the response timeout is the check's own, in `check`.
  */
-export const CHECK_REQUEST = {
+export const CHECK_REQUEST: RequestPolicy = {
   responseTimeoutMs: CHECK_RESPONSE_TIMEOUT_MS,
   retries: 0,
   retryDelayMs: 0,
-} as const;
+  offlineTimeoutMs: 0,
+  probeUrls: [],
+};
 
 /**
  * What a failed check says, per status. Fixed text: never what the provider answered, since that

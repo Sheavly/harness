@@ -168,7 +168,16 @@ describe('AdapterRegistry.check', () => {
 
   it('uses the check’s own request policy, not whatever the config says', async () => {
     const { fetch, requests } = answeringWith({ status: 503 });
-    const sentWith = { ...config, request: { responseTimeoutMs: 5, retries: 9, retryDelayMs: 1 } };
+    const sentWith = {
+      ...config,
+      request: {
+        responseTimeoutMs: 5,
+        retries: 9,
+        retryDelayMs: 1,
+        offlineTimeoutMs: 3_600_000,
+        probeUrls: ['https://probe.test'],
+      },
+    };
 
     await registryOn(fetch).check({ kind: 'openai', config: sentWith });
     expect(requests).toHaveLength(1);

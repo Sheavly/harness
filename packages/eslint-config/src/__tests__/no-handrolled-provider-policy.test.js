@@ -42,8 +42,12 @@ describe('no-handrolled-provider-policy in providers', () => {
     }
   });
 
-  it('is off only where each decision is made: the retry policy and the replay check', async () => {
-    for (const file of ['src/http/retry-policy.helper.ts', 'src/http/replay.utils.ts']) {
+  it('is off only where each decision is made: the retry policy, the replay check and the body reader', async () => {
+    for (const file of [
+      'src/http/retry-policy.helper.ts',
+      'src/http/replay.utils.ts',
+      'src/http/stream-chunks.helper.ts',
+    ]) {
       expect(await on(file), file).toBe(false);
     }
   });

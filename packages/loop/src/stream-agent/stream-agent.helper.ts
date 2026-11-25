@@ -109,6 +109,7 @@ async function drive(given: RunContext) {
     pending: undefined,
   };
   const summaryFailures = { count: 0, overflowTried: false };
+  const connectionLosses = { inARow: 0 };
   const hookFailures = createHookFailures(events);
   // Set when a turn ends the run; still unset only if the turn cap ran out first.
   let reason: DoneReason | undefined;
@@ -167,6 +168,7 @@ async function drive(given: RunContext) {
         turn,
         messages,
         outputRecovery,
+        connectionLosses,
         summaryFailures,
         hookFailures,
         contributions,

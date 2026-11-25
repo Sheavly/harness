@@ -1,6 +1,8 @@
 import { providerErrorText } from '@sheavly/core/text/diagnostic-text.utils';
 import { ModelApiError, ModelFetchError } from '../errors/providers.errors.js';
-import type { RequestPolicy, RequestSigner } from './http.types.js';
+import { now } from '@sheavly/core/clock/clock.helper';
+import type { ConnectionReport, SendRequestParams, Standing } from './http.types.js';
+import { forgetOutage, isOutage, waitForConnection } from './outage.helper.js';
 import { withSignature } from './signing.utils.js';
 import {
   backoffMs,
@@ -8,56 +10,14 @@ import {
   isWorthWaiting,
   retryAfterMs,
 } from './retry-policy.helper.js';
-
-/** Waits `ms`, or rejects as soon as `signal` aborts. */
-function wait(params: { ms: number; signal: AbortSignal }): Promise<void> {
-  const { ms, signal } = params;
-
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason as Error);
-
-      return;
-    }
-
-    const done = () => {
-      signal.removeEventListener('abort', aborted);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    const aborted = () => {
-      clearTimeout(timer);
-      reject(signal.reason as Error);
-    };
-
-    signal.addEventListener('abort', aborted, { once: true });
-  });
-}
-
-/** What the failed request's error says, with Node's real reason (on `cause`) named. */
-function networkMessage(caughtError: unknown): string {
-  const cause = caughtError instanceof Error ? caughtError.cause : undefined;
-  const code = (cause as { code?: unknown } | undefined)?.code;
-  const detail = cause instanceof Error ? cause.message : undefined;
-  const reason = [typeof code === 'string' ? code : undefined, detail].filter(Boolean).join(': ');
-  const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
-
-  return providerErrorText(reason ? `${message} (${reason})` : message);
-}
+import { networkMessage } from './network-message.utils.js';
+import { wait } from './wait.helper.js';
 
 /** One attempt's outcome: the response, or a failure and whether another attempt may help. */
 type Attempt =
   { response: Response } | { failure: ModelApiError; retryable: boolean; waitMs: number };
 
-async function attempt(params: {
-  api: string;
-  fetch: typeof fetch;
-  url: URL;
-  init: RequestInit;
-  policy: RequestPolicy;
-  signal: AbortSignal;
-  sign?: RequestSigner | undefined;
-}): Promise<Attempt> {
+async function attempt(params: SendRequestParams): Promise<Attempt> {
   const { api, fetch, url, policy, signal, sign } = params;
   // Signed afresh for each attempt: a signature carries the time, and one is good for minutes.
   const init = sign ? withSignature({ init: params.init, url, sign }) : params.init;
@@ -118,33 +78,53 @@ async function attempt(params: {
  * error fails at once; an interrupt (`signal`) stops the wait and every attempt. `api` names the
  * API in its errors (`Responses API`, `Anthropic Messages API`). With `sign`, every attempt, a
  * retry included, is signed anew from the headers and string body in `init`.
+ *
+ * A call that gets no HTTP answer waits instead when this machine has no connection (every
+ * `policy.probeUrls` fails too; see `isOutage`), for up to `policy.offlineTimeoutMs` of time
+ * awake, and reports it as it goes: it yields `offline` once, `provider_unreachable` before each
+ * retry of the provider's own failures, and `restored` when a call that reported got through.
+ * The generator returns the response, so a caller reads it with `yield*`.
  */
-export async function sendRequest(params: {
-  api: string;
-  fetch: typeof fetch;
-  url: URL;
-  init: RequestInit;
-  policy: RequestPolicy;
-  signal: AbortSignal;
-  sign?: RequestSigner | undefined;
-}): Promise<Response> {
+export async function* sendRequest(
+  params: SendRequestParams,
+): AsyncGenerator<ConnectionReport, Response> {
   const { policy, signal } = params;
+  const standing: Standing = { last: undefined, offlineAwakeMs: 0, offlineRounds: 0 };
 
-  for (let tried = 0; ; tried++) {
+  // `tried` counts the retries the provider's own failures used; waiting for a connection has its own budget.
+  for (let tried = 0; ;) {
+    const startedAt = now();
     const outcome = await attempt(params);
 
-    if ('response' in outcome) return outcome.response;
+    if ('response' in outcome) {
+      if (standing.last) yield { type: 'model_connection', connection: { state: 'restored' } };
+
+      return outcome.response;
+    }
+
+    if (await isOutage({ send: params, failure: outcome.failure })) {
+      yield* waitForConnection({ send: params, failure: outcome.failure, standing, startedAt });
+
+      continue;
+    }
+
+    // The connection answered, so any later outage is a new one with a budget of its own.
+    forgetOutage(standing);
 
     if (!outcome.retryable || tried >= policy.retries) {
-      if (tried === 0) throw outcome.failure;
-
-      throw new ModelApiError({
-        reason: outcome.failure.reason,
-        message: `${outcome.failure.message} (after ${String(tried + 1)} attempts)`,
-        ...(outcome.failure.status === undefined ? {} : { status: outcome.failure.status }),
-        cause: outcome.failure,
-      });
+      throw failureAfter({ failure: outcome.failure, attempts: tried + 1 });
     }
+
+    standing.last = 'provider_unreachable';
+    yield {
+      type: 'model_connection',
+      connection: {
+        state: 'provider_unreachable',
+        error: providerErrorText(outcome.failure.message),
+        attempt: tried + 1,
+        retries: policy.retries,
+      },
+    };
 
     await wait({
       ms: backoffMs({
@@ -155,5 +135,20 @@ export async function sendRequest(params: {
       }),
       signal,
     });
+    tried += 1;
   }
+}
+
+/** The error a call ends with: the failure itself after one attempt, else it says how many were made. */
+function failureAfter(params: { failure: ModelApiError; attempts: number }): ModelApiError {
+  const { failure, attempts } = params;
+
+  if (attempts === 1) return failure;
+
+  return new ModelApiError({
+    reason: failure.reason,
+    message: `${failure.message} (after ${String(attempts)} attempts)`,
+    ...(failure.status === undefined ? {} : { status: failure.status }),
+    cause: failure,
+  });
 }

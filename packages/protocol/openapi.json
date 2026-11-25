@@ -1155,7 +1155,8 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
-                  }
+                  },
+                  "reason": { "type": "string", "enum": ["output_limit", "connection"] }
                 },
                 "required": ["kind", "attempt"]
               }
@@ -1538,6 +1539,52 @@
           {
             "type": "object",
             "properties": {
+              "type": { "type": "string", "const": "model_connection" },
+              "connection": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": { "type": "string", "const": "offline" },
+                      "error": { "type": "string", "maxLength": 1000 }
+                    },
+                    "required": ["state", "error"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": { "type": "string", "const": "provider_unreachable" },
+                      "error": { "type": "string", "maxLength": 1000 },
+                      "attempt": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "retries": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["state", "error", "attempt", "retries"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": { "state": { "type": "string", "const": "restored" } },
+                    "required": ["state"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": ["type", "connection"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
               "call": { "$ref": "#/components/schemas/ToolCall" },
               "description": { "type": "string" },
               "type": { "type": "string", "const": "tool_call_started" }
@@ -1833,6 +1880,52 @@
               "active": { "type": "boolean" }
             },
             "required": ["seq", "type", "active"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "model_connection" },
+              "connection": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": { "type": "string", "const": "offline" },
+                      "error": { "type": "string", "maxLength": 1000 }
+                    },
+                    "required": ["state", "error"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": { "type": "string", "const": "provider_unreachable" },
+                      "error": { "type": "string", "maxLength": 1000 },
+                      "attempt": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "retries": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["state", "error", "attempt", "retries"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": { "state": { "type": "string", "const": "restored" } },
+                    "required": ["state"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": ["seq", "type", "connection"]
           },
           {
             "type": "object",
@@ -2240,7 +2333,14 @@
       },
       "TurnStopReason": {
         "type": "string",
-        "enum": ["end_turn", "tool_use", "max_tokens", "context_window_exceeded", "interrupted"]
+        "enum": [
+          "end_turn",
+          "tool_use",
+          "max_tokens",
+          "context_window_exceeded",
+          "interrupted",
+          "connection_lost"
+        ]
       },
       "SessionRef": {
         "anyOf": [

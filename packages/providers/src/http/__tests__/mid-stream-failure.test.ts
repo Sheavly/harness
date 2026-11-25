@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ConnectionLostError } from '@sheavly/core/errors/connection.errors';
 import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { createResponsesProvider } from '../../responses/responses.helper.js';
 import { TEST_REQUEST } from '../../testing/request.constants.js';
@@ -52,7 +53,7 @@ describe('a failure after the reply started streaming', () => {
           seen.push(event);
         }
       })(),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(ConnectionLostError);
 
     expect(calls).toBe(1);
     expect(seen).toEqual([{ type: 'text_delta', text: 'par' }]);

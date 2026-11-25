@@ -29,7 +29,7 @@ phase 2 (#434) changes how some are shaped, and is not repeated here.
 | `replay`               | `from: start`                                                                                                                                                                |
 | `Last-Event-ID` resume | The client's last cursor for each channel, sent again in the request body                                                                                                    |
 
-## Loop events (`AgentEvent`, 23)
+## Loop events (`AgentEvent`, 24)
 
 All stay on the agent channel of the session that produced them, in phase 1, unless the row says
 otherwise. A row marked "live" is stored in phase 1 like every entry (the entry log keeps all of
@@ -42,6 +42,7 @@ them today) and becomes live only, outside the durable log, in the item model (#
 | `harness_notice`      | Agent channel                                                                                                                                                                                                                                                                                                                               |
 | `text_delta`          | Agent channel, live: a delta of an assistant item (phase 2 shapes it, as `started`/`delta`/`completed`)                                                                                                                                                                                                                                     |
 | `reasoning`           | Agent channel: opaque state, kept for replay                                                                                                                                                                                                                                                                                                |
+| `model_connection`    | Agent channel, live                                                                                                                                                                                                                                                                                                                         |
 | `reasoning_activity`  | Agent channel, live                                                                                                                                                                                                                                                                                                                         |
 | `tool_call_started`   | Agent channel                                                                                                                                                                                                                                                                                                                               |
 | `turn_end`            | Agent channel                                                                                                                                                                                                                                                                                                                               |
