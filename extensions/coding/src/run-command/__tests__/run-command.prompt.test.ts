@@ -20,8 +20,8 @@ const inputPrompts = {
     'Folder to run in, absolute or relative to the workspace root (default: the root). ' +
     'It must be inside the workspace or a sibling git worktree of its repo.',
   background:
-    'Return a task id immediately. Finite work keeps this prompt alive until its result is delivered. ' +
-    'Finish independent work, then end your turn without tool calls to wait. Do not poll task_status.',
+    'Return a task id immediately. Finite work keeps this prompt alive until its result is delivered, and you are woken then. ' +
+    'Finish independent work, then end your turn without tool calls. Do not poll task_status or call await_tasks for one task.',
 };
 
 describe('run_command prompt output equivalence', () => {
@@ -35,7 +35,7 @@ describe('run_command prompt output equivalence', () => {
   it.each([
     [
       true,
-      'This finite task keeps this prompt alive until its result is delivered automatically. Finish independent work, then end your turn without tool calls to wait. Do not poll task_status or repeat the command. Use cancel_task to stop it.',
+      'This finite task keeps this prompt alive until its result is delivered automatically, and you are woken then. Finish independent work, then end your turn without tool calls. Do not poll task_status, call await_tasks for it alone, or repeat the command. Use cancel_task to stop it.',
     ],
     [
       false,

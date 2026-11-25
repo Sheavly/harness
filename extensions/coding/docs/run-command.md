@@ -97,15 +97,16 @@ like `read:sed *` names a command `read:sed` and matches nothing real.
 `background: true` returns a task id immediately. It is always finite work, such as a build, test
 run or CI wait: the tool starts it with `commandTaskWork`, so the loop keeps the calling prompt
 alive until it delivers the result. The model does not choose the kind.
-The agent finishes independent work and ends its turn without tool calls to wait. Completion is
-delivered automatically; `task_status` is for requested inspection or diagnosis, not polling.
+The agent finishes independent work and ends its turn without tool calls. Completion is
+delivered automatically and wakes it, so the launch result tells it not to call `await_tasks` for
+one task; `task_status` is for requested inspection or diagnosis, not polling.
 
 Use `start_service({ command, cwd? })` for a persistent server or watcher. It parses, approves and
 captures output exactly like `run_command` (both share `command-launch.helper.ts`), but starts
 `commandServiceWork`, so it never keeps the prompt alive and can outlive it. Use `cancel_task` to
 stop a service when finished. A `backgroundKind` sent to `run_command` is dropped by its schema.
 
-When several results inform one decision, `await_tasks({ ids, reason })` registers a completion
+Only when several results must be read together to make one decision, `await_tasks({ ids, reason })` registers a completion
 group immediately: the registry holds their notices until all members finish, then delivers them
 together with the reason. Explain the dependent decision or next step for your future self after
 a summary, not just "waiting for results". Grouping does not block the tool call or make

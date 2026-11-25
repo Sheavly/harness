@@ -92,9 +92,10 @@ host would not notice a fifth name added to the constant but not to the file; th
 
 `run_command` starts required finite work with `background: true`: the loop keeps the prompt alive
 until its result is delivered. Persistent servers and watchers use the `start_service` tool
-instead, which has the same checks and approval. The agent can finish independent work, then yield without polling task status.
-The generic `await_tasks({ ids, reason })` tool can group results for delivery together; its reason
-preserves the dependent decision or next step for the agent after a summary.
+instead, which has the same checks and approval. The agent can finish independent work, then yield without polling task status: the result is
+delivered automatically and wakes it. The optional generic `await_tasks({ ids, reason })` tool
+only groups two or more results for delivery together, never one; its reason preserves the
+dependent decision or next step for the agent after a summary.
 
 With an output store (the conversation's `OutputStore`, supplied to the run as `OUTPUT_CAPTURE` for
 writing and `OUTPUT_READER` for `read_output`), `run_command` keeps every command's complete

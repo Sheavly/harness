@@ -131,9 +131,10 @@ section and require no workspace.
 That existing option is a complete override, not an extension; an empty override remains empty.
 Direct `streamAgent` or `runAgent` callers pass the returned string explicitly.
 
-The generic core tells the agent to finish independent work, then yield without tool calls while
-waiting for required background results. Status inspection is limited to requested updates or
-diagnosis, not waiting. This rule belongs in stable system instructions as well as task-tool
+The generic core tells the agent that finished finite background work wakes it, so it never calls
+a tool to wait: it finishes independent work, then yields without tool calls. A service never wakes
+it, and `maxConsecutiveWakes` can hold a wake back for the user's next prompt. Status inspection is
+limited to requested updates or diagnosis, not waiting. This rule belongs in stable system instructions as well as task-tool
 guidance; models must not turn immediate snapshots into a wait loop. It names no particular tool
 and applies equally to commands and sub-agent work.
 

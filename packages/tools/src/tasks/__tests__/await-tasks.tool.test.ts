@@ -51,7 +51,7 @@ describe('await_tasks', () => {
     expect(result.content).toBe(
       'Grouped tasks t1, t2. Their results will be delivered together when all members finish.\n' +
         'Reason: Compare lint and tests before deciding whether the patch is ready.\n' +
-        'Finish independent work, then end your turn without tool calls to wait. Do not poll task_status.',
+        'Finish independent work, then end your turn without tool calls; the grouped results wake you once every member has finished. Do not poll task_status.',
     );
   });
 
@@ -204,6 +204,16 @@ describe('await_tasks', () => {
         ],
       },
     ]);
+  });
+
+  it('says results arrive without it, so one task never needs a group', () => {
+    setup();
+    const tool = createTaskTools(tasks).find((candidate) => candidate.name === 'await_tasks')!;
+
+    expect(tool.description.startsWith('Optional, and rarely needed:')).toBe(true);
+    expect(tool.description).toContain('finite background task is delivered to you automatically');
+    expect(tool.description).toContain('never call this for one task or just to wait');
+    expect(tool.description).toContain('two or more results must reach you together');
   });
 
   it('guides useful reasons without policing their wording', () => {
