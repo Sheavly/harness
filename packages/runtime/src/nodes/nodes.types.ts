@@ -86,7 +86,8 @@ export type NodeChannelStorage = {
  * What a follower of a stored channel is told, in the order the writes happened: an entry the
  * store took, with its place in the channel's log (`ordinal`: 0 for the first, with no gap, so
  * what a reader of the store holds and what a follower hears can be joined without a gap or a
- * repeat), or that the channel failed and takes no more entries.
+ * repeat), or that the channel takes no more entries: it failed, or, for the tree channel, its
+ * writer was stopped because the conversation closed.
  */
 export type ChannelEvent =
   { type: 'stored'; entry: ChannelEntry; ordinal: number } | { type: 'failed' };
@@ -106,6 +107,9 @@ export type LostChannels = {
 
 /** Where a stored channel stood: the channel and the cursor of its newest entry. */
 export type ChannelPosition = { channel: string; cursor: string };
+
+/** Where an entry of the conversation's tree channel is, and when it was written. */
+export type TreeStamp = { position: number; at: number };
 
 /** Where to start reading a channel: its first entry, only what comes, or a position. */
 export type ChannelStart = 'start' | 'now' | number;

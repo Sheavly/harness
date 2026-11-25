@@ -99,6 +99,16 @@ import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 
 ## Docs
 
+`TreeChannelWriter` (`nodes/`) stores the conversation's tree channel from what the node, task and
+approval registries do, plus the notices the host tells it (`noteQueueChanged`,
+`notePromptStarted`, `notePromptRefused`, `noteStorageFailed`): `TreeChannelWriter.attach({ nodes,
+tasks, approvals, nodeIdOf, storage })` opens it, `stop()` ends the writing when the conversation
+closes (the channel is not closed, so a reopen goes on from it). `snapshot()` is the tree the
+stored entries build, with the cursor of the last (the protocol's `applyTreeEntry` is the fold), so
+a client that starts from it and follows after that cursor gets what a replay gets; `follow` tells
+each entry the store takes, with its place in the log. A command too long for an entry is cut, and
+an approval whose command was cut says so as a concern.
+
 `SessionRegistry.setMessage` associates stream activity with the originating user message. New
 children inherit that identity; existing children keep it as the parent moves on. Correlation is
 restored from the stored stream. Error diagnostics retain selected, bounded fields and redact common

@@ -181,11 +181,28 @@ session and task rows describe what those views report.
   conversation restores has a new id: the channel the stopped process wrote for it stays, and
   `NodeChannelWriter.closeLost` (called when `Conversations.reopen` reads the store, before the
   conversation has a node of its own) ends every channel with no `closed` entry as `lost`, once;
-  only the main agent, which goes on, begins a channel of its own. The tree channel and the kinds an
-  extension adds are not stored. `NodeChannelWriter.follow` tells a follower each entry its channel
+  only the main agent, which goes on, begins a channel of its own. The kinds an extension adds are
+  not stored. `NodeChannelWriter.follow` tells a follower each entry its channel
   takes from then on, once the store has it, with its `ordinal` (its place in the log, 0 for the
   first), and once more if the channel fails; what was stored before is the store's to read, and
   the ordinal is how a reader joins the two (follow, then read, then skip what the read held).
+- **The stored tree channel** (`TreeChannelWriter`, `packages/runtime/src/nodes/`). The
+  conversation's one tree channel is written beside the node channels, from what the node, task and
+  approval registries do: `opened`, then `node_opened`, `node_updated` and `node_closed` for each
+  agent, command and service, `approval_requested`, `approval_resolved` and `approval_cancelled`
+  with the node that asked, the conversation's notices the host tells it (`queue_changed`,
+  `prompt_started`, `prompt_refused`, `storage_failed`). Closing the conversation stops the writer
+  (`stop()`) and does not close the channel: a closed channel takes no more entries, and a kept
+  conversation is reopened under the same id and goes on from the last entry, so the tree channel
+  has no `closed` entry while its conversation exists. Each entry is numbered as it is told (`s0`, `s1`, … with no gap) and written one after another. It
+  keeps the tree the stored entries build (the protocol's `applyTreeEntry`) beside the cursor of the
+  last, so `snapshot()` is the tree of exactly the entries the store has: a client that starts from
+  it and follows after its cursor ends with what one that replayed the channel ends with. An entry
+  holds at most what a store keeps: a command too long for it is cut, and an approval whose command
+  was cut says so as a concern, so a client that shows only the tree never takes it for the whole
+  command (the conversation's stream has the whole). A write that fails ends the channel as it was,
+  and stopping ends it as it stands; `follow` tells the followers once either way. The fold keeps
+  at most `MAX_TREE_NODES` nodes, dropping the oldest ended one nothing hangs from.
 - **`idle` is for agents.** A command or service has no between-prompts state.
 - **The outcome keeps the detail the state does not.** For an agent it is today's `RunOutcome`
   (`completed`, `interrupted`, `max_turns`, `max_tokens`, `context_window_exceeded`, `failed`), for
