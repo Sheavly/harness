@@ -14,6 +14,7 @@ import {
   textAt,
 } from '../../testing/remote-conversation.fake.js';
 import { promptStarted } from '../../testing/live-feed.fake.js';
+import { queuedAnswer, startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 
 /** Two models' ids: the backend has `DEEP` and not `OTHER`. */
 const DEEP = '9d2c7e10-6a4b-4f38-b1e5-5c0a8d3f2b71';
@@ -74,7 +75,7 @@ describe('RemoteConversation', () => {
             feed.publish(promptStarted({ seq: 3, text: 'hi' }), textAt(4, 'mine'), doneAt(5));
           }, 0);
 
-          return { status: 'queued', queued: ['hi'] };
+          return queuedAnswer(['hi']);
         },
       },
     });
@@ -96,7 +97,7 @@ describe('RemoteConversation', () => {
             }),
           );
 
-          return { status: 'queued', queued: ['hi'] };
+          return queuedAnswer(['hi']);
         },
       },
     });
@@ -109,10 +110,10 @@ describe('RemoteConversation', () => {
 
   it('submits a line and answers what the backend did with it, without reading any stream', async () => {
     const { conversation, server } = await openOnFake({
-      handlers: { sendPrompt: () => ({ status: 'queued', queued: ['first', 'hi'] }) },
+      handlers: { sendPrompt: () => queuedAnswer(['first', 'hi']) },
     });
 
-    expect(await conversation.submit('hi')).toEqual({ status: 'queued', queued: ['first', 'hi'] });
+    expect(await conversation.submit('hi')).toEqual(queuedAnswer(['first', 'hi']));
     expect(server.calls.map(({ name }) => name)).toEqual(['startConversation', 'sendPrompt']);
   });
 
@@ -198,7 +199,7 @@ describe('RemoteConversation', () => {
         sendPrompt: () => {
           feed.publish(promptStarted({ seq: 0, text: 'hi' }), textAt(1, 'working'));
 
-          return { status: 'started', queued: [] };
+          return startedAnswer();
         },
         // The backend answers the stop with the prompt's `done`, as the real one does.
         stopPrompt: () => {

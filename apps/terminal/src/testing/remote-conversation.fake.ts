@@ -6,6 +6,7 @@ import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { RemoteConversation } from '../client/conversation.service.js';
 import { liveFeed, promptStarted } from './live-feed.fake.js';
+import { startedAnswer } from '../chat/testing/prompt-answers.fake.js';
 
 export const FAKE_ID = conversationIdSchema.parse('00000000-0000-4000-8000-000000000001');
 export const FAKE_MAIN = sessionIdSchema.parse('main');
@@ -86,7 +87,7 @@ export async function openOnFake(params: { handlers?: FakeHandlers; runs?: Strea
 
       feed.publish(promptStarted({ seq: (run[0]?.seq ?? 1) - 1, text }), ...run);
 
-      return { status: 'started', queued: [] };
+      return startedAnswer();
     },
     stopPrompt: () => undefined,
     ...params.handlers,

@@ -7,12 +7,9 @@ import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { ClientHistoryMessage, HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
-import type {
-  ConversationDetails,
-  ConversationId,
-  SendPromptResponse,
-} from '@sheavly/protocol/server/server.types';
+import type { ConversationDetails, ConversationId } from '@sheavly/protocol/server/server.types';
 import { isMainSession } from '@sheavly/protocol/session/session.utils';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
@@ -172,7 +169,7 @@ export class RemoteConversation {
    * waiting. The run's entries come only on the conversation's stream (`follow`). Throws
    * `RefusedError` for a send the backend refused (`cannot_queue`, `unknown_skill`, ...).
    */
-  submit(text: string): Promise<SendPromptResponse> {
+  submit(text: string): Promise<PromptSent> {
     return this.#client.call('sendPrompt', { id: this.id, body: { text } });
   }
 

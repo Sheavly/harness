@@ -2,11 +2,13 @@ import type { EntryEvent } from '@sheavly/protocol/event/event.types';
 import type { ModelEffort } from '@sheavly/protocol/model/model.types';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
-import type { ModelChoice, SendPromptResponse } from '@sheavly/protocol/server/server.types';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
+import type { ModelChoice } from '@sheavly/protocol/server/server.types';
 import type { RunOutcome } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { Renderer } from '../../render/render.service.js';
+import { startedAnswer } from './prompt-answers.fake.js';
 import type { RunningTool } from '../../render/render.types.js';
 import { ChatSession } from '../chat-session.service.js';
 import type { ChatConversation, RunState, TurnOutcome } from '../chat.types.js';
@@ -28,7 +30,7 @@ const MODELS: ModelChoice[] = [
 export function fakeChatConversation(
   params: {
     skills?: string[];
-    answer?: (text: string) => Promise<SendPromptResponse>;
+    answer?: (text: string) => Promise<PromptSent>;
   } = {},
 ) {
   const submitted: string[] = [];
@@ -36,8 +38,7 @@ export function fakeChatConversation(
   let stops = 0;
   let model = FAST;
   const efforts = new Map<string, ModelEffort>();
-  const answer =
-    params.answer ?? (() => Promise.resolve({ status: 'started' as const, queued: [] }));
+  const answer = params.answer ?? (() => Promise.resolve(startedAnswer()));
   const conversation: ChatConversation = {
     submit: (text) => {
       submitted.push(text);

@@ -17,6 +17,7 @@ import {
 } from '../../testing/workbook-run.fake.js';
 import { connectBackend } from '../../client/backend.helper.js';
 import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
+import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
 
 // The same two replacements every workbook run test makes: the backend, and Git.
@@ -97,7 +98,7 @@ async function backendThatWakes() {
         feed.publish(taskEntry({ seq: 5, ended: true }), textEntry(6), done(7)),
       );
 
-      return { status: 'started', queued: [] };
+      return startedAnswer();
     },
     async *streamConversation({ body }) {
       if (!(body as { replay?: boolean }).replay) yield* feed.follow();

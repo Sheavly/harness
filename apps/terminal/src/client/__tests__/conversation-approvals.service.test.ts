@@ -12,6 +12,7 @@ import {
   textAt,
 } from '../../testing/remote-conversation.fake.js';
 import { promptStarted } from '../../testing/live-feed.fake.js';
+import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 
 async function* entries(...list: StreamEntry[]): AsyncIterable<StreamEntry> {
   yield* list;
@@ -110,7 +111,7 @@ describe('RemoteConversation: approvals', () => {
           order.push('prompt sent');
           feed.publish(promptStarted({ seq: 0, text: 'hi' }), doneAt(1));
 
-          return { status: 'started', queued: [] };
+          return startedAnswer();
         },
         async *streamConversation({ body }) {
           if (!(body as { approvals?: boolean }).approvals) {
