@@ -6,6 +6,7 @@ import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
 import { notifyAll } from '../sessions/listeners.helper.js';
 import type { TaskRegistry } from '../tasks/tasks.service.js';
+import { ChannelFollowers } from './channel-followers.service.js';
 import { closeLostChannels } from './lost-channels.helper.js';
 import {
   byteCursor,
@@ -17,6 +18,7 @@ import {
 } from './node-channel-entries.utils.js';
 import type { NodeRegistry } from './node-registry.service.js';
 import type {
+  ChannelEvent,
   ChannelPosition,
   LostChannels,
   NodeChannelStorage,
@@ -28,6 +30,8 @@ import { isOpenState } from './nodes.utils.js';
 /** What the writer knows of a channel it has begun: where it stands, and whether it still writes. */
 type Begun = ({ kind: 'sequence'; next: number } | { kind: 'bytes'; offset: number }) & {
   broken: boolean;
+  /** How many entries the store took: the place the next one has in the channel's log. */
+  written: number;
   /** The cursor of the newest entry the store took: what a child's `spawnedAt` can name. */
   stored?: string;
 };
@@ -51,6 +55,9 @@ type Begun = ({ kind: 'sequence'; next: number } | { kind: 'bytes'; offset: numb
 export class NodeChannelWriter {
   readonly #storage: NodeChannelStorage;
   readonly #begun = new Map<string, Begun>();
+  /** Channels whose node ended and whose `closed` entry is not stored yet: still being written. */
+  readonly #closing = new Map<string, Begun>();
+  readonly #followers = new ChannelFollowers();
   /** Every write, one after another. Never rejects: a failure is told, not thrown. */
   #written: Promise<void> = Promise.resolve();
   #failure: StoreError | undefined;
@@ -116,6 +123,28 @@ export class NodeChannelWriter {
     return this.#written;
   }
 
+  /**
+   * Calls `listener` for each entry of `channel` the store takes from now on, with its place in the
+   * channel's log, and once if the channel fails. Nothing of what was stored before is told: that
+   * is the store's, and `ordinal` lets a reader of it join the two with no gap and no repeat (read
+   * the store after following, and skip the entries it already held). Only a channel this writer
+   * writes is told of; one a stopped server left is read from the store. Returns the stop.
+   */
+  follow(params: { channel: string; listener: (event: ChannelEvent) => void }): () => void {
+    return this.#followers.follow(params);
+  }
+
+  /**
+   * Whether this writer may still write `channel`: it began it, no write of it has failed, and its
+   * node has not ended or its `closed` entry is still waiting to be stored. A channel with no
+   * `closed` entry that it does not write is left as it is: nothing more will come on it.
+   */
+  writing(channel: string): boolean {
+    const state = this.#begun.get(channel) ?? this.#closing.get(channel);
+
+    return state !== undefined && !state.broken;
+  }
+
   /** An entry of the registry's tree. Only an agent's is stored on a channel of its own here. */
   followAgent(entry: NodeEntry): void {
     const { node } = entry;
@@ -138,7 +167,7 @@ export class NodeChannelWriter {
 
     if (!parent) return;
 
-    const state: Begun = { kind: 'sequence', next: 1, broken: false };
+    const state: Begun = { kind: 'sequence', next: 1, broken: false, written: 0 };
 
     this.#begun.set(node.id, state);
     this.#write({ state, parent, entry: openedAgentEntry({ node, at: now() }) });
@@ -154,7 +183,7 @@ export class NodeChannelWriter {
 
     if (!parent) return;
 
-    const state: Begun = { kind: 'bytes', offset: 0, broken: false };
+    const state: Begun = { kind: 'bytes', offset: 0, broken: false, written: 0 };
 
     this.#begun.set(node.id, state);
     this.#write({ state, parent, entry: openedWorkEntry({ node, task, at: now() }) });
@@ -173,6 +202,7 @@ export class NodeChannelWriter {
     const cursor = byteCursor(Math.max(state.offset, task.outputLog?.bytes ?? 0));
 
     this.#begun.delete(node.id);
+    this.#closing.set(node.id, state);
     this.#write({ state, entry: closedEntry({ node, at: now(), cursor, task }) });
   }
 
@@ -191,6 +221,7 @@ export class NodeChannelWriter {
     if (state?.kind !== 'sequence') return;
 
     this.#begun.delete(node.id);
+    this.#closing.set(node.id, state);
     this.#write({
       state,
       entry: closedEntry({ node, at: now(), cursor: sequenceCursor(state.next) }),
@@ -238,18 +269,36 @@ export class NodeChannelWriter {
     const { state, entry, parent } = params;
 
     this.#written = this.#written.then(async () => {
-      if (state.broken) return;
+      if (!state.broken) await this.#store({ state, entry, parent });
 
-      try {
-        const spawnedAt = this.#spawnedAt(parent);
-
-        await this.#storage.log(entry.channel).append({ ...entry, ...spawnedAt });
-        state.stored = entry.cursor;
-      } catch (caughtError) {
-        state.broken = true;
-        this.#fail(caughtError);
-      }
+      // Stored, or given up on: either way nothing more is written to a channel that closed.
+      if (entry.type === 'closed') this.#closing.delete(entry.channel);
     });
+  }
+
+  /** Appends `entry` and tells the channel's followers; a failure marks the channel, never throws. */
+  async #store(params: {
+    state: Begun;
+    entry: ChannelEntry;
+    parent?: { channel?: string; state?: Begun } | undefined;
+  }): Promise<void> {
+    const { state, entry, parent } = params;
+
+    try {
+      const stored = { ...entry, ...this.#spawnedAt(parent) };
+
+      await this.#storage.log(entry.channel).append(stored);
+      state.stored = entry.cursor;
+      this.#followers.tell({
+        channel: entry.channel,
+        event: { type: 'stored', entry: stored, ordinal: state.written },
+      });
+      state.written += 1;
+    } catch (caughtError) {
+      state.broken = true;
+      this.#followers.tell({ channel: entry.channel, event: { type: 'failed' } });
+      this.#fail(caughtError);
+    }
   }
 
   /** The `spawnedAt` of a child of `parent`: none for a node with no parent; throws if unlinkable. */
