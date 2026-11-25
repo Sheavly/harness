@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { ConversationsError } from '@sheavly/host/errors/conversations.errors';
+import { SubscriptionError } from '@sheavly/host/errors/subscription.errors';
 import { ApprovalRequestError } from '@sheavly/runtime/errors/approvals.errors';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import { API_ROUTES } from '@sheavly/protocol/api/api.constants';
@@ -19,6 +20,23 @@ const CONVERSATION_FAILURES: Record<ConversationsError['reason'], (message: stri
     not_set_up: (message) => ({ status: 409, code: 'not_set_up', message }),
     // The prompt cannot wait in the queue (skills picked as parts, too long, a full queue).
     cannot_queue: (message) => ({ status: 409, code: 'cannot_queue', message }),
+  };
+
+/**
+ * Each way a subscription is refused. A request the channel cannot be asked for is the caller's
+ * to fix; a cursor the log does not hold is a request that was understood and cannot be served,
+ * so a client asks again from `start` or a tail; a conversation that serves as many as it may is
+ * `429`, and a client asks again when one has ended.
+ */
+const SUBSCRIPTION_FAILURES: Record<SubscriptionError['reason'], (message: string) => ApiFailure> =
+  {
+    bad_request: (message) => ({ status: 400, code: 'bad_request', message }),
+    cursor_out_of_range: (message) => ({ status: 422, code: 'cursor_out_of_range', message }),
+    too_many_subscriptions: (message) => ({
+      status: 429,
+      code: 'too_many_subscriptions',
+      message,
+    }),
   };
 
 /**
@@ -50,6 +68,10 @@ export function toApiFailure(error: unknown): ApiFailure {
 
   if (error instanceof ConversationsError) {
     return CONVERSATION_FAILURES[error.reason](error.message);
+  }
+
+  if (error instanceof SubscriptionError) {
+    return SUBSCRIPTION_FAILURES[error.reason](error.message);
   }
 
   if (error instanceof SetupError) return SETUP_FAILURES[error.reason](error.message);

@@ -15,6 +15,10 @@ import {
   switchModelRequestSchema,
 } from '../server/server.validator.js';
 import { streamEntrySchema } from '../stream/stream.validator.js';
+import {
+  subscribeFrameSchema,
+  subscribeRequestSchema,
+} from '../subscription/subscription.validator.js';
 import { keyCheckSchema } from '../model/model.validator.js';
 import {
   adaptersResponseSchema,
@@ -56,7 +60,11 @@ export const OPENAPI_VERSION = '3.2.0';
 /** The `Last-Event-ID` header a stream resumes after: the last entry's `seq` a client got. */
 export const LAST_EVENT_ID_HEADER = 'Last-Event-ID';
 
-/** Each SSE frame's event name on a stream route: every frame is one `StreamEntry`, as JSON. */
+/**
+ * The SSE event name of a frame that carries an entry, as JSON: on the conversation's stream every
+ * frame is one `StreamEntry`; on the channel stream it is an entry of a channel, beside the `head`
+ * and `end` frames.
+ */
 export const ENTRY_EVENT = 'entry';
 
 /**
@@ -173,7 +181,16 @@ export const API_ROUTES = {
     path: '/conversations/{id}/stream',
     summary: 'Follow the whole conversation: every entry, filtered, while the client stays',
     body: streamQuerySchema,
-    response: { status: 200, stream: streamEntrySchema },
+    response: { status: 200, stream: streamEntrySchema, resumesWithLastEventId: true },
+  },
+  streamChannels: {
+    effect: 'read',
+    method: 'query',
+    path: '/conversations/{id}/subscribe',
+    summary:
+      'Follow node channels: the stored history each position asks for, then what is stored next, as entry, head and end frames',
+    body: subscribeRequestSchema,
+    response: { status: 200, stream: subscribeFrameSchema },
   },
   queryStoredConversations: {
     effect: 'read',

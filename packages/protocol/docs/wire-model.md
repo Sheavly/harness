@@ -3,8 +3,9 @@
 How a front end follows a conversation's agents, commands and services. The decision is
 [#438](https://github.com/Sheavly/harness/issues/438); this page is its specification. **The
 schemas are built** and described in [the contract](contract.md#the-wire-models-schemas). **The
-rest is not**: no route serves the model, no registry produces it and no store keeps it. That
-work is split into the issues in "What this changes" below, and until it lands the single
+rest is only partly**: one route serves the node channels (`QUERY /conversations/{id}/subscribe`,
+see "What is built of subscriptions" below), but the tree channel and a command's output are not
+served. That work is split into the issues in "What this changes" below, and until it lands the single
 combined stream in the contract is the wire. Where this page and a schema differ, implement
 against the schema and treat the difference as a defect in one of the two, to fix.
 
@@ -213,8 +214,16 @@ its log still holds, so a client asks again from `start` or a snapshot. A consum
 keep up is cut off per channel, as above, and a subscription at `from: now` on a channel nothing
 writes to is a held connection, so the number of connections a conversation serves is bounded too.
 The schema bounds each subscription, not the sum: 32 channels of 65,536 bytes or 1,000 entries are
-all in bounds, so **#426 sets the total one request may read**, that connection bound, and a
-timeout or a limit on connections that claim `approvals` and never answer.
+all in bounds, so the server bounds the sum too, and the connections: a request reads at most
+8 MiB of stored history across its channels and is refused as `bad_request` for more, never cut
+(a tail on a numbered channel is charged for what it sends, not for what it leaves out), and a
+conversation serves at most 64 subscriptions at once, refused as `too_many_subscriptions` (`429`).
+What a conversation's subscriptions hold is bounded in bytes too, 128 MiB all together, from the
+moment their history is being read: history that does not fit refuses the request the same way, and
+a live frame that does not fit cuts its channel off. A client that leaves while its history is read
+stops that read.
+`approvals` needs the tree channel, which a subscription cannot follow yet, so no request can claim
+it.
 
 Every route the model adds is private: it needs the bearer token like every route that does not
 say `public` (the route table in [the contract](contract.md#what-a-server-accepts-and-answers)
@@ -298,14 +307,27 @@ Retention is per channel: 128 MiB for a channel, 1 GiB and 5,000 channels for a 
 channel that refuses an entry for a limit takes no more. The layout, the rules and the limits are
 in the [storage design](../../storage/docs/design.md).
 
+What is built of subscriptions: `QUERY /conversations/{id}/subscribe` (`streamChannels`) serves the
+channels the store keeps for a conversation's nodes (an agent's, a command's and a service's, the
+last two with their `opened` and `closed` entries), stored history and then what the node channel
+writer stores next, joined by each entry's place in its log so none is missed or sent twice. The
+tree channel is not served, and a command's output is not in a channel: a request for the tree is
+`not_found`, with the same message as for a channel that does not exist or belongs to another
+conversation. A channel with more than 1,000 live frames
+waiting for its consumer, or whose frames would take the conversation's subscriptions past what they
+may hold, is cut off on that channel (`end` with `cut_off`), and a channel whose storage failed, or
+that no writer has, ends as `failed`. A conversation that closes ends its channels with their
+`closed` entries, which a client reads like any other. The client has no reader for these frames
+yet: they carry no `id`, which its stream reader requires.
+
 ## Transport
 
 HTTP with server-sent events. The envelope does not depend on the transport. A WebSocket is
 reserved for an interactive attach to a task, if input to tasks is ever built; it is not part of
-this design. The server checks the `Origin` and `Host` of every request (#435, built): it lands
-before the subscribe endpoint (#426) and the complete output (#428), which expose more through the
-same bearer token, so that output with secrets is never newly readable on a server without the
-check. A request for a name the server does not list, or that carries an origin it does not list,
+this design. The server checks the `Origin` and `Host` of every request (#435, built): it came
+before the subscribe endpoint and comes before the complete output (#428), which expose more
+through the same bearer token, so that output with secrets is never newly readable on a server
+without the check. A request for a name the server does not list, or that carries an origin it does not list,
 is `403 forbidden` before any route, public ones included; the names and origins are
 `SERVER_ALLOWED_HOSTS` and `SERVER_ALLOWED_ORIGINS` ([the API](../../../apps/backend/docs/api.md#security)).
 

@@ -31,7 +31,7 @@ function successOf(response: ApiResponse): Record<string, unknown> {
   if ('stream' in response) {
     // OpenAPI 3.2's `itemSchema`: each SSE event's data is one item.
     return {
-      description: 'Server-sent events, one `entry` per stream entry',
+      description: 'Server-sent events: each frame’s data is one item',
       content: { 'text/event-stream': { itemSchema: refTo(response.stream) } },
     };
   }
@@ -39,7 +39,7 @@ function successOf(response: ApiResponse): Record<string, unknown> {
   return { description: 'Done' };
 }
 
-/** The params of `route`: each `{param}` in its path, and `Last-Event-ID` for a stream it resumes. */
+/** The params of `route`: each `{param}` in its path, and `Last-Event-ID` for a stream that resumes with it. */
 function parametersOf(route: ApiRoute): Record<string, unknown>[] {
   const names = [...route.path.matchAll(/\{(\w+)\}/g)].map((match) => match[1]);
   const pathParams = names.map((name) => ({
@@ -49,7 +49,7 @@ function parametersOf(route: ApiRoute): Record<string, unknown>[] {
     schema: { type: 'string' },
   }));
 
-  if (route.method !== 'query') return pathParams;
+  if (!('resumesWithLastEventId' in route.response)) return pathParams;
 
   return [
     ...pathParams,

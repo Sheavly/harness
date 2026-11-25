@@ -11,10 +11,14 @@ export type RouteBody<N extends RouteName> = (typeof API_ROUTES)[N] extends { bo
 
 /**
  * What a route answers on success: JSON in `schema`, nothing (`204`), or a server-sent event
- * stream whose every `entry` frame's data is one `stream` value.
+ * stream whose every frame's data is one `stream` value. A stream that a client resumes with the
+ * `Last-Event-ID` header (each frame has an `id`) says so with `resumesWithLastEventId`; one whose
+ * frames carry no `id` is resumed by what its request body says.
  */
 export type ApiResponse =
-  { status: 200 | 201; schema: z.ZodType } | { status: 204 } | { status: 200; stream: z.ZodType };
+  | { status: 200 | 201; schema: z.ZodType }
+  | { status: 204 }
+  | { status: 200; stream: z.ZodType; resumesWithLastEventId?: true };
 
 /**
  * How a route's method follows from what it does, so no client or proxy guesses wrong: a read is

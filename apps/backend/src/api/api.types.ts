@@ -52,7 +52,7 @@ export type ApiOptions = {
 
 /** A failure, as the API answers it: an HTTP status and one of the protocol's codes. */
 export type ApiFailure = {
-  status: 400 | 401 | 403 | 404 | 409 | 422 | 500 | 507;
+  status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 507;
   code: ServerErrorCode;
   message: string;
 };

@@ -36,8 +36,10 @@ workspace package, and the layout check holds it to that.
 
 ## The wire model's schemas
 
-The schemas of [the wire model](wire-model.md) are in the contract beside the stream's, and
-nothing reads them yet: no route serves them, no registry produces them and no store keeps them.
+The schemas of [the wire model](wire-model.md) are in the contract beside the stream's.
+`SubscribeRequest`, `SubscribeFrame` and the channel entries are what
+`QUERY /conversations/{id}/subscribe` reads and answers; no route reads the rest yet (the tree, a
+node command and the snapshot).
 They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`,
 `ChannelEntry`, `ChannelLog`, `TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`,
 `ChannelHeadFrame`, `ChannelEndFrame`, `SubscribeFrame`, `MessageNodeRequest`, `PromptSent`).
@@ -415,6 +417,7 @@ operation carries `security: []`:
 | `POST /conversations/{id}/stop`                      | bearer | none                       | nothing (`204`)               |
 | `POST /conversations/{id}/approvals/{approval}`      | bearer | `AnswerApprovalRequest`    | nothing (`204`)               |
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
+| `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |
 | `QUERY /stored-conversations`                        | bearer | `StoredConversationsQuery` | `StoredConversationsResponse` |
 | `POST /stored-conversations/{id}/reopen`             | bearer | none                       | `StartConversationResponse`   |
 | `GET /setup`                                         | bearer | none                       | `Setup`                       |

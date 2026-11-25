@@ -1,6 +1,3 @@
-import { serve } from '@hono/node-server';
-import { once } from 'node:events';
-import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { watchApprovals } from '@sheavly/client/approvals/approvals.helper';
 import { createClient } from '@sheavly/client/client/client.helper';
@@ -25,12 +22,7 @@ const servers = useOpenedServers();
 describe('approvals over a replayed history that holds line separators', () => {
   it('are still asked, and answered, by a client that replays the history', async () => {
     const api = testApi({ go: [asks, reply('done')] });
-    const server = serve({ fetch: api.app.fetch, hostname: '127.0.0.1', port: 0 });
-
-    servers.add(server);
-    await once(server, 'listening');
-
-    const url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+    const url = await servers.listen(api.app.fetch);
     const client = createClient({ url, token: TEST_TOKEN });
     const { id } = await client.call('startConversation', { body: {} });
     const { sessions, mainSession } = api.conversations.get(conversationIdSchema.parse(id)).harness;
