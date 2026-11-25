@@ -2880,6 +2880,22 @@
           }
         ]
       },
+      "ChannelEntry": {
+        "anyOf": [
+          { "$ref": "#/components/schemas/ChannelBoundary" },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "updated" },
+              "node": { "$ref": "#/components/schemas/NodeInfo" }
+            },
+            "required": ["cursor", "at", "channel", "type", "node"]
+          }
+        ]
+      },
       "ChannelLog": {
         "type": "array",
         "items": {
@@ -3136,6 +3152,32 @@
           "approvals": { "type": "boolean" }
         },
         "required": ["subscriptions"]
+      },
+      "ChannelHeadFrame": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "const": "head" },
+          "channel": { "$ref": "#/components/schemas/ChannelName" },
+          "cursor": { "$ref": "#/components/schemas/Cursor" }
+        },
+        "required": ["type", "channel", "cursor"]
+      },
+      "ChannelEndFrame": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "const": "end" },
+          "channel": { "$ref": "#/components/schemas/ChannelName" },
+          "reason": { "type": "string", "enum": ["completed", "cut_off", "failed"] },
+          "cursor": { "$ref": "#/components/schemas/Cursor" }
+        },
+        "required": ["type", "channel", "reason"]
+      },
+      "SubscribeFrame": {
+        "anyOf": [
+          { "$ref": "#/components/schemas/ChannelEntry" },
+          { "$ref": "#/components/schemas/ChannelHeadFrame" },
+          { "$ref": "#/components/schemas/ChannelEndFrame" }
+        ]
       },
       "MessageNodeRequest": {
         "type": "object",

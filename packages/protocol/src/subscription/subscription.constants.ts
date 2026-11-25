@@ -20,3 +20,23 @@ export const TAIL_PATTERN = /^tail:[1-9]\d{0,14}$/;
 
 /** The text before the number in a `tail` position. */
 export const TAIL_PREFIX = 'tail:';
+
+/**
+ * The server-sent event name of a frame that says where a channel stood when a subscription at
+ * `now` opened. It is also the `type` of that frame's data. A frame that carries an entry of a
+ * channel is named `entry`, as on the stream (`ENTRY_EVENT`).
+ */
+export const HEAD_EVENT = 'head';
+
+/** The event name, and the `type`, of the frame that ends one channel of a subscription. */
+export const END_EVENT = 'end';
+
+/**
+ * Why a channel of a subscription ended. `completed`: its `closed` entry was delivered and nothing
+ * follows. `cut_off`: this consumer did not keep up with it, or what the conversation's
+ * subscriptions hold for their consumers left no room for it, so it stopped and the client resumes
+ * from the cursor the frame carries. `failed`: no more of its entries will come: storing the channel
+ * failed, or no writer has it. A reopened conversation closes such a channel as `lost`. The other
+ * channels go on.
+ */
+export const CHANNEL_END_REASONS = ['completed', 'cut_off', 'failed'] as const;

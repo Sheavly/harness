@@ -38,8 +38,9 @@ workspace package, and the layout check holds it to that.
 
 The schemas of [the wire model](wire-model.md) are in the contract beside the stream's, and
 nothing reads them yet: no route serves them, no registry produces them and no store keeps them.
-They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`, `ChannelLog`,
-`TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`, `MessageNodeRequest`, `PromptSent`).
+They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`,
+`ChannelEntry`, `ChannelLog`, `TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`,
+`ChannelHeadFrame`, `ChannelEndFrame`, `SubscribeFrame`, `MessageNodeRequest`, `PromptSent`).
 JSON Schema cannot say what a refinement says, so a client that is not TypeScript reads the
 shapes, patterns and caps from it and takes the rest from the zod schemas and this page: the
 state, end and outcome of a node agreeing; a snapshot's links; a request's duplicates, `snapshot`
@@ -69,8 +70,10 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   with a `closed` one; `channelLogSchema` checks that the entries of one channel have that shape
   (opened first, closed once and last, one cursor kind, no gap in a sequence, no step back in
   bytes). The log is not bounded: it has no length cap, its entries keep any extra field, and only
-  a type name is capped, so whoever feeds it bounds the input. What an entry of another type holds
-  is the schema of the issue that serves it.
+  a type name is capped, so whoever feeds it bounds the input. `ChannelEntry` is every entry a
+  node's channel holds today: `opened`, `closed` and an agent's `updated` (the node as it is now,
+  numbered after `opened`, never a command's). What an entry of another type holds is the schema
+  of the issue that serves it.
 - **The tree channel** (`tree/`): its entries are numbered. `node_opened`, `node_updated` and
   `node_closed` carry a node; `approval_requested`, `approval_resolved` and `approval_cancelled`
   carry the node that asked; the queue's changes, a storage failure and an extension's event are
@@ -86,14 +89,18 @@ approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `ta
   cursor. The request holds at most `MAX_SUBSCRIPTIONS` channels, none twice, a `tail` of at most
   `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries on the tree
   channel, and `approvals` only with the tree channel. A cursor the log cannot start at is
-  `cursor_out_of_range`, which only the server can tell.
+  `cursor_out_of_range`, which only the server can tell. What a frame of its stream holds is
+  `SubscribeFrame`, one of three: an entry of a channel (event `entry`, the envelope carries its
+  own channel and cursor), `ChannelHeadFrame` (event `head`: where a channel stood when a
+  subscription at `now` opened), or `ChannelEndFrame` (event `end`: that channel ended, as
+  `completed`, `cut_off` or `failed`, with the last cursor delivered). A frame has no `id`.
 - **A command** (`node-command/`): `MessageNodeRequest` is the text sent to an agent node, whose
   sender is the caller. `PromptSent` is the answer to a prompt sent: the node that carries the run
   and, for a prompt that started, the id of its user message. A command to a node that ended is
   `node_ended`. Cancelling a node has no body and no answer.
 
-The agent channel's entries and a command's output entries are not here: the issues that serve
-them define them.
+An agent's other entries, a command's output entries and the tree's are not here: the issues that
+serve them define them.
 
 ## Version
 

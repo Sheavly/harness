@@ -92,6 +92,25 @@ const nodeClosedSchema = entrySchema
     { error: 'a closed entry has the state its outcome comes from', path: ['state'] },
   );
 
+/**
+ * A change to a live agent: the node as it is now. Only an agent's channel, which is numbered, has
+ * them, between its `opened` entry and its `closed` one, so its cursor is never the first.
+ */
+const nodeUpdatedSchema = entrySchema
+  .extend({
+    channel: nodeIdSchema,
+    type: z.literal('updated'),
+    node: nodeInfoSchema,
+  })
+  .refine(
+    ({ channel, cursor, node }) =>
+      node.id === channel &&
+      node.kind === 'agent' &&
+      sequenceCursorSchema.safeParse(cursor).success &&
+      cursorNumber(cursor) >= 1,
+    { error: 'an updated entry is a live agent, numbered after its opened entry', path: ['node'] },
+  );
+
 /** The first entry of the tree channel: the conversation opened it. */
 export const treeOpenedSchema = entrySchema
   .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('opened') })
@@ -119,6 +138,14 @@ export const channelBoundarySchema = z.union([
   treeOpenedSchema,
   treeClosedSchema,
 ]);
+
+/**
+ * Every entry a channel holds today, and so every entry a subscription serves: the two boundary
+ * entries and an agent's `updated`. A command's or a service's output is not an entry of its
+ * channel (the complete output is the output store's), and the tree channel's other entries are
+ * the tree's (`treeChannelEntrySchema`).
+ */
+export const channelEntrySchema = z.union([channelBoundarySchema, nodeUpdatedSchema]);
 
 /**
  * One channel's entries, oldest first, checked for the shape of a channel (`isWellFormedChannelLog`):

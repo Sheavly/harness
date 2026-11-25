@@ -5,6 +5,7 @@ import { MAX_ENTRY_TYPE_CHARS } from '../channel.constants.js';
 import {
   byteCursorSchema,
   channelBoundarySchema,
+  channelEntrySchema,
   channelLogSchema,
   cursorSchema,
   sequenceCursorSchema,
@@ -252,5 +253,41 @@ describe('the log of one channel', () => {
     ],
   ])('refuses %s', (_name, entries) => {
     expect(accepted(entries)).toBe(false);
+  });
+});
+
+describe('the updated entry of an agent channel', () => {
+  const updated = (more: object = {}) => ({
+    channel: 'agent-1',
+    cursor: 's3',
+    at: 2,
+    type: 'updated',
+    node: AGENT,
+    ...more,
+  });
+  const served = (value: unknown) => channelEntrySchema.safeParse(value).success;
+
+  it('is the agent as it is now, numbered after its opened entry', () => {
+    expect(served(updated())).toBe(true);
+    expect(served(updated({ cursor: 's1' }))).toBe(true);
+  });
+
+  it.each([
+    ['one numbered like the opened entry', updated({ cursor: 's0' })],
+    ['one counted in bytes', updated({ cursor: 'b3' })],
+    ['a command’s', updated({ channel: 't1', cursor: 's3', node: COMMAND })],
+    ['one of another node than its channel’s', updated({ channel: 'agent-2' })],
+    ['one with no node', updated({ node: undefined })],
+    ['one on the tree channel', updated({ channel: 'tree' })],
+  ])('refuses %s', (_name, value) => {
+    expect(served(value)).toBe(false);
+  });
+
+  it('is served with the two boundary entries, and no other entry a channel might hold', () => {
+    expect(served(opened(AGENT, 's0'))).toBe(true);
+    expect(
+      served({ channel: 'agent-1', cursor: 's9', at: 2, type: 'closed', state: 'failed' }),
+    ).toBe(true);
+    expect(served({ channel: 'agent-1', cursor: 's4', at: 2, type: 'event' })).toBe(false);
   });
 });

@@ -1744,6 +1744,22 @@
         }
       ]
     },
+    "ChannelEntry": {
+      "anyOf": [
+        { "$ref": "#/$defs/ChannelBoundary" },
+        {
+          "type": "object",
+          "properties": {
+            "cursor": { "$ref": "#/$defs/Cursor" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "channel": { "$ref": "#/$defs/NodeId" },
+            "type": { "type": "string", "const": "updated" },
+            "node": { "$ref": "#/$defs/NodeInfo" }
+          },
+          "required": ["cursor", "at", "channel", "type", "node"]
+        }
+      ]
+    },
     "ChannelLog": {
       "type": "array",
       "items": {
@@ -1996,6 +2012,32 @@
         "approvals": { "type": "boolean" }
       },
       "required": ["subscriptions"]
+    },
+    "ChannelHeadFrame": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "head" },
+        "channel": { "$ref": "#/$defs/ChannelName" },
+        "cursor": { "$ref": "#/$defs/Cursor" }
+      },
+      "required": ["type", "channel", "cursor"]
+    },
+    "ChannelEndFrame": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "end" },
+        "channel": { "$ref": "#/$defs/ChannelName" },
+        "reason": { "type": "string", "enum": ["completed", "cut_off", "failed"] },
+        "cursor": { "$ref": "#/$defs/Cursor" }
+      },
+      "required": ["type", "channel", "reason"]
+    },
+    "SubscribeFrame": {
+      "anyOf": [
+        { "$ref": "#/$defs/ChannelEntry" },
+        { "$ref": "#/$defs/ChannelHeadFrame" },
+        { "$ref": "#/$defs/ChannelEndFrame" }
+      ]
     },
     "MessageNodeRequest": {
       "type": "object",
