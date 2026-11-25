@@ -270,6 +270,7 @@ Every failure is `{ error: { code, message } }` (`ServerError`):
 | ------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 400    | `bad_request`      | a body that doesn't parse or is over 5 MB, or an approval answer its request didn't offer; a handshake body over 1 KB, or a nonce that is missing, shorter than 22 or longer than 86 characters, or not unpadded base64url (the message never repeats the nonce) |
 | 401    | `unauthorized`     | no token, or a wrong one, on any route but `GET /health` and `QUERY /handshake`; also an unknown path, an `OPTIONS` request and another method on those two paths                                                                                                |
+| 403    | `forbidden`        | a request whose `Host` is not one of the server's names, or that carries an `Origin` the server does not list, on any route, before the token is looked at; also a setup that hands out access on a server that listens beyond this machine                      |
 | 404    | `not_found`        | no such conversation (or route), or one already closed                                                                                                                                                                                                           |
 | 404    | `unknown_approval` | no approval waiting with that id                                                                                                                                                                                                                                 |
 | 409    | `session_running`  | a prompt is still being prepared or running in that conversation, for a client that sends with `send` in-process                                                                                                                                                 |
@@ -285,6 +286,25 @@ A prompt that can't start is answered with an error before its stream opens.
 - `serve.ts` binds to `127.0.0.1` by default: the backend runs commands for whoever reaches it.
 - The token is compared in constant time, sent only in a header (the stream is `QUERY` read with
   `fetch`, never `EventSource`, so it is never in a URL), and never logged.
+- **The `Host` and `Origin` of a request are checked first**, before the public routes and before
+  the token, so a web page whose name was made to resolve to this machine (DNS rebinding) cannot
+  reach any route. The `Host` names a request may carry are `localhost`, `127.0.0.1` and `[::1]`
+  always, the name the server is bound to unless that is a wildcard address, and those in
+  `SERVER_ALLOWED_HOSTS` (comma-separated host names, for a server reached by its name; `0.0.0.0`
+  is never one, since a page can reach a server through it). Only the name is compared, never the
+  port: a port forwarded over SSH carries the port it forwards, not the server's. A request with
+  any `Origin` is refused unless `SERVER_ALLOWED_ORIGINS` lists it (comma-separated origins such as
+  `https://app.example`; none by default, and `Origin: null` never): the terminal, the editor
+  extension and `curl` send none. Listing an origin only lifts that refusal: the server sends no
+  CORS headers, so a listed page still cannot read an answer or send the token (a preflight is
+  answered `401`), and the list is a step toward a browser front end, not one. A cross-site `GET`
+  that carries no `Origin` (an image, a navigation) reaches only `GET /health` with a loopback
+  `Host`, and cannot read the answer. The refusal is `403 forbidden` with a fixed message that repeats
+  nothing the request sent. A `Host` that is not a name at all (a user name, a path) is refused too
+  (the server's own request builder answers some of those `400` before the check is reached).
+  `request-origin.utils.ts` holds the rules, and `host-origin-check.test.ts` sends a foreign `Host`
+  and an `Origin` to a listening server over every route of `API_ROUTES`, so a route added later
+  is covered, and a public one cannot be left outside the check.
 - **Two routes answer without the token**, `GET /health` and `QUERY /handshake`, so a client can
   check what it found before it trusts it with the token. They reveal only that Sheavly runs on
   that address and its two versions (the backend's and the protocol's); health has exactly the keys
