@@ -22,13 +22,14 @@ against the schema and treat the difference as a defect in one of the two, to fi
   `startedByCall`. A command or service is a task alone. A task is one `TaskInfo` with optional
   fields for the different kinds, and its statuses are `running`, `completed`, `failed` and
   `cancelled`. Nothing records work lost when a server stops.
-- No route lists tasks or cancels one task. A task's complete output is kept (`outputLog`, and the
-  output store's byte-ranged `read`), but only a bounded preview travels on the stream; the
-  subscribe route serves the complete output as its node's channel (see "Command and service
-  channels").
-- `POST /conversations/{id}/prompts` already answers at once with `{ status, queued }` and never
-  with a stream; what the prompt does arrives on the conversation's stream. (The issue that
-  started this design described an older shape, so #429 is narrower than its title.)
+- No route lists tasks. A task's complete output is kept (`outputLog`, and the output store's
+  byte-ranged `read`), but only a bounded preview travels on the stream; the subscribe route serves
+  the complete output as its node's channel (see "Command and service channels"). A node is
+  cancelled, and the main agent messaged, by node (see "Commands").
+- `POST /conversations/{id}/prompts` answers at once and never with a stream: with `PromptSent`,
+  the agent node that carries the run and the message a started prompt became; what the prompt does
+  arrives on the conversation's stream and the node's channel. (The issue that started this design
+  described an older shape, so #429 was narrower than its title.)
 
 What that costs: a front end that wants one sub-agent filters the whole tree's firehose; it cannot
 follow a command without reading the disk; two registries describe one thing; and the stored
@@ -303,25 +304,45 @@ marks the two that are).
 
 ## Commands
 
-A command returns at once; what it did arrives on a subscription, never in its own answer. That
-is already so for `POST .../prompts`, which answers `{ status, queued }` today (see "What exists
-today"). The schema of the answer the model has (`PromptSent`) adds the ids of what the prompt
-made: the agent node whose channel carries the run and, for a prompt that started, the id of the
-user message it became. A prompt that waits in the queue has no message yet, so its answer has
-none, and the tree channel's `prompt_started` entry names the message when it starts. A command
-is addressed **by node**, and the effects arrive on the channels.
+A command returns at once; what it did arrives on a subscription, never in its own answer
+(#429, built). `POST .../prompts` answers `PromptSent`: the agent node whose channel carries the
+run (the main agent's) and, for a prompt that started, the id of the user message it became,
+which is read as the prompt starts and is the one the tree channel's `prompt_started` names. A
+prompt that waits in the queue has no message yet, so its answer has none. A command is addressed
+**by node**, and the effects arrive on the channels.
 
-- **Cancel**: `POST …/nodes/{node}/cancel`, for every kind of node, with today's kill semantics.
-  It has no body and no answer, so it has no schema.
-- **Send a message**: `POST …/nodes/{node}/messages`, to an agent node. The request
-  (`MessageNodeRequest`) holds only the text: who sent it is the caller, so a message to a
-  sub-agent and the user's steering are one command with a different sender. #429 names only the
-  route; this is a decision of the schema work, open to the owner.
-- **A command to a node that ended** is `node_ended`, apart from a node that is not there
-  (`not_found`). The node is resolved inside the conversation the path names, as a channel is: a
-  node of another conversation is `not_found` too, and existence is decided before `node_ended`,
-  so a client learns nothing about a node it cannot reach.
+- **Cancel**: `POST …/nodes/{node}/cancel`, no body, `204`. A command, a service and a sub-agent
+  are killed through their task, as the agents' `cancel_task` does, and the request waits until the
+  process has exited **for at most 10 seconds** (`NODE_CANCEL_WAIT_MS`): a process that cannot be
+  killed never ends its task, and the answer is then that the kill was sent. The main agent is only
+  signalled, as `POST …/stop` does (the conversation's one prompt switch), and with no prompt
+  running that does nothing. A kind nothing can cancel (an extension's) is `400 bad_request`. The
+  agent that started the node is **not told** it was cancelled (no notice is queued, as for any
+  cancel); it learns from the node's end on the tree. Whether the user's cancel should tell it is
+  open.
+- **Send a message**: `POST …/nodes/{node}/messages`, `{ text }`, `204`. The request
+  (`MessageNodeRequest`) holds only the text: who sent it is the caller, which here is the user. The
+  main agent takes it at its next model call. An inbox holds at most 100 messages and 400,000
+  characters together (`MAX_QUEUED_MESSAGES`, `MAX_QUEUED_MESSAGE_CHARS`) until the agent takes
+  them: past that a message is `409 cannot_queue`, as for a full queue, until the agent has taken
+  them (a running agent at its next model call, an idle one only at its next prompt). **A sub-agent is refused
+  (`400 bad_request`)**: it is messaged only by the agent that started it, a rule of the session
+  registry that this keeps rather than changes, so the user cannot steer a sub-agent through the
+  API yet. A command, a service and an extension's node are no agent (`400`).
+- **A command to a node that ended** is `node_ended` (`409`), apart from a node that is not there
+  (`404 not_found`). A node that ended counts as ended after it is released too: a conversation
+  releases a finished node once its end is reported, soon after it ends, and the registry remembers
+  the ids it released. **After a restart and a reopen the nodes of the first life are history**: the
+  tree lists them (the main agent `lost`, an ended command as it ended), but a command to one is
+  `404 not_found`, since the reopened conversation's live nodes are new ones; the live main agent's
+  node comes from the tree and from the answer of a prompt (seen on a real server, not a gap the
+  commands close yet). The node is resolved inside the conversation the path names, as a channel is: a node
+  of another conversation is `not_found` too, as is an id that is not a node id's shape, and
+  existence is decided before `node_ended`, so a client learns nothing about a node it cannot
+  reach.
 - **Stop, yield and the approval answer stay as they are.**
+- Any token holder may command any node of any conversation the server keeps, as it may read it
+  (see "Who may read what"): there is no scope yet.
 
 **Answering an approval** stays `POST /conversations/{id}/approvals/{approval}`. It is answered by
 its id inside the conversation the path names, once, with a response among the options the
