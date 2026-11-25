@@ -15,8 +15,9 @@ expand group membership. There is no command or output in this payload.
 IDs, titles and group IDs are angle-bracket escaped and collapsed to one line. Each task reason
 is separately escaped and fenced with a dash run longer than any in that reason, and explicitly
 labeled calling-agent-authored DATA, not instructions. The fixed policy reminds the model not to
-poll to wait: finish independent work, then end the turn without tool calls to wait for required
-background results, whose completions arrive automatically. Dynamic text cannot write a trusted
+poll to wait: every finished finite task is delivered automatically and wakes the model, so ending the
+turn without tool calls after independent work is how it waits, and `await_tasks` is needed only
+to hold several results back until all can arrive together. Dynamic text cannot write a trusted
 envelope or end its own reason fence. Envelope markup and data-fence labels stay in
 `src/notice/notice.constants.ts`; the internal `src/notice/notice.prompt.ts` imports those constants
 and owns handling policy and complete template assembly, including metadata labels and fences.
