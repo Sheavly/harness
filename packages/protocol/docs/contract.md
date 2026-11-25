@@ -416,11 +416,13 @@ operation carries `security: []`:
 | `PUT /conversations/{id}/model`                      | bearer | `SwitchModelRequest`       | nothing (`204`)               |
 | `GET /conversations/{id}/messages`                   | bearer | none                       | `MessagesResponse`            |
 | `QUERY /conversations/{id}/skills`                   | bearer | `SkillsQuery`              | `SkillsResponse`              |
-| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `SendPromptResponse`          |
+| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `PromptSent`                  |
 | `POST /conversations/{id}/yield`                     | bearer | none                       | `YieldPromptResponse`         |
 | `GET /conversations/{id}/queue`                      | bearer | none                       | `QueuedPrompts`               |
 | `PUT /conversations/{id}/queue`                      | bearer | `QueuedPrompts`            | nothing (`204`)               |
 | `POST /conversations/{id}/stop`                      | bearer | none                       | nothing (`204`)               |
+| `POST /conversations/{id}/nodes/{node}/cancel`       | bearer | none                       | nothing (`204`)               |
+| `POST /conversations/{id}/nodes/{node}/messages`     | bearer | `MessageNodeRequest`       | nothing (`204`)               |
 | `POST /conversations/{id}/approvals/{approval}`      | bearer | `AnswerApprovalRequest`    | nothing (`204`)               |
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
 | `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |

@@ -174,7 +174,7 @@
     "/conversations/{id}/prompts": {
       "post": {
         "operationId": "sendPrompt",
-        "summary": "Send the next prompt, answered at once: it starts, or waits in the queue while the conversation is busy; its entries arrive on the conversation's stream",
+        "summary": "Send the next prompt, answered at once with the agent node that carries the run (and the message it became, for one that started): it starts, or waits in the queue while the conversation is busy; what it does arrives on the node's channel and the tree",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -188,9 +188,7 @@
           "200": {
             "description": "Success",
             "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/SendPromptResponse" }
-              }
+              "application/json": { "schema": { "$ref": "#/components/schemas/PromptSent" } }
             }
           },
           "default": {
@@ -279,6 +277,50 @@
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
+        "responses": {
+          "204": { "description": "Done" },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/nodes/{node}/cancel": {
+      "post": {
+        "operationId": "cancelNode",
+        "summary": "Cancel one node, whatever its kind: a command or service is killed, a sub-agent stopped, the main agent as stop does; a node that has ended is node_ended",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "node", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Done" },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/nodes/{node}/messages": {
+      "post": {
+        "operationId": "messageNode",
+        "summary": "Send a message to an agent node, which sees it at its next model call; only the main agent takes one from the user, and a node that has ended is node_ended",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "node", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/MessageNodeRequest" } }
+          }
+        },
         "responses": {
           "204": { "description": "Done" },
           "default": {
@@ -3601,18 +3643,6 @@
             "required": ["parts"]
           }
         ]
-      },
-      "SendPromptResponse": {
-        "type": "object",
-        "properties": {
-          "status": { "type": "string", "enum": ["started", "queued"] },
-          "queued": {
-            "maxItems": 100,
-            "type": "array",
-            "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
-          }
-        },
-        "required": ["status", "queued"]
       },
       "YieldPromptResponse": {
         "type": "object",
