@@ -1,6 +1,11 @@
 import type { InstanceId } from '@sheavly/protocol/handshake/handshake.types';
 import type { ServerErrorCode } from '@sheavly/protocol/server/server.types';
 import type {
+  SubscribeFrame,
+  SubscribeRequest,
+} from '@sheavly/protocol/subscription/subscription.types';
+import type { createClient } from '../client/client.helper.js';
+import type {
   AnswerOf,
   EmptyRoute,
   ItemOf,
@@ -32,6 +37,18 @@ export type HandshakeIdentity = {
   token: string;
   instanceId: InstanceId;
   protocolVersion: string;
+};
+
+/** Test-only: what one connection sends: its frames in order, an Error where it drops. */
+export type SentFrames = (SubscribeFrame | Error)[];
+
+/**
+ * Test-only: a backend that answers each subscribe request with the next of its connections, and a
+ * client for it; `asked` is what each request asked for, as the contract parses it.
+ */
+export type ServedSubscription = {
+  client: ReturnType<typeof createClient>;
+  asked: () => SubscribeRequest[];
 };
 
 /** Test-only: what a fake route was called with: its path params and its parsed body. */

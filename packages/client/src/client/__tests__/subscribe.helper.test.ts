@@ -2,9 +2,7 @@ import { ZodError } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
-import { subscribeRequestSchema } from '@sheavly/protocol/subscription/subscription.validator';
 import { RefusedError, StreamLostError } from '../../errors/client.errors.js';
-import { fakeServer } from '../../testing/fake-server.fake.js';
 import {
   agentOpened,
   agentUpdated,
@@ -14,25 +12,12 @@ import {
   headAt,
   outputText,
 } from '../../testing/frames.fake.js';
-import type { FakeCall, FakeRefusal } from '../../testing/testing.types.js';
+import { DROP, served } from '../../testing/subscription-server.fake.js';
+import type { ServedSubscription } from '../../testing/testing.types.js';
 import { createClient } from '../client.helper.js';
-import type { ReconnectPolicy } from '../client.types.js';
 import { subscribeChannels } from '../subscribe.helper.js';
 
 const ID = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000ab');
-
-/** What one connection sends: its frames in order, an Error where it drops, a clean end after the last. */
-type SentFrames = (SubscribeFrame | Error)[];
-
-async function* sends(script: SentFrames): AsyncGenerator<SubscribeFrame> {
-  for (const item of script) {
-    if (item instanceof Error) throw item;
-
-    yield item;
-  }
-}
-
-const DROP = new TypeError('terminated');
 
 /** Two agents' channels, both followed from their start. */
 const A_AND_B: [string, string][] = [
@@ -40,50 +25,9 @@ const A_AND_B: [string, string][] = [
   ['b', 'start'],
 ];
 
-/**
- * A backend that answers the n-th subscribe request with the n-th of `connections` (a refusal, or
- * what it sends), and a client for it that never sleeps between attempts. `asked` is what each
- * request asked for, as the contract parses it.
- */
-function served(params: {
-  connections: (SentFrames | FakeRefusal)[];
-  reconnect?: ReconnectPolicy;
-}) {
-  let opened = 0;
-  const { fetch, calls } = fakeServer({
-    streamChannels: () => {
-      const connection = params.connections[opened];
-
-      opened += 1;
-
-      if (!connection) return { refuse: { status: 503, code: 'internal' } };
-
-      return Array.isArray(connection) ? sends(connection) : connection;
-    },
-  });
-  const client = createClient({
-    url: 'http://backend.test',
-    token: 't',
-    fetch,
-    // Gives the event loop its turn, and stops after a few attempts: a loop that never ended would
-    // otherwise spin on promises alone and hang the test run past any timeout.
-    reconnect: {
-      wait: () => new Promise((resolve) => setTimeout(resolve, 0)),
-      attempts: 6,
-      ...params.reconnect,
-    },
-  });
-  const asked = () =>
-    calls.map(({ call }: { call: FakeCall }) => subscribeRequestSchema.parse(call.body));
-
-  return { client, asked };
-}
-
-type Served = ReturnType<typeof served>;
-
 /** Follows the channels (`[name, from]`) of the conversation to the end, and answers every frame. */
 async function followed(params: {
-  world: Served;
+  world: ServedSubscription;
   channels: [string, string][];
   approvals?: boolean;
   signal?: AbortSignal;

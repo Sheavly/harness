@@ -1,4 +1,5 @@
 import { channelNameSchema } from '@sheavly/protocol/channel/channel.validator';
+import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { subscribeFrameSchema } from '@sheavly/protocol/subscription/subscription.validator';
 
@@ -6,6 +7,9 @@ import { subscribeFrameSchema } from '@sheavly/protocol/subscription/subscriptio
  * Test-only: the frames of a subscribe stream, each parsed with the contract's schema, so a test
  * cannot send what the real server could not, and no id needs a cast.
  */
+
+/** A node's id. */
+export const nodeIdOf = (name: string) => nodeIdSchema.parse(name);
 
 /** A channel's name: a node's id, or `tree`. */
 export const channelOf = (name: string) => channelNameSchema.parse(name);
@@ -77,4 +81,82 @@ export const endedAs = (params: {
     channel: params.name,
     reason: params.reason,
     ...(params.cursor && { cursor: params.cursor }),
+  });
+
+/** A node as the tree carries it (not yet parsed): an agent, idle or running. */
+export const agentNode = (params: { id: string; state?: 'idle' | 'running' }) => ({
+  kind: 'agent',
+  id: params.id,
+  title: params.id,
+  state: params.state ?? 'idle',
+  startedAt: 1,
+});
+
+/** A node as the tree carries it (not yet parsed): a service, running or `cancelled`. */
+export const serviceNode = (params: { id: string; state?: 'running' | 'cancelled' }) => ({
+  kind: 'service',
+  id: params.id,
+  title: params.id,
+  state: params.state ?? 'running',
+  startedAt: 1,
+  ...(params.state === 'cancelled' && { endedAt: 3 }),
+  command: 'npm run dev',
+  description: 'the dev server',
+  output: '',
+});
+
+/** An approval request as the tree carries it (not yet parsed). */
+export const approvalRequest = (id: string) => ({
+  id,
+  callId: 'call_1',
+  tool: 'run_command',
+  command: 'git push',
+  concerns: [],
+  options: ['approve', 'skip'],
+});
+
+/** The tree as it stands after the tree channel's entry `n`: its nodes and its waiting approvals. */
+export const treeSnapshot = (params: {
+  n: number;
+  nodes: object[];
+  approvals?: { node: string; request: object }[];
+}) =>
+  frame({
+    channel: 'tree',
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'snapshot',
+    nodes: params.nodes,
+    approvals: params.approvals ?? [],
+  });
+
+/** An agent's channel closes as entry `n`: it completed. */
+export const agentClosed = (params: { name: string; n: number }) =>
+  frame({
+    channel: params.name,
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'closed',
+    state: 'completed',
+    outcome: 'completed',
+  });
+
+/** A command's channel opens: the node, running. Its cursor is `b0`. */
+export const commandOpened = (name: string) =>
+  frame({
+    channel: name,
+    cursor: 'b0',
+    at: 1,
+    type: 'opened',
+    node: serviceNode({ id: name }),
+  });
+
+/** An entry of the tree channel: number `n`, `type`, and what that type holds besides. */
+export const treeEntry = (params: { n: number; type: string; fields?: object }) =>
+  frame({
+    channel: 'tree',
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: params.type,
+    ...params.fields,
   });
