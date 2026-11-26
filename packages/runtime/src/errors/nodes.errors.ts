@@ -10,13 +10,15 @@ type NodeFailure =
   | 'invalid_outcome'
   | 'inconsistent_node'
   | 'too_many_nodes'
-  | 'cursor_out_of_range';
+  | 'cursor_out_of_range'
+  | 'duplicate_channel';
 
 /**
  * A node operation was refused: an unknown or released node, a move the node machine does not
  * allow, an agent-only move on another kind, an outcome that does not give the state, a release
  * of a node that is still open, a node past the bound the tree's snapshot holds
- * (`too_many_nodes`), or a channel position the log cannot start at.
+ * (`too_many_nodes`), a channel position the log cannot start at, or a second writer for a channel
+ * of the conversation itself (`duplicate_channel`).
  */
 export class NodeError extends Error {
   override name = 'NodeError';

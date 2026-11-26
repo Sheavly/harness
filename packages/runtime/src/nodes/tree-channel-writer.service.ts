@@ -18,6 +18,7 @@ import { ChannelFollowers } from './channel-followers.service.js';
 import type { NodeRegistry } from './node-registry.service.js';
 import type {
   ChannelEvent,
+  ConversationChannel,
   NodeChannelStorage,
   NodeEntry,
   ResumedTree,
@@ -52,7 +53,8 @@ import {
  * A write that fails leaves the channel as it was: it takes no more entries, so a log never reads
  * as whole with an entry missing. The first failure is told to `onFailure`; the run goes on.
  */
-export class TreeChannelWriter {
+export class TreeChannelWriter implements ConversationChannel {
+  readonly name = TREE_CHANNEL_NAME;
   readonly #log: ChannelLog;
   readonly #onFailure: ((failure: StoreError) => void) | undefined;
   readonly #followers = new ChannelFollowers();
