@@ -173,7 +173,10 @@ the tree channel of a conversation that keeps none all answer `not_found` with o
 tree channel is served like any other, and from `snapshot` it sends the tree as one frame first
 (counted against what the conversation holds, not against the 8 MiB of history, since the writer
 holds it in memory), then the entries after its cursor, none missed or repeated. A request that
-claims to answer approvals (`approvals: true`) is refused as `bad_request` for now. A request is
+claims to answer approvals (`approvals: true`) counts as a listener of the conversation's approvals
+from the moment it is accepted until its subscription closes, so a tool that asks meanwhile waits for
+an answer instead of being refused (`no_listener`); the listener is given back on every way out, a
+refusal included, and a request that makes no claim registers none. A request is
 refused before anything is read for a position its channel cannot be asked for (`bad_request`), and while reading
 for a cursor it does not hold (`cursor_out_of_range`) or history over 8 MiB, never cut
 (`bad_request`); a conversation serves at most 64 subscriptions (`too_many_subscriptions`), and its

@@ -294,9 +294,12 @@ What a conversation's subscriptions hold is bounded in bytes too, 128 MiB all to
 moment their history is being read: history that does not fit refuses the request the same way, and
 a live frame that does not fit cuts its channel off. A client that leaves while its history is read
 stops that read.
-`approvals` needs the tree channel, where an approval is seen. The tree channel can be followed now,
-but nothing yet makes an approval wait for a subscription, so the server refuses the claim (`400`)
-until the client that answers through one is built (#430), rather than promise what it does not do.
+`approvals` needs the tree channel, where an approval is seen. The server honours the claim: the
+conversation counts the connection as one that answers approvals from the moment the request is
+accepted, before its history is read, until the subscription closes, and gives that back on every
+way out (the client leaving, a refusal, a read that fails). A request that makes no claim leaves
+an approval refused at once, so a read-only sidebar or a notification is not mistaken for one that
+answers.
 
 Every route the model adds is private: it needs the bearer token like every route that does not
 say `public` (the route table in [the contract](contract.md#what-a-server-accepts-and-answers)

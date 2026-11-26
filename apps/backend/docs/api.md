@@ -280,11 +280,16 @@ channel the conversation does not have is `not_found`: another
 conversation's node, an unknown id, and the tree of a conversation that keeps none are all one
 `404` with one message, so a request learns nothing about channels it cannot reach.
 
-A request that claims to answer approvals (`approvals: true`) is refused as `400` for now: nothing
-makes an approval wait for a subscription yet, so honouring the claim would be a promise the server
-does not keep. Answer approvals as before, with `POST /conversations/:id/approvals/:approval`. A conversation that
-closes ends the tree channel's subscriptions as `failed` (its writer stopped; the channel is not
-closed, and a reopen goes on from it).
+A request that claims to answer approvals (`approvals: true`, which needs the tree channel, where an
+approval is seen) counts as someone who answers them for as long as its connection is open: a tool
+that asks while one is connected waits for an answer, and with none connected the approval is
+refused at once (see [Approvals](#approvals)). The claim counts from the moment the request is
+accepted, before its history is read, and is given back whichever way the connection ends: the
+client leaves, a refusal (`not_found`, a position, `too_many_subscriptions`) or a read that fails.
+It is a claim, not a check: any token holder may make it. Answer with
+`POST /conversations/:id/approvals/:approval`. A conversation that closes ends the tree channel's
+subscriptions as `failed` (its writer stopped; the channel is not closed, and a reopen goes on from
+it).
 
 ## A command's output
 
@@ -464,9 +469,10 @@ stopping. Unknown ids return `404 not_found`.
 
 An approval a tool asks for is an entry in the stream (`kind: 'approval'`), in order with the
 events of the call that asked. A client answers with `POST /approvals/:approval`. A client that
-will answer says so when it opens the stream (`QUERY /stream` with `approvals: true`); while at
-least one such stream is open, a request waits for an answer. With none open, it is refused at
-once, as in a headless run: a script that only sends prompts, or a UI that never answers, never
+will answer says so when it opens the stream (`QUERY /stream` with `approvals: true`), or the tree
+channel's subscription (`QUERY /subscribe` with `approvals: true`, which shows each waiting approval
+with the node that asked); while at least one such connection is open, a request waits for an
+answer. With none open, it is refused at once, as in a headless run: a script that only sends prompts, or a UI that never answers, never
 leaves a run waiting on an approval no one will give.
 
 ## Errors

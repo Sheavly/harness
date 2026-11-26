@@ -16,6 +16,21 @@ const { id } = await client.call('startConversation', { body: {} });
 for await (const entry of promptEntries({ client, id, prompt: { text: 'hi' } })) render(entry);
 ```
 
+A conversation's channels are read through subscriptions: the tree kept live, and one node followed,
+each resumed after a drop from the cursor of its last entry, with nothing missed and nothing repeated.
+
+```ts
+import { watchTree } from '@sheavly/client/tree/watch-tree.helper';
+import { followNode } from '@sheavly/client/nodes/follow-node.helper';
+
+const watch = await watchTree({ client, id, onChange: render, signal });
+watch.ended.catch(showThatTheTreeIsNoLongerLive); // it rejects when the channel fails or is refused
+for await (const entry of await followNode({ client, id, node, signal })) show(entry);
+
+// Commands to a node are typed calls of the contract's routes: no wrapper.
+await client.send('cancelNode', { id, node });
+```
+
 | Module       | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `approvals/` | `watchApprovals` / `followApprovals`: a conversation's approvals, each with the sub-agent that asked (`HeardApproval`), learned from the stream, so a UI needn't build that itself                                                                                                                                                                                                                                                                                                                                      |
