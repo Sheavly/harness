@@ -184,6 +184,58 @@ export const commandOpened = (name: string) =>
     node: serviceNode({ id: name }),
   });
 
+/** The figures of `calls` calls (not yet parsed): every number follows from it, nothing is missing. */
+export const usageFigures = (calls: number) => ({
+  calls,
+  inputTokens: calls * 100,
+  outputTokens: calls * 10,
+  cacheReadTokens: calls * 60,
+  cacheWriteTokens: 0,
+  estimatedCostUsd: calls / 100,
+  missingUsageCalls: 0,
+  unpricedCalls: 0,
+  incomplete: false,
+});
+
+/** The usage as it stands after the usage channel's entry `n`: `total` calls, and each node's. */
+export const usageSnapshot = (params: {
+  n: number;
+  total: number;
+  nodes: { node: string; calls: number }[];
+}) =>
+  frame({
+    channel: 'usage',
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'snapshot',
+    total: usageFigures(params.total),
+    nodes: params.nodes.map(({ node, calls }) => ({ ...usageFigures(calls), node })),
+  });
+
+/**
+ * An entry of the usage channel: number `n`, a node's usage as it now is (`calls`) and the total (`total`),
+ * and the nodes whose records are no longer kept, left out when there are none.
+ */
+export const usageEntry = (params: {
+  n: number;
+  node: string;
+  calls: number;
+  total: number;
+  evicted?: string[];
+}) =>
+  frame({
+    channel: 'usage',
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'node_usage',
+    usage: { ...usageFigures(params.calls), node: params.node },
+    total: usageFigures(params.total),
+    ...(params.evicted && { evicted: params.evicted }),
+  });
+
+/** The usage channel's opening: entry 0. */
+export const usageOpened = frame({ channel: 'usage', cursor: 's0', at: 0, type: 'opened' });
+
 /** An entry of the tree channel: number `n`, `type`, and what that type holds besides. */
 export const treeEntry = (params: { n: number; type: string; fields?: object }) =>
   frame({
