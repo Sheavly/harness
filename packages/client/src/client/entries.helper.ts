@@ -1,6 +1,7 @@
 import { ENTRY_EVENT } from '@sheavly/protocol/api/api.constants';
 import { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import { readSseFrames } from './sse.helper.js';
 
 /**
  * The entries of a backend's SSE answer (`QUERY /stream`), in order, each
@@ -27,50 +28,20 @@ export async function* readFrames(body: ReadableStream<Uint8Array> | null): Asyn
   cursor: string;
   entry: StreamEntry | undefined;
 }> {
-  if (!body) return;
+  for await (const { event, cursor, data } of readSseFrames({
+    body,
+    route: 'streamConversation',
+  })) {
+    if (cursor === undefined) continue;
 
-  const decoder = new TextDecoder();
-  let buffered = '';
-
-  for await (const chunk of body) {
-    // SSE allows CRLF line endings; one form keeps the frame splitting below simple.
-    buffered += decoder.decode(chunk, { stream: true }).replace(/\r\n?/g, '\n');
-
-    for (let end = buffered.indexOf('\n\n'); end !== -1; end = buffered.indexOf('\n\n')) {
-      const frame = parseFrame(buffered.slice(0, end));
-
-      buffered = buffered.slice(end + 2);
-      if (frame) yield frame;
+    // A frame of an `id` and nothing else is a head frame.
+    if (event === undefined && data === undefined) {
+      yield { cursor, entry: undefined };
+      continue;
     }
+
+    if (event !== ENTRY_EVENT || data === undefined) continue;
+
+    yield { cursor, entry: streamEntrySchema.parse(JSON.parse(data)) };
   }
-}
-
-/**
- * The value of the first `name: value` line. Lines are split on `\n` alone, never matched with
- * `.` or `$`: those also stop at U+2028 and U+2029, which JSON leaves unescaped in a string, and
- * would cut an entry's data short.
- */
-function fieldOf(params: { lines: readonly string[]; name: string }): string | undefined {
-  const { lines, name } = params;
-  const prefix = `${name}: `;
-  const line = lines.find((each) => each.startsWith(prefix));
-
-  return line?.slice(prefix.length);
-}
-
-/**
- * One frame's cursor and entry: an entry frame, or a head frame (an `id` and nothing else, no
- * entry). Undefined for a heartbeat comment or another event's frame.
- */
-function parseFrame(frame: string): { cursor: string; entry: StreamEntry | undefined } | undefined {
-  const lines = frame.split('\n');
-  const event = fieldOf({ lines, name: 'event' });
-  const id = fieldOf({ lines, name: 'id' });
-  const data = fieldOf({ lines, name: 'data' });
-
-  if (id === undefined) return undefined;
-  if (event === undefined && data === undefined) return { cursor: id, entry: undefined };
-  if (event !== ENTRY_EVENT || data === undefined) return undefined;
-
-  return { cursor: id, entry: streamEntrySchema.parse(JSON.parse(data)) };
 }

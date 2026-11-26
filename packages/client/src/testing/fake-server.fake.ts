@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import { API_ROUTES, ENTRY_EVENT } from '@sheavly/protocol/api/api.constants';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import type { RouteName } from '@sheavly/protocol/api/api.types';
 import type { FakeCall, FakeHandlers, FakeRefusal } from './testing.types.js';
 
@@ -20,24 +21,43 @@ const refusal = (refuse: FakeRefusal['refuse']) =>
     { status: refuse.status },
   );
 
-/** Test-only: a stream's entries as the backend's SSE frames. */
-function sse(entries: AsyncIterable<StreamEntry>): Response {
+/**
+ * Test-only: a server-sent event stream whose frames are `items`, each as `encode` says. They are
+ * taken one at a time as the reader asks, so a handler that throws drops the connection after the
+ * frames before it were read, as a network that fails does, and not before: a stream that errors
+ * discards what it holds unread.
+ */
+function sse<T>(params: { items: AsyncIterable<T>; encode: (item: T) => string }): Response {
   const encoder = new TextEncoder();
+  const items = params.items[Symbol.asyncIterator]();
   const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      for await (const entry of entries) {
-        controller.enqueue(
-          encoder.encode(
-            `event: ${ENTRY_EVENT}\nid: ${String(entry.seq)}\ndata: ${JSON.stringify(entry)}\n\n`,
-          ),
-        );
-      }
+    async pull(controller) {
+      const next = await items.next();
 
-      controller.close();
+      if (next.done) controller.close();
+      else controller.enqueue(encoder.encode(params.encode(next.value)));
+    },
+    async cancel() {
+      await items.return?.();
     },
   });
 
   return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+/** Test-only: a conversation stream's entry as the backend sends it, with its `seq` as the id. */
+const entryFrame = (entry: StreamEntry) =>
+  `event: ${ENTRY_EVENT}\nid: ${String(entry.seq)}\ndata: ${JSON.stringify(entry)}\n\n`;
+
+/**
+ * Test-only: a subscribe stream's frame as the backend sends it: `head`, `end` and `snapshot` under
+ * their own event names, every entry as `entry`, and no id, since one id cannot carry the cursors of
+ * several channels.
+ */
+function subscribeFrame(frame: SubscribeFrame): string {
+  const named = frame.type === 'head' || frame.type === 'end' || frame.type === 'snapshot';
+
+  return `event: ${named ? frame.type : ENTRY_EVENT}\ndata: ${JSON.stringify(frame)}\n\n`;
 }
 
 /**
@@ -85,13 +105,16 @@ async function answer(params: {
   if (!handler) return refusal({ status: 404, code: 'not_found', message: `No fake for ${name}` });
 
   const route = API_ROUTES[name];
-
-  if ('stream' in route.response) return sse(handler(call) as AsyncIterable<StreamEntry>);
-
   const result = await handler(call);
 
   if (result && typeof result === 'object' && 'refuse' in result) {
     return refusal((result as FakeRefusal).refuse);
+  }
+
+  if ('stream' in route.response) {
+    return name === 'streamChannels'
+      ? sse({ items: result as AsyncIterable<SubscribeFrame>, encode: subscribeFrame })
+      : sse({ items: result as AsyncIterable<StreamEntry>, encode: entryFrame });
   }
 
   if ('schema' in route.response) {

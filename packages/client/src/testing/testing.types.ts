@@ -1,7 +1,12 @@
 import type { InstanceId } from '@sheavly/protocol/handshake/handshake.types';
 import type { ServerErrorCode } from '@sheavly/protocol/server/server.types';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import type { AnswerOf, EmptyRoute, JsonRoute, StreamRoute } from '../client/client.types.js';
+import type {
+  AnswerOf,
+  EmptyRoute,
+  ItemOf,
+  JsonRoute,
+  StreamRoute,
+} from '../client/client.types.js';
 
 /** Test-only: one request a recording `fetch` received, whole, for a test to look through. */
 export type SentRequest = {
@@ -42,4 +47,6 @@ export type FakeHandlers = Partial<{
   [N in JsonRoute]: (call: FakeCall) => Answer<AnswerOf<N>>;
 }> &
   Partial<Record<EmptyRoute, (call: FakeCall) => Answer<undefined>>> &
-  Partial<Record<StreamRoute, (call: FakeCall) => AsyncIterable<StreamEntry>>>;
+  Partial<{
+    [N in StreamRoute]: (call: FakeCall) => AsyncIterable<ItemOf<N>> | FakeRefusal;
+  }>;
