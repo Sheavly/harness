@@ -59,14 +59,16 @@ written or removed.
 ## Channel logs
 
 `FileConversationStore.channel({ id, channel })` is the durable log of one channel of a
-conversation (the wire model's channels, #438): the entries of a node, or of the conversation's
-`tree`. It is `channels/<channel>.jsonl`, an entry a line, in the order they were written, each with
+conversation (the wire model's channels, #438): the entries of a node, or of one of the
+conversation's own channels, `tree` and `usage`. It is `channels/<channel>.jsonl`, an entry a line,
+in the order they were written, each with
 the channel's own cursor: the entry's number in a channel that numbers its entries (`s0`, `s1`, …),
 or an offset in bytes in a command's or a service's (`b0`, `b40`). An agent's holds its lifecycle
 and each loop event of its session (an entry of up to 64 KiB, or a marker for one that would not
 fit), so its file grows with the conversation and is bounded by the channel quota like any other. A channel is named for a node id
-(lowercase, so two names cannot differ by case on a disk that ignores it) or is `tree`, and no
-other name becomes a file (`namedPath` with the channel name schema).
+(lowercase, so two names cannot differ by case on a disk that ignores it) or is one of the
+conversation's own (`tree`, `usage`), and no other name becomes a file (`namedPath` with the
+channel name schema).
 
 What may be appended, and what is kept, is one function, `channelAppendEntry` (`@sheavly/core`),
 which the memory store applies too, so the two cannot disagree. An entry has to be one the store
@@ -94,7 +96,7 @@ again before the next, so a sequence cursor is refused a second time, and a byte
 repeat, can be stored twice if the writer sends it again.
 
 `FileConversationStore.channels(id)` lists the channels a conversation has stored: the regular
-files `channels/<channel>.jsonl` whose name is a node id or `tree`. A marker, an index, a link, a
+files `channels/<channel>.jsonl` whose name is a node id or one of the conversation's own (`tree`, `usage`). A marker, an index, a link, a
 folder, a stray file or a name that is not a channel's is not listed, and a conversation with no folder has
 none. A reopened conversation reads it to find the channels whose node never closed.
 
@@ -162,8 +164,10 @@ would have made each read of the channel read the whole log and fail. It is a ca
 of the log and never an append. What the index gives up is the check of every covered line at the load: a
 log edited by hand inside what an index covers is found by the read that reaches the line (each
 line a read returns is checked against its schema), not by the load, and the lines after the index
-are checked as ever. The tree channel is the one thing a reopen still reads whole (`readStored`
-rebuilds the tree from it), so it is what a very long reopen would spend its time on.
+are checked as ever. The conversation's own channels are the one thing a reopen still reads whole
+(`readStored` rebuilds the tree, and the usage, from them), so they are what a very long reopen
+would spend its time on: the usage channel is an entry for each model call, a few hundred bytes
+each.
 
 **Limits.** A channel keeps at most 4 GiB, a conversation's channels at most 32 GiB together, and
 a conversation at most 5,000 channels (`DEFAULT_CHANNEL_LIMITS`; an app may pass others to the
@@ -268,7 +272,7 @@ replaced is decided once.
         shell.json                            # working root shared by the agents
         queue.json                            # lines queued behind a running prompt
         outputs/                              # complete command output logs
-        channels/<channel>.jsonl              # one channel's log: a node's, or the tree's
+        channels/<channel>.jsonl              # one channel's log: a node's, the tree's or usage's
         channels/<channel>.idx                # where its lines start, for a restart (a cache)
         agents/<session-id>.history.jsonl     # a sub-agent's history log
 ```

@@ -288,8 +288,8 @@ start in each:
 { subscriptions: [ { channel, from }, ... ], approvals?: boolean }
 ```
 
-`from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, for the tree channel
-only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and the
+`from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, for a channel of the
+conversation itself (the tree, usage) only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and the
 last `n` bytes of a byte-offset channel. The response is a stream of server-sent events, and
 each frame is one envelope: it carries its **channel and its cursor**. A closed channel delivers
 what remains and then completes. A slow consumer is cut off per channel and resumes from its
@@ -300,10 +300,11 @@ A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFra
 - **`entry`**: one entry of a channel, as it is stored (`opened`, an agent's `updated`, `closed`,
   as `ChannelEntry` says; on the tree channel, `TreeChannelEntry`). Its own `channel` and `cursor`
   are the frame's.
-- **`snapshot`** (`TreeSnapshot`): for `from: snapshot` on the tree channel, the tree as it stands,
-  sent first, with the cursor of the entry it covers up to; the entries after that cursor follow.
-  `applyTreeEntry` is the one rule from entries to tree, so a client that starts from a snapshot
-  and one that replays every entry from the start end with the same tree.
+- **`snapshot`** (`TreeSnapshot` or `UsageSnapshot`): for `from: snapshot` on a channel of the
+  conversation itself, its view as it stands, sent first, with the cursor of the entry it covers up
+  to; the entries after that cursor follow. `applyTreeEntry` and `applyUsageEntry` are the rules from
+  entries to a view, so a client that starts from a snapshot and one that replays every entry from
+  the start end with the same one.
 - **`head`** (`ChannelHeadFrame`): where a channel stood when a subscription at `now` opened,
   the cursor of its newest entry, sent first, once per such channel. A client that hears no entry
   before the connection drops still has a cursor to resume after, and misses nothing written
@@ -467,7 +468,8 @@ approval it left waiting is given up (`approval_cancelled`), since nobody can an
 process's own main agent opens after them, so a snapshot after a reopen shows no node as running that
 is not. A stored tree channel that cannot be gone on from (an entry no client could read, or one
 that ends in `closed`) is not written: the conversation still reopens, and the failure is told once
-as `storage_failed`.
+as `storage_failed`. The usage channel goes on from where it was the same way, with each node it
+recorded kept under its id, so the total still covers the earlier nodes; it fails as the tree does.
 
 ## Storage
 
@@ -480,9 +482,9 @@ is first opened (#437).
 What is built: `ConversationStore.channel({ id, channel })` is the log of one channel, kept by the
 file store as `channels/<channel>.jsonl` beside the stream, which is still written. An agent's,
 a command's and a service's channel are stored as the conversation runs, with `opened`, `updated`
-for an agent and `closed`; the tree channel is stored beside them (`channels/tree.jsonl`, numbered
-from `s0`, never closed while its conversation exists, so a reopen can go on from it), and the kinds
-an extension adds are not. A stored line
+for an agent and `closed`; the tree channel and the usage channel are stored beside them
+(`channels/tree.jsonl` and `channels/usage.jsonl`, numbered from `s0`, never closed while their
+conversation exists, so a reopen can go on from them), and the kinds an extension adds are not. A stored line
 is one entry of at most 64 KiB, so a command longer than that is shortened in its `opened` entry.
 Retention is per channel: 4 GiB for a channel, 32 GiB and 5,000 channels for a conversation, and a
 channel that refuses an entry for a limit takes no more. A conversation used for weeks keeps its
@@ -491,21 +493,22 @@ in the [storage design](../../storage/docs/design.md).
 
 What is built of subscriptions: `QUERY /conversations/{id}/subscribe` (`streamChannels`) serves the
 channels the store keeps for a conversation's nodes (an agent's, a command's and a service's) and
-for its tree, stored history and then what the channel's writer stores next, joined by each entry's
+for its tree and its usage, stored history and then what the channel's writer stores next, joined by each entry's
 place in its log so none is missed or sent twice. It reads only the entries it sends: the channel's
 `head` says where it stands, and a tail or a cursor on a numbered channel begins at its place, so a
 client that reconnects to a conversation of weeks reads its last entries and not the channel. The
-tree channel is served like any other, and
-from `snapshot` it sends the tree as one frame first (`GET /conversations/{id}/tree` answers the
-same snapshot with no stream), then the entries after its cursor. A command's or a service's channel
+tree and usage channels are served like any other, and
+from `snapshot` each sends its view as one frame first (`GET /conversations/{id}/tree` and
+`GET /conversations/{id}/usage` answer the same snapshots with no stream), then the entries after its
+cursor. A command's or a service's channel
 carries its complete output between its `opened` and `closed` entries, made from the output store
 and followed as the capture stores it, joined by byte offset (see "Command and service channels").
-A channel that does not exist, belongs to another conversation, or is the tree of a conversation
-that keeps none is `not_found`, with one message. A channel with more than 1,000 live frames waiting for its consumer, or whose frames would
+A channel that does not exist, belongs to another conversation, or is the tree or usage of a
+conversation that keeps none is `not_found`, with one message. A channel with more than 1,000 live frames waiting for its consumer, or whose frames would
 take the conversation's subscriptions past what they may hold, is cut off on that channel (`end`
 with `cut_off`), and a channel whose storage failed, or that no writer has, ends as `failed`. A
 conversation that closes ends its node channels with their `closed` entries, which a client reads
-like any other, and its tree channel as `failed`: the writer stopped, and the channel is not closed,
+like any other, and its tree and usage channels as `failed`: the writer stopped, and the channel is not closed,
 so that a reopen goes on from it. The client has no reader for these frames yet: they carry no `id`,
 which its stream reader requires.
 

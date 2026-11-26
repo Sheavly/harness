@@ -160,7 +160,19 @@ channel gives. Closing the conversation stops the writer and does not close the 
 reopen goes on from: the nodes the stopped process left open are closed as `lost` and its waiting
 approvals given up. A stored tree channel the reopen cannot go on from is not written and is told
 once as `storage_failed`; `tree` then answers `storage_failed`. A write failure of a node channel or
-the tree channel is announced once per conversation, since they share a disk.
+a channel of the conversation itself is announced once per conversation, since they share a disk.
+
+The conversation's **usage channel** is kept beside the tree's (`Harness.usageChannel`, a
+`UsageChannelWriter`): what each node's model calls have used, and the total, counted once from the
+loop's `usage` events by the runtime's `NodeUsageLedger`. `await conversations.usage(id)` is the
+usage as it stands (`UsageSnapshot`), with the cursor to follow from; `usage` answers `not_found` for
+a host that keeps nothing and `storage_failed` when the channel could not be stored, as `tree` does.
+A reopen goes on from the stored channel (`readStoredConversation` reads it with the tree), so the
+total still covers the earlier nodes. The tree and usage are held together as the conversation's
+own channels (`Harness.conversationChannels`, a `ConversationChannels`): the subscription, the hub
+(which flushes the ones a request names before it lists the channels) and the lifecycle (which stops
+them all and reads every failure) serve a channel of it by its name, and `harness/conversation-channel-confinement`
+keeps the subscription code from naming the tree.
 
 **Following a channel.** `await conversations.subscribe({ id, request })` serves the channels a
 `SubscribeRequest` names: the stored history each position asks for (`start`, `now`, `tail:n` or
@@ -169,10 +181,10 @@ after a cursor), then each entry the writer stores from then on, as the frames o
 caller `close`s it when done, whether or not it read). It follows each channel before it reads the
 store and joins the two by the entry's place in its log, so none is missed or sent twice. A channel
 is the conversation's own only if its store lists it: another conversation's node, an unknown id and
-the tree channel of a conversation that keeps none all answer `not_found` with one message. The
-tree channel is served like any other, and from `snapshot` it sends the tree as one frame first
-(counted against what the conversation holds, not against the 8 MiB of history, since the writer
-holds it in memory), then the entries after its cursor, none missed or repeated. A request that
+the tree or usage channel of a conversation that keeps none all answer `not_found` with one message.
+The tree and usage channels are served like any other, and from `snapshot` each sends its view as
+one frame first (counted against what the conversation holds, not against the 8 MiB of history,
+since the writer holds it in memory), then the entries after its cursor, none missed or repeated. A request that
 claims to answer approvals (`approvals: true`) counts as a listener of the conversation's approvals
 from the moment it is accepted until its subscription closes, so a tool that asks meanwhile waits for
 an answer instead of being refused (`no_listener`); the listener is given back on every way out, a
