@@ -10,6 +10,7 @@ import {
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { connectBackend } from '../../client/backend.helper.js';
 import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
+import { treeFeed } from '../../testing/tree-feed.fake.js';
 import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
 import {
@@ -64,6 +65,8 @@ async function setup(
   const server = fakeServer({
     startConversation: () => ({ id }),
     getConversation: () => fakeConversationDetails(params.mismatch ? root : generatedWorkspace),
+    // The tree the run follows for the background work it settles: none shows.
+    streamChannels: () => treeFeed().follow(),
     async *streamConversation({ body }) {
       if ((body as { approvals?: boolean }).approvals) {
         await promptSent.promise;

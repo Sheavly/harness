@@ -3,9 +3,9 @@ import type { FakeHandlers } from '@sheavly/client/testing/testing.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import { taskIdSchema } from '@sheavly/protocol/task/task.validator';
 import { RemoteConversation } from '../client/conversation.service.js';
 import { liveFeed, promptStarted } from './live-feed.fake.js';
+import { treeFeed } from './tree-feed.fake.js';
 import { startedAnswer } from '../chat/testing/prompt-answers.fake.js';
 
 export const FAKE_ID = conversationIdSchema.parse('00000000-0000-4000-8000-000000000001');
@@ -33,43 +33,6 @@ export const doneAt = (
   event: { seq, type: 'done', reason, session: SESSION },
 });
 
-const TASK = {
-  id: taskIdSchema.parse('t1'),
-  command: 'npm run dev',
-  description: 'Dev server',
-  kind: 'task' as const,
-  startedAt: 1,
-  output: '',
-};
-
-/** Test-only: task `id` of `kind` starting at `seq`. */
-export const taskStarted = (
-  seq: number,
-  id = 't1',
-  kind: 'task' | 'agent' | 'service' = 'task',
-): StreamEntry => ({
-  seq,
-  at: 0,
-  sessionId: FAKE_MAIN,
-  kind: 'task',
-  update: {
-    type: 'task_started',
-    task: { ...TASK, id: taskIdSchema.parse(id), status: 'running', kind },
-  },
-});
-
-/** Test-only: task `id` ending, completed, at `seq`. */
-export const taskEnded = (seq: number, id = 't1'): StreamEntry => ({
-  seq,
-  at: 0,
-  sessionId: FAKE_MAIN,
-  kind: 'task',
-  update: {
-    type: 'task_ended',
-    task: { ...TASK, id: taskIdSchema.parse(id), status: 'completed' },
-  },
-});
-
 /**
  * Test-only: a conversation on a fake backend answering the routes as `handlers` say. Its live
  * stream is `feed`, and each prompt sent starts the next of `runs` on it at once: its
@@ -77,10 +40,12 @@ export const taskEnded = (seq: number, id = 't1'): StreamEntry => ({
  */
 export async function openOnFake(params: { handlers?: FakeHandlers; runs?: StreamEntry[][] }) {
   const feed = liveFeed();
+  const tree = treeFeed();
   const runs = [...(params.runs ?? [])];
   const server = fakeServer({
     startConversation: () => ({ id: FAKE_ID }),
     streamConversation: () => feed.follow(),
+    streamChannels: () => tree.follow(),
     sendPrompt: ({ body }) => {
       const run = runs.shift() ?? [];
       const text = (body as { text: string }).text;
@@ -104,7 +69,7 @@ export async function openOnFake(params: { handlers?: FakeHandlers; runs?: Strea
     },
   });
 
-  return { conversation, server, feed };
+  return { conversation, server, feed, tree };
 }
 
 /**

@@ -275,19 +275,35 @@ async function recordConversation(
       // what its background work produced; only the live feed carries that run.
       const stopFollowing = new AbortController();
       const feedFailed = new AbortController();
-      const live = await conversation.follow({ onEntry: accept, signal: stopFollowing.signal });
-      // The feed's failure is kept and read below, and it also stops the wait for background work:
-      // without the feed that work's counts no longer move, so waiting on them would only run out.
-      const followFailure = live.ended.then(
-        () => undefined,
-        (caughtError: unknown) => {
-          feedFailed.abort();
+      // A follower's failure is kept and read below, and it also stops the wait for background
+      // work: without the feed or the tree that work's counts no longer move, so waiting on them
+      // would only run out.
+      const failureOf = (ended: Promise<void>) =>
+        ended.then(
+          () => undefined,
+          (caughtError: unknown) => {
+            feedFailed.abort();
 
-          return caughtError;
-        },
-      );
+            return caughtError;
+          },
+        );
+      const failures: Promise<unknown>[] = [];
 
       try {
+        // The counts `settleBackground` waits on come from the conversation's tree, followed as
+        // long as the live feed is. Both are opened inside this `try`, so one that fails to open
+        // leaves the other stopped.
+        const tree = await conversation.watchBackground({
+          listener: () => undefined,
+          signal: stopFollowing.signal,
+        });
+
+        failures.push(failureOf(tree.ended));
+
+        const live = await conversation.follow({ onEntry: accept, signal: stopFollowing.signal });
+
+        failures.push(failureOf(live.ended));
+
         // Skills mentioned by the prompt run with it, as in the chat.
         for await (const entry of conversation.send({ text: request.text, signal: combined })) {
           if (signal.aborted && !interrupt.signal.aborted) break;
@@ -305,7 +321,7 @@ async function recordConversation(
         stopFollowing.abort();
       }
 
-      const failure = await followFailure;
+      const failure = (await Promise.all(failures)).find((each) => each !== undefined);
 
       if (failure instanceof Error) throw failure;
 

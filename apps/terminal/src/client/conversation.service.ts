@@ -4,6 +4,7 @@ import { createClient } from '@sheavly/client/client/client.helper';
 import { followConversation } from '@sheavly/client/client/follow.helper';
 import { RefusedError } from '@sheavly/client/errors/client.errors';
 import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
+import { watchTree } from '@sheavly/client/tree/watch-tree.helper';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { ClientHistoryMessage, HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
@@ -14,15 +15,13 @@ import { isMainSession } from '@sheavly/protocol/session/session.utils';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import type { TaskInfo } from '@sheavly/protocol/task/task.types';
-import type { Backend } from './client.types.js';
-import { ENDED_TASKS_KEPT } from './client.constants.js';
+import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+import { emptyTree } from '@sheavly/protocol/tree/tree.utils';
+import { backgroundOf, sameBackground } from './background.utils.js';
+import type { Backend, Background } from './client.types.js';
 import { BackendError } from '../errors/backend.errors.js';
 
 type Client = ReturnType<typeof createClient>;
-
-/** The background work still running: commands, sub-agents and services. */
-type Background = { tasks: number; agents: number; services: number };
 
 function clientFor(backend: Backend): Client {
   return createClient({
@@ -36,16 +35,14 @@ function clientFor(backend: Backend): Client {
 /**
  * One conversation on a backend, as the terminal drives it: started (or continued from saved
  * `messages`) on `open`, then prompts sent and their entries read, over HTTP only, through the
- * client built from the API's routes. It keeps the background tasks still running, with their
- * kind, from the task entries it reads, for the status line to show. A refused request throws
- * `RefusedError`.
+ * client built from the API's routes. The background work still running is read from the
+ * conversation's tree once `watchBackground` follows it, for the status line to show. A refused
+ * request throws `RefusedError`.
  */
 export class RemoteConversation {
   readonly #client: Client;
-  readonly #running = new Map<string, TaskInfo>();
-  #onBackground: ((background: Background) => void) | undefined;
-  /** Ids of tasks that ended, newest last and capped: a late start for one is ignored. */
-  readonly #ended = new Set<string>();
+  /** The tree as `watchBackground` last saw it: empty until it follows it. */
+  #tree: TreeView = emptyTree();
 
   private constructor(
     client: Client,
@@ -92,30 +89,53 @@ export class RemoteConversation {
     return new RemoteConversation(client, id);
   }
 
-  /** How many background tasks the entries read so far say still run. */
+  /** How many background nodes the tree says still run: commands, sub-agents and services. */
   get runningTasks(): number {
-    return this.#running.size;
+    const { tasks, agents, services } = this.background;
+
+    return tasks + agents + services;
   }
 
   /**
-   * The background work the entries read so far say still runs: sub-agents, services, and
-   * everything else (a plain task).
+   * The background work the tree says still runs: sub-agents, services, and everything else (a
+   * command). None until `watchBackground` has followed the tree.
    */
   get background(): Background {
-    const kinds = [...this.#running.values()].map(({ kind }) => kind);
-    const agents = kinds.filter((kind) => kind === 'agent').length;
-    const services = kinds.filter((kind) => kind === 'service').length;
-
-    return { tasks: kinds.length - agents - services, agents, services };
+    return backgroundOf(this.#tree);
   }
 
   /**
-   * Tells `listener` the background work now, then whenever it changes. There is one listener: a
-   * later call replaces it.
+   * Follows the conversation's tree and tells `listener` the background work whenever it changes
+   * (not when only something else in the tree does). The tree is the one source: a node that is
+   * running and has a parent is work in the background of the main agent, and it is counted from
+   * its opening to its end, however the prompt that started it was sent, with nothing to
+   * deduplicate between streams. Resolves once the backend accepted the connection, which is when
+   * the counts start to be true; `ended` resolves when `signal` aborts and rejects when the tree
+   * can no longer be followed (a conversation that was closed, a refusal, a stream that was lost).
    */
-  watchBackground(listener: (background: Background) => void): void {
-    this.#onBackground = listener;
-    listener(this.background);
+  async watchBackground(params: {
+    listener: (background: Background) => void;
+    signal: AbortSignal;
+  }): Promise<{ ended: Promise<void> }> {
+    const { listener, signal } = params;
+    let told = this.background;
+    const watch = await watchTree({
+      client: this.#client,
+      id: this.id,
+      signal,
+      onChange: (tree) => {
+        this.#tree = tree;
+
+        const now = this.background;
+
+        if (sameBackground({ a: now, b: told })) return;
+
+        told = now;
+        listener(now);
+      },
+    });
+
+    return { ended: watch.ended };
   }
 
   details(): Promise<ConversationDetails> {
@@ -204,7 +224,6 @@ export class RemoteConversation {
           throw new BackendError({ message: error });
         }
 
-        this.#countTask(entry);
         yield entry;
 
         if (runEnd(entry) === 'failed') {
@@ -253,10 +272,7 @@ export class RemoteConversation {
       signal,
     });
     const ended = (async () => {
-      for await (const entry of entries) {
-        this.#countTask(entry);
-        onEntry(entry);
-      }
+      for await (const entry of entries) onEntry(entry);
     })();
 
     return { ended };
@@ -303,59 +319,4 @@ export class RemoteConversation {
   close(): Promise<void> {
     return this.#client.send('closeConversation', { id: this.id });
   }
-
-  // A task is running or ended, and ended is final. The prompt's stream and the live feed both
-  // carry its entries and are not ordered against each other, so a start that arrives after the
-  // end must not bring the task back; the same entry twice changes nothing. Ids are unique within
-  // one backend registry, which one `RemoteConversation` follows for its whole life.
-  #countTask(entry: StreamEntry): void {
-    const change = taskChange(entry);
-
-    if (!change) return;
-
-    const { task, running } = change;
-    const wasRunning = this.#running.has(task.id);
-
-    if (running && (wasRunning || this.#ended.has(task.id))) return;
-
-    if (!running && !wasRunning) {
-      this.#keepEnded(task.id);
-
-      return;
-    }
-
-    if (running) {
-      this.#running.set(task.id, task);
-    } else {
-      this.#running.delete(task.id);
-      this.#keepEnded(task.id);
-    }
-
-    this.#onBackground?.(this.background);
-  }
-
-  /** Remembers an ended id, forgetting the oldest past the cap so a long chat does not grow. */
-  #keepEnded(id: string): void {
-    this.#ended.delete(id);
-    this.#ended.add(id);
-
-    const oldest = this.#ended.values().next();
-
-    if (this.#ended.size > ENDED_TASKS_KEPT && !oldest.done) this.#ended.delete(oldest.value);
-  }
-}
-
-/**
- * The task an entry starts or ends, as the status line counts it; undefined for any other entry.
- * A task that ends between prompts sends its `task_ended` to no prompt's stream; the loop tells
- * the next prompt with `task_completed` instead, so that is its end too.
- */
-function taskChange(entry: StreamEntry): { task: TaskInfo; running: boolean } | undefined {
-  if (entry.kind === 'event' && entry.event.type === 'task_completed') {
-    return { task: entry.event.task, running: false };
-  }
-
-  if (entry.kind !== 'task') return undefined;
-
-  return { task: entry.update.task, running: entry.update.type === 'task_started' };
 }

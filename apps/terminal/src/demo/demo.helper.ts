@@ -69,6 +69,17 @@ async function runPrompt(params: {
 
   write(`→ ${prompt}\n\n→ main session ${shortId(details.session)}\n`);
 
+  // What the demo says it stops at its end is what the conversation's tree shows running. Followed
+  // before anything else is opened, so a tree the backend refuses leaves nothing running.
+  const stopTree = new AbortController();
+  const tree = await conversation.watchBackground({
+    listener: () => undefined,
+    signal: stopTree.signal,
+  });
+  const treeLost = tree.ended.catch((caughtError: unknown) => {
+    write(`\n✗ Lost the background status: ${describeFailure(caughtError)}\n`);
+  });
+
   /** With SESSIONS_SSE_LOG, the conversation's SSE stream (what a UI reads) goes to a file. */
   const sseLog = env.SESSIONS_SSE_LOG;
   const stopSse = new AbortController();
@@ -92,11 +103,15 @@ async function runPrompt(params: {
     write(`\n✗ Run failed: ${failure}\n`);
   }
 
-  // Background tasks outlive a prompt, but not the demo: closing stops whatever is left.
+  // Background tasks outlive a prompt, but not the demo: closing stops whatever is left. The tree
+  // is its own connection, so a command the prompt just started may not be counted yet: the line
+  // is a courtesy, and closing stops the work either way.
   if (conversation.runningTasks > 0) {
     write(`⏹ Stopping ${String(conversation.runningTasks)} background task(s)\n`);
   }
 
+  stopTree.abort();
+  await treeLost;
   stopSse.abort();
   await sseWritten;
 

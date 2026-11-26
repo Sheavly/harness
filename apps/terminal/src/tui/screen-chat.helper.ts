@@ -169,7 +169,16 @@ export async function startScreenChat(params: {
 
   void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
 
-  conversation.watchBackground((background) => screen.setStatus(background));
+  // The status line's counts of background work come from the conversation's tree.
+  const background = await conversation.watchBackground({
+    listener: (counts) => screen.setStatus(counts),
+    signal: watching.signal,
+  });
+
+  void background.ended.catch((caughtError: unknown) => {
+    screen.notice(`✗ lost the background status: ${describeFailure(caughtError)}`);
+  });
+
   screen.start();
   // Lines queued before a restart are shown as waiting and not sent: reopening never runs them.
   session.restoreQueued(await conversation.queue());

@@ -10,9 +10,14 @@ vi.mock('../../client/session.helper.js', () => ({ openSession: vi.fn(), closeSe
 const clock = useFixedClock();
 
 /** A session whose prompt runs until its signal aborts, or never (`stubborn`). */
-function fakeSession(params: { stubborn?: boolean; failure?: string } = {}) {
+function fakeSession(params: { stubborn?: boolean; failure?: string; treeLost?: string } = {}) {
   const conversation = {
     runningTasks: 0,
+    // The tree it follows shows no background work. It ends when the demo stops following, or is
+    // lost (`treeLost`).
+    watchBackground: async () => ({
+      ended: params.treeLost ? Promise.reject(new Error(params.treeLost)) : Promise.resolve(),
+    }),
     // A prompt that produces nothing until it is stopped; the empty `yield*` makes it a generator.
     async *send({ signal }: { signal: AbortSignal }) {
       yield* [];
@@ -38,6 +43,18 @@ function demo() {
   const run = () => runDemo({ env: {}, args: [], write, source, exit });
 
   return { source, exit, write, run, press: () => source.emit('SIGINT') };
+}
+
+/** Runs the demo on a session whose prompt fails (and whose tree may be lost), to its end. */
+async function runFailing(params: { treeLost?: string }) {
+  const chat = demo();
+
+  vi.mocked(openSession).mockResolvedValue(
+    fakeSession({ failure: 'provider down', ...params }) as never,
+  );
+  vi.mocked(closeSession).mockResolvedValue(undefined);
+
+  return { chat, code: await chat.run() };
 }
 
 describe('runDemo', () => {
@@ -95,13 +112,22 @@ describe('runDemo', () => {
     expect(closeSession).not.toHaveBeenCalled();
   });
 
-  it('ends the session even when the prompt fails, and reports exit code 1', async () => {
-    const session = fakeSession({ failure: 'provider down' });
-    const chat = demo();
+  it('says so when the tree it counts background work from is lost, and still ends the session', async () => {
+    const { chat, code } = await runFailing({ treeLost: 'tree went away' });
 
-    vi.mocked(openSession).mockResolvedValue(session as never);
-    vi.mocked(closeSession).mockResolvedValue(undefined);
-    await expect(chat.run()).resolves.toBe(1);
+    expect(code).toBe(1);
+    expect(
+      chat.write.mock.calls.some(([text]) =>
+        text.includes('✗ Lost the background status: tree went away'),
+      ),
+    ).toBe(true);
+    expect(closeSession).toHaveBeenCalledOnce();
+  });
+
+  it('ends the session even when the prompt fails, and reports exit code 1', async () => {
+    const { chat, code } = await runFailing({});
+
+    expect(code).toBe(1);
     expect(chat.write).toHaveBeenCalledWith('\n✗ Run failed: provider down\n');
     expect(closeSession).toHaveBeenCalledOnce();
   });

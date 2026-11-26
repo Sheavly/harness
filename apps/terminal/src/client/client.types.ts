@@ -20,6 +20,12 @@ export type BackendOptions = {
 export type FoundBackend = { url: string; token: string };
 
 /**
+ * The background work still running under the conversation's main agent: commands (and any other
+ * kind of node that is not one of the next two), sub-agents and services.
+ */
+export type Background = { tasks: number; agents: number; services: number };
+
+/**
  * A backend the terminal talks to; `stop` ends it if the terminal started it: SIGTERM to its
  * process group, then SIGKILL after `timeoutMs`. Calling it again returns the same stop. `fetch`
  * reaches it (the global one when unset): another transport, or a server app in the same process.
