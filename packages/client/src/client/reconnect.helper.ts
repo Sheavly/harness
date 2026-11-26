@@ -2,11 +2,12 @@ import { ZodError } from 'zod';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import {
   AnswerError,
+  AnswerTooLargeError,
   RefusedError,
   StreamEndedError,
   StreamLostError,
 } from '../errors/client.errors.js';
-import type { ReconnectPolicy } from './client.types.js';
+import type { ReconnectPolicy, ReconnectProgress } from './client.types.js';
 import { readFrames } from './entries.helper.js';
 import {
   RECONNECT_BUDGET_MS,
@@ -16,7 +17,7 @@ import {
 } from './reconnect.constants.js';
 
 /** Waits `ms`, or until `signal` aborts (it then resolves early; the caller checks the signal). */
-function waitFor(params: { ms: number; signal: AbortSignal }): Promise<void> {
+export function waitFor(params: { ms: number; signal: AbortSignal }): Promise<void> {
   const { ms, signal } = params;
 
   return new Promise((resolve) => {
@@ -36,14 +37,20 @@ function waitFor(params: { ms: number; signal: AbortSignal }): Promise<void> {
 }
 
 /**
- * Whether reconnecting can help: a dropped connection or a server that failed, yes; a refusal
- * (the request itself is wrong) or an entry the contract does not allow, no, since asking again
- * gets the same answer.
+ * Whether reconnecting can help: a dropped connection, a server that failed or one that serves as
+ * many subscriptions as it may (`429`, which says to ask again when one has ended: a client that
+ * leaves a connection and opens another meets it for a moment), yes; a refusal (the request itself
+ * is wrong), an entry the contract does not allow or a frame past what the client reads, no, since
+ * asking again gets the same answer.
  */
 function canReconnectAfter(error: unknown): boolean {
-  if (error instanceof RefusedError) return error.status >= 500;
+  if (error instanceof RefusedError) return error.status >= 500 || error.status === 429;
 
-  return !(error instanceof AnswerError || error instanceof ZodError);
+  return !(
+    error instanceof AnswerError ||
+    error instanceof AnswerTooLargeError ||
+    error instanceof ZodError
+  );
 }
 
 /**
@@ -73,7 +80,11 @@ export async function* reconnectingEntries(
 ): AsyncGenerator<StreamEntry> {
   const { open, signal, endless = false, attempts, wait = waitFor } = params;
   const budgetMs = params.budgetMs ?? RECONNECT_BUDGET_MS;
-  const progress: Progress = { lastEventId: undefined, failures: 0, failingSince: undefined };
+  const progress: ReconnectProgress = {
+    lastEventId: undefined,
+    failures: 0,
+    failingSince: undefined,
+  };
 
   while (!signal.aborted) {
     // Set once the stream is open: time spent waiting for an answer is not a connection staying up.
@@ -103,18 +114,8 @@ export async function* reconnectingEntries(
   }
 }
 
-/**
- * What a stream has delivered so far, how many attempts in a row have failed since, and when (by
- * `performance.now()`) the first of them did.
- */
-type Progress = {
-  lastEventId: number | undefined;
-  failures: number;
-  failingSince: number | undefined;
-};
-
 /** The run of failed attempts is over: an entry arrived, or a connection stayed up. */
-function stopFailing(progress: Progress): void {
+export function stopFailing(progress: ReconnectProgress): void {
   progress.failures = 0;
   progress.failingSince = undefined;
 }
@@ -122,7 +123,7 @@ function stopFailing(progress: Progress): void {
 /** The entries of one connection that are new: each one moves `progress` on and ends a failing run. */
 async function* newEntries(params: {
   body: ReadableStream<Uint8Array> | null;
-  progress: Progress;
+  progress: ReconnectProgress;
 }): AsyncGenerator<StreamEntry> {
   const { body, progress } = params;
 
@@ -152,9 +153,9 @@ async function* newEntries(params: {
  * reconnecting cannot help, and `StreamLostError` when `attempts` (when given) in a row have
  * failed or they have failed for `budgetMs`.
  */
-function backoffAfter(params: {
+export function backoffAfter(params: {
   error: unknown;
-  progress: Progress;
+  progress: ReconnectProgress;
   attempts: number | undefined;
   budgetMs: number;
 }): number {

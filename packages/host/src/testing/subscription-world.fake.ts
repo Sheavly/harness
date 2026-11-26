@@ -14,6 +14,19 @@ type World = ReturnType<typeof conversation>;
 export const requestOf = (channel: string, from = 'start') =>
   subscribeRequestSchema.parse({ subscriptions: [{ channel, from }] });
 
+/**
+ * Test-only: a request for the tree channel from `now` that claims to answer approvals, plus
+ * `others` (`[name, from]`) channels, as the contract parses it.
+ */
+export const claimingApprovals = (others: [string, string][] = []) =>
+  subscribeRequestSchema.parse({
+    subscriptions: [
+      { channel: 'tree', from: 'now' },
+      ...others.map(([channel, from]) => ({ channel, from })),
+    ],
+    approvals: true,
+  });
+
 /** Test-only: what a promise that is refused rejects with, or undefined if it was not. */
 export async function refusalOf(promise: Promise<unknown>): Promise<unknown> {
   try {

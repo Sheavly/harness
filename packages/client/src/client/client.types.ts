@@ -35,6 +35,34 @@ export type StreamRoute = {
   [N in RouteName]: RouteOf<N>['response'] extends { stream: z.ZodType } ? N : never;
 }[RouteName];
 
+/** What each frame of stream route `N` holds, parsed with the route's schema. */
+export type ItemOf<N extends StreamRoute> = RouteOf<N>['response'] extends { stream: infer S }
+  ? S extends z.ZodType
+    ? z.output<S>
+    : never
+  : never;
+
+/**
+ * One frame of a server-sent event stream, as its lines said: the event name, the `id:` line
+ * (`cursor`: a position in the stream, not an id of any kind) and the `data`, each absent when the
+ * frame has no such line. A comment (a heartbeat) is no frame.
+ */
+export type SseFrame = {
+  event: string | undefined;
+  cursor: string | undefined;
+  data: string | undefined;
+};
+
+/**
+ * What a reconnecting stream has delivered so far, how many attempts in a row have failed since,
+ * and when (by `performance.now()`) the first of them did.
+ */
+export type ReconnectProgress = {
+  lastEventId: number | undefined;
+  failures: number;
+  failingSince: number | undefined;
+};
+
 /** What JSON route `N` answers, parsed with its schema (brands and all). */
 export type AnswerOf<N extends JsonRoute> = RouteOf<N>['response'] extends { schema: infer S }
   ? S extends z.ZodType

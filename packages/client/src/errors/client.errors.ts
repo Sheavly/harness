@@ -63,6 +63,23 @@ export class StreamLostError extends Error {
 }
 
 /**
+ * A channel ended `failed`: no more of its entries will come, because storing it failed, no writer
+ * has it, or its conversation closed (a reopened conversation goes on from it). What was read is not
+ * all of it, so a reader that took the end for a complete channel would be wrong; this tells it.
+ */
+export class ChannelFailedError extends Error {
+  override name = 'ChannelFailedError';
+  readonly channel: string;
+
+  constructor(params: { channel: string }) {
+    super(
+      `The channel ${params.channel} ended without its last entries: storing it failed, or its conversation closed`,
+    );
+    this.channel = params.channel;
+  }
+}
+
+/**
  * A public route's answer was larger than the client reads (`PUBLIC_ANSWER_MAX_BYTES`): it stopped
  * reading and cancelled the body. Whatever answered is not the server, which answers a few bytes.
  */

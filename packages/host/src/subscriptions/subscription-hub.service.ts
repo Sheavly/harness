@@ -21,18 +21,21 @@ const noSuchChannel = () =>
   new ConversationsError({ reason: 'not_found', message: NO_SUCH_CHANNEL });
 
 /**
- * Refuses a connection that claims to answer approvals: nothing yet makes an approval wait for a
- * subscription, so honouring the claim would be a promise the server does not keep. It is refused
- * until the client that answers through a subscription exists, rather than ignored.
+ * What a connection that claims to answer approvals (`approvals: true`) is to the conversation: one
+ * that is listening, so a request for approval waits for an answer instead of being refused for want
+ * of one, for as long as the connection is open. A claim, not a check: the same as the
+ * conversation's own stream makes with its flag. Returns the way to stop listening, which is safe to
+ * call more than once and does nothing for a request that makes no claim.
  */
-function refuseApprovals(request: SubscribeRequest): void {
-  if (request.approvals !== true) return;
+function listenForApprovals(params: {
+  live: LiveConversation;
+  request: SubscribeRequest;
+}): () => void {
+  const { live, request } = params;
 
-  throw new SubscriptionError({
-    reason: 'bad_request',
-    message:
-      'Answering approvals through a subscription is not supported yet: leave approvals out, and answer them through the conversation',
-  });
+  if (request.approvals !== true) return () => undefined;
+
+  return live.harness.approvals.subscribe(() => undefined);
 }
 
 /**
@@ -60,14 +63,15 @@ export class SubscriptionHub {
   /**
    * Opens a subscription to the channels `request` names, in conversation `id` (`live`). Refuses,
    * before reading anything of the history, a request for a channel the conversation does not have
-   * (`not_found`), a position it cannot be asked for or a claim to answer approvals
-   * (`bad_request`, for now) or a conversation that serves
+   * (`not_found`), a position it cannot be asked for (`bad_request`) or a conversation that serves
    * as many as it may (`too_many_subscriptions`); then reads, and refuses a position its log cannot
    * start at (`cursor_out_of_range`), a read over `MAX_SUBSCRIBE_READ_BYTES` (`bad_request`) or
    * history that does not fit in what the conversation's subscriptions may hold
    * (`too_many_subscriptions`). An aborted `signal` stops the read. The request is parsed again, so
-   * a caller that built one by hand gets the contract's bounds too (a ZodError for one it refuses).
-   * The caller closes what it gets.
+   * a caller that built one by hand gets the contract's bounds too (a ZodError for one it refuses,
+   * such as `approvals` with no tree channel). A request with `approvals: true` counts as someone
+   * who can answer approvals until the subscription closes, or the request is refused. The caller
+   * closes what it gets.
    */
   async open(params: {
     id: ConversationId;
@@ -77,10 +81,14 @@ export class SubscriptionHub {
   }): Promise<Subscription> {
     const { id, live, signal } = params;
     const request = subscribeRequestSchema.parse(params.request);
-
-    refuseApprovals(request);
-
-    const { pool, release } = this.#reserve(id);
+    const { pool, release: releaseConnection } = this.#reserve(id);
+    // Listening from the moment the request is accepted: an approval asked while its history is
+    // read waits too. Given back with the connection, whichever way the subscription ends.
+    const stopListening = listenForApprovals({ live, request });
+    const release = () => {
+      releaseConnection();
+      stopListening();
+    };
 
     try {
       // The tree channel is listed once its first entry is stored, which is queued when the

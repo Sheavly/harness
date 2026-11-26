@@ -1,7 +1,17 @@
 import type { InstanceId } from '@sheavly/protocol/handshake/handshake.types';
 import type { ServerErrorCode } from '@sheavly/protocol/server/server.types';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import type { AnswerOf, EmptyRoute, JsonRoute, StreamRoute } from '../client/client.types.js';
+import type {
+  SubscribeFrame,
+  SubscribeRequest,
+} from '@sheavly/protocol/subscription/subscription.types';
+import type { createClient } from '../client/client.helper.js';
+import type {
+  AnswerOf,
+  EmptyRoute,
+  ItemOf,
+  JsonRoute,
+  StreamRoute,
+} from '../client/client.types.js';
 
 /** Test-only: one request a recording `fetch` received, whole, for a test to look through. */
 export type SentRequest = {
@@ -29,6 +39,18 @@ export type HandshakeIdentity = {
   protocolVersion: string;
 };
 
+/** Test-only: what one connection sends: its frames in order, an Error where it drops. */
+export type SentFrames = (SubscribeFrame | Error)[];
+
+/**
+ * Test-only: a backend that answers each subscribe request with the next of its connections, and a
+ * client for it; `asked` is what each request asked for, as the contract parses it.
+ */
+export type ServedSubscription = {
+  client: ReturnType<typeof createClient>;
+  asked: () => SubscribeRequest[];
+};
+
 /** Test-only: what a fake route was called with: its path params and its parsed body. */
 export type FakeCall = { params: Record<string, string>; body: unknown };
 
@@ -42,4 +64,6 @@ export type FakeHandlers = Partial<{
   [N in JsonRoute]: (call: FakeCall) => Answer<AnswerOf<N>>;
 }> &
   Partial<Record<EmptyRoute, (call: FakeCall) => Answer<undefined>>> &
-  Partial<Record<StreamRoute, (call: FakeCall) => AsyncIterable<StreamEntry>>>;
+  Partial<{
+    [N in StreamRoute]: (call: FakeCall) => AsyncIterable<ItemOf<N>> | FakeRefusal;
+  }>;

@@ -26,19 +26,27 @@ export const startRunningService = (run: { tasks: TaskRegistry; mainSession: { i
   });
 
 /**
- * A tool of the main agent asks for approval and waits for an answer: an approval on the tree. A
- * listener is added, so the request waits instead of failing for want of one.
+ * A tool of the main agent asks for approval, and waits for an answer only if someone listens: it
+ * is refused at once (`no_listener`) when no one does, as a run's own tool is. Nothing is added
+ * here, so a test shows what a connection that claims to answer makes of it.
  */
-export function askMainApproval(run: { approvals: ApprovalRegistry }) {
-  run.approvals.subscribe(() => undefined);
-
-  return run.approvals.request({
+export const askUnheardApproval = (run: { approvals: ApprovalRegistry }) =>
+  run.approvals.request({
     callId: CALL,
     tool: 'run_command',
     command: 'git push',
     concerns: [],
     signal: new AbortController().signal,
   });
+
+/**
+ * A tool of the main agent asks for approval and waits for an answer: an approval on the tree. A
+ * listener is added, so the request waits instead of failing for want of one.
+ */
+export function askMainApproval(run: { approvals: ApprovalRegistry }) {
+  run.approvals.subscribe(() => undefined);
+
+  return askUnheardApproval(run);
 }
 
 /**

@@ -6,10 +6,12 @@ import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import {
   answerWaitingApproval,
   askMainApproval,
+  askUnheardApproval,
   startRunningService,
   treeFollowedFrom,
   treeSummaryOf,
 } from '@sheavly/runtime/testing/tree-actions.fake';
+import { until } from '@sheavly/testing/wait/until.fake';
 import { reply, testApi } from '../../testing/api.fake.js';
 import { useOpenedServers } from '../../testing/opened-servers.fake.js';
 import { servedConversation } from '../../testing/served-conversation.fake.js';
@@ -99,15 +101,53 @@ describe('the tree of a conversation, over HTTP', () => {
     await waiting;
   });
 
-  it('is refused a claim to answer approvals through a subscription, as a bad request', async () => {
+  it('lets a client answer approvals through a subscription: one asked meanwhile waits, and is refused at once after it leaves', async () => {
+    const world = await servedConversation({ servers });
+    const { approvals } = world.harness;
+    const leave = new AbortController();
+    const next = framesOf(
+      await world.client.open('streamChannels', {
+        id: world.id,
+        body: { subscriptions: [{ channel: 'tree', from: 'now' }], approvals: true },
+        signal: leave.signal,
+      }),
+    );
+
+    // The head frame says the subscription is open, which is when it counts.
+    expect(await next()).toMatchObject({ event: 'head' });
+    expect(approvals.listening).toBe(true);
+
+    const waiting = askUnheardApproval(world.harness);
+    const asked = approvals.pending()[0];
+
+    if (!asked) throw new Error('the approval did not wait');
+
+    // Answered through the route, as a client does.
+    await world.client.send('answerApproval', {
+      id: world.id,
+      approval: asked.id,
+      body: { response: { decision: 'approve' } },
+    });
+    await waiting;
+
+    leave.abort();
+    await until(() => !approvals.listening);
+
+    await expect(askUnheardApproval(world.harness)).rejects.toMatchObject({
+      reason: 'no_listener',
+    });
+  });
+
+  it('is refused a claim to answer approvals without the tree, where an approval is seen, as a bad request', async () => {
     const world = await servedConversation({ servers });
     const response = await world.api.request(`/conversations/${world.id}/subscribe`, {
       method: 'QUERY',
-      body: { subscriptions: [{ channel: 'tree', from: 'now' }], approvals: true },
+      body: { subscriptions: [{ channel: 'agent-1', from: 'start' }], approvals: true },
     });
 
     expect(response.status).toBe(400);
     expect(serverErrorSchema.parse(await response.json()).error.code).toBe('bad_request');
+    expect(world.harness.approvals.listening).toBe(false);
   });
 });
 
