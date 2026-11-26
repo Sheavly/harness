@@ -2957,6 +2957,33 @@
               "cursor": { "$ref": "#/components/schemas/Cursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "event" },
+              "event": { "$ref": "#/components/schemas/EntryEvent" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "lastSeq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "required": ["cursor", "at", "channel", "type", "event"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "event_omitted" },
+              "eventType": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "size": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "messageId": { "$ref": "#/components/schemas/ModelId" }
+            },
+            "required": ["cursor", "at", "channel", "type", "eventType", "seq", "size"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
               "type": { "type": "string", "const": "output" },
               "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "text": { "type": "string", "minLength": 1, "maxLength": 16384 }

@@ -1,3 +1,5 @@
+import type { EntryEvent } from '../event/event.types.js';
+
 /**
  * A sequence cursor: `s` and the position of an entry in a channel that numbers its entries, 0, 1,
  * 2, … with no gaps. Written as text so a client keeps it whole and sends it back, never does
@@ -11,6 +13,17 @@ export const SEQUENCE_CURSOR_PATTERN = /^s(?:0|[1-9]\d{0,14})$/;
  * fifteen digits, as a sequence cursor is.
  */
 export const BYTE_CURSOR_PATTERN = /^b(?:0|[1-9]\d{0,14})$/;
+
+/**
+ * The loop events that are about the conversation and not about the agent that sent them, so they
+ * stay on the tree channel (a storage failure, an extension's own event) and an agent's channel
+ * never holds them. Every other loop event is the channel of the session that produced it
+ * (`wire-model-mapping.md`).
+ */
+export const TREE_ONLY_EVENT_TYPES = [
+  'storage_failed',
+  'extension_event',
+] as const satisfies readonly EntryEvent['type'][];
 
 /** The longest an entry's `type` may be: a name, as an extension's `<extension>.<name>` is. */
 export const MAX_ENTRY_TYPE_CHARS = 128;

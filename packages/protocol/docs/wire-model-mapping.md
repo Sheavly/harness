@@ -18,7 +18,7 @@ phase 2 (#434) changes how some are shaped, and is not repeated here.
 | `sessionId`            | The channel: a session's entries are its node's channel                                                                                                                      |
 | `messageId`            | Kept on agent-channel entries: the originating user message                                                                                                                  |
 | `at`                   | `at`                                                                                                                                                                         |
-| `kind`: `event`        | An agent-channel entry                                                                                                                                                       |
+| `kind`: `event`        | An agent-channel `event` entry wrapping the event, or `event_omitted` when it is too large to store; adjacent `text_delta` events of a session are merged into one entry     |
 | `kind`: `update`       | The tree channel (a node's lifecycle) and the node's own `opened` and `closed`                                                                                               |
 | `kind`: `approval`     | The tree channel                                                                                                                                                             |
 | `kind`: `task`         | The tree channel, and the command or service channel's `opened` and `closed`                                                                                                 |

@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { entryEventSchema } from '../event/event.validator.js';
+import { messageIdSchema } from '../message/message.validator.js';
 import {
   MAX_NODE_ERROR_CHARS,
   MAX_NODE_REASON_CHARS,
@@ -14,6 +16,7 @@ import {
   MAX_ENTRY_TYPE_CHARS,
   MAX_OUTPUT_CHUNK_BYTES,
   SEQUENCE_CURSOR_PATTERN,
+  TREE_ONLY_EVENT_TYPES,
 } from './channel.constants.js';
 import {
   channelCursorKinds,
@@ -176,6 +179,70 @@ const nodeUpdatedSchema = entrySchema
     { error: 'an updated entry is a live agent, numbered after its opened entry', path: ['node'] },
   );
 
+/** Whether `cursor` numbers an entry after the first: what an agent's entries between its `opened` and `closed` have. */
+const isAfterOpened = (cursor: string) =>
+  sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) >= 1;
+
+/**
+ * A loop event of an agent, as its session's stream carried it: the event unchanged (it keeps its
+ * own `seq`, which counts the session's events and is not the channel's cursor), with the
+ * originating user message (`messageId`) where the stream's entry had one. The channel's own cursor
+ * and `at` make it an entry of the channel. Every loop event but a conversation notice
+ * (`TREE_ONLY_EVENT_TYPES`) is one.
+ *
+ * Adjacent `text_delta` events of one session may be stored as one entry: the event is the first's,
+ * with the text of all of them in order, and `lastSeq` says the `seq` of the last one it holds, so a
+ * reader that follows a session by `seq` still knows what it has. Only a text delta is merged.
+ */
+const nodeEventSchema = entrySchema
+  .extend({
+    channel: nodeIdSchema,
+    type: z.literal('event'),
+    event: entryEventSchema,
+    messageId: messageIdSchema.exactOptional(),
+    /** On a merged `text_delta`: the `seq` of the last delta in it, after the event's own. */
+    lastSeq: z.number().int().nonnegative().exactOptional(),
+  })
+  .refine(({ cursor }) => isAfterOpened(cursor), {
+    error: 'an event entry is numbered after the opened entry',
+    path: ['cursor'],
+  })
+  .refine(({ event }) => !(TREE_ONLY_EVENT_TYPES as readonly string[]).includes(event.type), {
+    error: 'a conversation notice is the tree channel’s, not an agent’s',
+    path: ['event'],
+  })
+  .refine(
+    ({ event, lastSeq }) =>
+      lastSeq === undefined || (event.type === 'text_delta' && lastSeq > event.seq),
+    {
+      error: 'only a text delta is merged, and lastSeq comes after its own seq',
+      path: ['lastSeq'],
+    },
+  );
+
+/**
+ * What an agent's channel holds in place of an event that is too large to store (a store keeps an
+ * entry of `MAX_CHANNEL_ENTRY_CHARS` at most and refuses a longer one): that there was one, which,
+ * where it stood in the session's stream, and how large it was, as its JSON in characters. Its
+ * content is not kept here; the combined stream still holds the whole event.
+ */
+const nodeEventOmittedSchema = entrySchema
+  .extend({
+    channel: nodeIdSchema,
+    type: z.literal('event_omitted'),
+    /** The omitted event's own type, a name a reader may not know. */
+    eventType: z.string().min(1).max(MAX_ENTRY_TYPE_CHARS),
+    /** The omitted event's own `seq`. */
+    seq: z.number().int().nonnegative(),
+    /** How large the event was: its JSON, in characters. */
+    size: z.number().int().positive(),
+    messageId: messageIdSchema.exactOptional(),
+  })
+  .refine(({ cursor }) => isAfterOpened(cursor), {
+    error: 'an event_omitted entry is numbered after the opened entry',
+    path: ['cursor'],
+  });
+
 /** The first entry of the tree channel: the conversation opened it. */
 export const treeOpenedSchema = entrySchema
   .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('opened') })
@@ -206,13 +273,16 @@ export const channelBoundarySchema = z.union([
 
 /**
  * Every entry of a node's channel a subscription serves: the two boundary entries, an agent's
- * `updated` and a command's or a service's `output`. The output is not stored in the channel (the
- * complete output is the output store's): a subscription makes its entries between the stored
- * `opened` and `closed`. The tree channel's other entries are the tree's (`treeChannelEntrySchema`).
+ * `updated`, its loop events (`event`, or `event_omitted` for one too large to store) and a
+ * command's or a service's `output`. The output is not stored in the channel (the complete output
+ * is the output store's): a subscription makes its entries between the stored `opened` and
+ * `closed`. The tree channel's other entries are the tree's (`treeChannelEntrySchema`).
  */
 export const channelEntrySchema = z.union([
   channelBoundarySchema,
   nodeUpdatedSchema,
+  nodeEventSchema,
+  nodeEventOmittedSchema,
   nodeOutputSchema,
 ]);
 
