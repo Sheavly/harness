@@ -1,5 +1,18 @@
-import type { ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
+import type { ApprovalRequest, ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { SessionId, SessionInfo } from '@sheavly/protocol/session/session.types';
+import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+
+/**
+ * An approval that waits, as the tree shows it: the request, and the node that asked. The node is
+ * for display and never authorizes an answer, which is by the request's id. `asker` is that node as
+ * the tree has it (its kind, title and state), and unset when the tree no longer holds it.
+ */
+export type TreeApproval = {
+  node: NodeId;
+  asker: TreeView['nodes'][number] | undefined;
+  request: ApprovalRequest;
+};
 
 /** A sub-agent's session as the stream last showed it: its title, depth and parent. */
 export type AgentSession = Extract<SessionInfo, { parentId: SessionId }>;
