@@ -6,9 +6,9 @@ import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { OutputRef } from '@sheavly/protocol/output/output.types';
 import type {
   ChannelName,
+  ConversationSnapshot,
   SubscribeFrame,
 } from '@sheavly/protocol/subscription/subscription.types';
-import type { TreeSnapshot } from '@sheavly/protocol/tree/tree.types';
 import type { OutputTail } from './output-tail.service.js';
 
 /** A channel of a request that exists in its conversation, with where to start in it. */
@@ -51,12 +51,12 @@ export type Selection = {
   /** The bytes of the conversation's pool the entries hold, until they are queued as frames. */
   held: number;
   /**
-   * For `from: snapshot` on the tree channel: the tree as it stands, sent before anything else. It
-   * is held in memory by the writer and counts against the pool once queued, not as a read of
-   * stored history, so it is not bound by the request's history budget; `entries` is then empty
-   * and `count` is the place after the entry it covers up to.
+   * For `from: snapshot` on a channel of the conversation itself: its view as it stands, sent
+   * before anything else. It is held in memory by the writer and counts against the pool once
+   * queued, not as a read of stored history, so it is not bound by the request's history budget;
+   * `entries` is then empty and `count` is the place after the entry it covers up to.
    */
-  snapshot?: TreeSnapshot;
+  snapshot?: ConversationSnapshot;
   /**
    * For a channel with output: the byte offset the history read ended at, where the live output
    * joins it. `count` is then the stored entries (`opened`, and `closed` once it has ended), not
