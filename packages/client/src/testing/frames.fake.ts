@@ -43,6 +43,39 @@ export const agentUpdated = (params: { name: string; n: number; status?: string 
     },
   });
 
+/**
+ * An agent's loop event as its channel holds it, as entry `n`: the event as the stream carries it
+ * (its own `seq`, which is not the channel's cursor), and, for a text delta that merged the ones
+ * after it, `lastSeq`.
+ */
+export const agentEvent = (params: { name: string; n: number; event: object; lastSeq?: number }) =>
+  frame({
+    channel: params.name,
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'event',
+    event: params.event,
+    ...(params.lastSeq !== undefined && { lastSeq: params.lastSeq }),
+  });
+
+/** An agent's channel after an event too large to store, as entry `n`: which it was, and how large. */
+export const agentEventOmitted = (params: {
+  name: string;
+  n: number;
+  eventType: string;
+  seq: number;
+  size: number;
+}) =>
+  frame({
+    channel: params.name,
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'event_omitted',
+    eventType: params.eventType,
+    seq: params.seq,
+    size: params.size,
+  });
+
 /** A command's output: `text`, which starts at byte `offset` of it. */
 export const outputText = (params: { name: string; offset: number; text: string }) =>
   frame({

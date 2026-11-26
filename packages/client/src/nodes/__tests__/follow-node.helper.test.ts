@@ -3,6 +3,8 @@ import { conversationIdSchema } from '@sheavly/protocol/server/server.validator'
 import { ChannelFailedError, RefusedError } from '../../errors/client.errors.js';
 import {
   agentClosed,
+  agentEvent,
+  agentEventOmitted,
   agentOpened,
   agentUpdated,
   commandClosed,
@@ -35,27 +37,86 @@ async function followed(params: { world: ServedSubscription; name: string; from?
   return seen;
 }
 
+/** Serves `connections` of `main`'s channel in turn, follows it to its end, and answers both. */
+async function followedMain(connections: Parameters<typeof served>[0]['connections']) {
+  const world = served({ connections });
+
+  return { world, seen: await followed({ world, name: 'main' }) };
+}
+
+/** Entries as `type cursor`, to compare what was yielded at a glance. */
+const shape = (seen: NodeChannelEntry[]) => seen.map(({ type, cursor }) => `${type} ${cursor}`);
+
 describe('followNode', () => {
   it('yields an agent’s entries from its start to its closed entry, and ends with the channel', async () => {
-    const world = served({
-      connections: [
-        [
-          agentOpened('main'),
-          agentUpdated({ name: 'main', n: 1, status: 'reading' }),
-          agentClosed({ name: 'main', n: 2 }),
-          endedAs({ name: 'main', reason: 'completed' }),
-        ],
+    const { world, seen } = await followedMain([
+      [
+        agentOpened('main'),
+        agentUpdated({ name: 'main', n: 1, status: 'reading' }),
+        agentClosed({ name: 'main', n: 2 }),
+        endedAs({ name: 'main', reason: 'completed' }),
       ],
-    });
-
-    const seen = await followed({ world, name: 'main' });
-
-    expect(seen.map(({ type, cursor }) => `${type} ${cursor}`)).toEqual([
-      'opened s0',
-      'updated s1',
-      'closed s2',
     ]);
+
+    expect(shape(seen)).toEqual(['opened s0', 'updated s1', 'closed s2']);
     expect(world.asked()).toEqual([{ subscriptions: [{ channel: 'main', from: 'start' }] }]);
+  });
+
+  it('yields an agent’s run as its loop events, in the order they were stored, then its end', async () => {
+    const { seen } = await followedMain([
+      [
+        agentOpened('main'),
+        agentEvent({
+          name: 'main',
+          n: 1,
+          event: { seq: 4, type: 'text_delta', text: 'Hello, world' },
+          lastSeq: 6,
+        }),
+        agentEvent({
+          name: 'main',
+          n: 2,
+          event: { seq: 7, type: 'turn_end', turn: 0, stopReason: 'end_turn' },
+        }),
+        agentEventOmitted({ name: 'main', n: 3, eventType: 'tool_result', seq: 8, size: 90_000 }),
+        agentClosed({ name: 'main', n: 4 }),
+        endedAs({ name: 'main', reason: 'completed' }),
+      ],
+    ]);
+
+    expect(shape(seen)).toEqual([
+      'opened s0',
+      'event s1',
+      'event s2',
+      'event_omitted s3',
+      'closed s4',
+    ]);
+    // The event as the stream carried it, with the seq range of the text it merged.
+    expect(seen[1]).toMatchObject({
+      event: { seq: 4, type: 'text_delta', text: 'Hello, world' },
+      lastSeq: 6,
+    });
+    expect(seen[3]).toMatchObject({ eventType: 'tool_result', seq: 8, size: 90_000 });
+  });
+
+  it('resumes an agent’s events after the last one it had when the connection drops, with no gap and no repeat', async () => {
+    const delta = (seq: number, text: string) => ({ seq, type: 'text_delta', text });
+    const { world, seen } = await followedMain([
+      [
+        agentOpened('main'),
+        agentEvent({ name: 'main', n: 1, event: delta(0, 'a') }),
+        agentEvent({ name: 'main', n: 2, event: delta(1, 'b') }),
+        DROP,
+      ],
+      [
+        agentEvent({ name: 'main', n: 3, event: delta(2, 'c') }),
+        agentClosed({ name: 'main', n: 4 }),
+        endedAs({ name: 'main', reason: 'completed' }),
+      ],
+    ]);
+
+    expect(seen.map(({ cursor }) => cursor)).toEqual(['s0', 's1', 's2', 's3', 's4']);
+    // It asked again from the last entry it had, not from the start and not from the event's own seq.
+    expect(world.asked()[1]).toEqual({ subscriptions: [{ channel: 'main', from: 's2' }] });
   });
 
   it('reads a command’s output across a dropped connection with no gap and no repeat, and then its end', async () => {
