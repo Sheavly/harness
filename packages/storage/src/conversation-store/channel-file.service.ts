@@ -12,13 +12,22 @@ import {
   channelFromProblem,
 } from '@sheavly/core/store/store.utils';
 import type { ChannelHead } from '@sheavly/protocol/channel/channel.types';
+import { cursorKind } from '@sheavly/protocol/channel/channel.utils';
 import { isMissingPath } from '@sheavly/runtime/errors/errors.utils';
 import { StorageFileError } from '../errors/storage.errors.js';
 import { readJsonFile, writeJsonFile } from '../json-file/json-file.helper.js';
-import { appendJsonLine, readJsonLines, trimPartialLine } from '../jsonl-file/jsonl-file.helper.js';
+import {
+  appendJsonLine,
+  readJsonLines,
+  readJsonLinesAt,
+  trimPartialLine,
+} from '../jsonl-file/jsonl-file.helper.js';
 import { SerialQueue } from '../serial-queue/serial-queue.service.js';
 import { channelFullMarkerSchema, storedChannelEntrySchema } from './channel-entry.validator.js';
+import type { ChannelSeen } from './channel-file.types.js';
 import type { ChannelQuota } from './channel-quota.service.js';
+import { entriesAfter, linesFrom } from './channel-seek.helper.js';
+import { CHANNEL_INDEX_EVERY } from './conversation-store.constants.js';
 import { asStoreError } from './conversation-store.utils.js';
 
 /**
@@ -43,25 +52,46 @@ import { asStoreError } from './conversation-store.utils.js';
  * limits, delete `<channel>.full` and restart: a running process keeps its refusal. A write that
  * fails makes the channel read its file again, which also sets what the quota holds for it to what
  * is really on disk.
+ *
+ * What it counts as it reads the file once (how many lines it holds, and where every
+ * `CHANNEL_INDEX_EVERY`th starts) is kept and updated by each append, so `head` answers without
+ * reading, and a read from a cursor or a tail begins at the block of lines that holds the one it
+ * wants, not at the first line of a file that may hold weeks of a conversation. A numbered
+ * channel's cursor is its line's number, so a cursor is found by its number; a byte channel's is
+ * not, and it is searched for by reading (its log holds a few lines: the output is not in it).
  */
 export class ChannelFile implements ChannelLog {
   readonly #file: string;
   readonly #markerFile: string;
   readonly #channel: string;
   readonly #quota: ChannelQuota;
+  readonly #every: number;
   readonly #queue = new SerialQueue();
   #last: ChannelHead | undefined;
   #loaded = false;
+  /** How many lines the file holds, and how many bytes they are, as far as this process knows. */
+  #count = 0;
+  #size = 0;
+  /** `#offsets[n]` is where line `n * #every` starts. Only ever added to, until the file is read again. */
+  #offsets: number[] = [];
   /** Why this channel takes no more entries, once it has refused one for a limit. */
   #refusedFor: string | undefined;
   /** Whether `<channel>.full` is on disk. */
   #marked = false;
 
-  constructor(params: { file: string; markerFile: string; channel: string; quota: ChannelQuota }) {
+  /** `indexEvery` is for a test that wants the blocks small; a store takes `CHANNEL_INDEX_EVERY`. */
+  constructor(params: {
+    file: string;
+    markerFile: string;
+    channel: string;
+    quota: ChannelQuota;
+    indexEvery?: number;
+  }) {
     this.#file = params.file;
     this.#markerFile = params.markerFile;
     this.#channel = params.channel;
     this.#quota = params.quota;
+    this.#every = params.indexEvery ?? CHANNEL_INDEX_EVERY;
   }
 
   async append(entry: ChannelEntry): Promise<void> {
@@ -74,8 +104,13 @@ export class ChannelFile implements ChannelLog {
 
   async head(): Promise<ChannelSummary> {
     try {
-      // After the appends already queued, so what it says includes them.
-      return await this.#queue.run(async () => this.#summary());
+      // After the appends already queued, so what it says includes them. The file is read here only
+      // the first time anything asks of it in this process.
+      return await this.#queue.run(async () => {
+        await this.#load();
+
+        return { count: this.#count, newest: this.#last };
+      });
     } catch (caughtError) {
       throw asStoreError(caughtError);
     }
@@ -100,6 +135,9 @@ export class ChannelFile implements ChannelLog {
     await this.#queue.run(async () => {
       this.#last = undefined;
       this.#loaded = false;
+      this.#count = 0;
+      this.#size = 0;
+      this.#offsets = [];
       this.#refusedFor = undefined;
       this.#marked = false;
     });
@@ -126,6 +164,11 @@ export class ChannelFile implements ChannelLog {
       throw caughtError;
     }
 
+    // The line `appendJsonLine` wrote is the JSON and a newline: it starts where the file ended.
+    if (this.#count % this.#every === 0) this.#offsets.push(this.#size);
+
+    this.#size += Buffer.byteLength(JSON.stringify(kept)) + 1;
+    this.#count += 1;
     this.#last = { channel: kept.channel, cursor: kept.cursor, type: kept.type };
   }
 
@@ -196,11 +239,16 @@ export class ChannelFile implements ChannelLog {
 
     await this.#quota.ready();
     await trimPartialLine({ file: this.#file });
-    this.#quota.settle({ channel: this.#channel, size: await this.#bytesOnDisk() });
+
+    const size = await this.#bytesOnDisk();
+
+    this.#quota.settle({ channel: this.#channel, size });
 
     let last: ChannelHead | undefined;
+    let count = 0;
+    const offsets: number[] = [];
 
-    for await (const each of readJsonLines({
+    for await (const { value: each, offset } of readJsonLinesAt({
       file: this.#file,
       schema: storedChannelEntrySchema,
     })) {
@@ -216,6 +264,9 @@ export class ChannelFile implements ChannelLog {
         });
       }
 
+      if (count % this.#every === 0) offsets.push(offset);
+
+      count += 1;
       last = { channel: each.channel, cursor: each.cursor, type: each.type };
     }
 
@@ -225,72 +276,54 @@ export class ChannelFile implements ChannelLog {
     }
 
     this.#last = last;
+    this.#count = count;
+    this.#size = size;
+    this.#offsets = offsets;
     this.#loaded = true;
   }
 
-  async #summary(): Promise<ChannelSummary> {
-    let count = 0;
-    let newest: ChannelHead | undefined;
-
-    for await (const each of readJsonLines({
-      file: this.#file,
-      schema: storedChannelEntrySchema,
-    })) {
-      count += 1;
-      newest = { channel: each.channel, cursor: each.cursor, type: each.type };
-    }
-
-    return { count, newest };
+  /** What a read begins from: the file as this process knows it now. Call it after `#load`. */
+  #seen(): ChannelSeen {
+    return {
+      count: this.#count,
+      offsets: this.#offsets,
+      kind: this.#last && cursorKind(this.#last.cursor),
+    };
   }
 
   async *#entriesFrom(from: ChannelFrom): AsyncGenerator<ChannelEntry> {
-    const lines = readJsonLines({ file: this.#file, schema: storedChannelEntrySchema });
-
     if (from === 'start') {
-      yield* lines;
+      yield* readJsonLines({ file: this.#file, schema: storedChannelEntrySchema });
 
       return;
     }
+
+    // The file is read whole once in this process (by `#load`), after the appends already queued;
+    // a read then begins at the block of lines that holds what it wants.
+    const seen = await this.#queue.run(async () => {
+      await this.#load();
+
+      return this.#seen();
+    });
+    const every = this.#every;
 
     if ('tail' in from) {
-      yield* this.#newest({ lines, count: from.tail });
+      yield* linesFrom({
+        file: this.#file,
+        seen,
+        every,
+        index: Math.max(0, seen.count - from.tail),
+      });
 
       return;
     }
 
-    let found = false;
-
-    for await (const each of lines) {
-      if (found) yield each;
-
-      found ||= each.cursor === from.after;
-    }
-
-    if (!found) {
-      throw new StoreError({
-        reason: 'cursor_out_of_range',
-        message: `Cursor ${from.after} is not one of channel ${this.#channel}'s entries`,
-      });
-    }
-  }
-
-  /**
-   * The last `count` entries of `lines`, keeping about twice that in memory at a time: `count` is at
-   * most the most a subscription may ask for, so a large log is never held whole.
-   */
-  async *#newest(params: {
-    lines: AsyncIterable<ChannelEntry>;
-    count: number;
-  }): AsyncGenerator<ChannelEntry> {
-    const { lines, count } = params;
-    const kept: ChannelEntry[] = [];
-
-    for await (const each of lines) {
-      kept.push(each);
-
-      if (kept.length > count * 2 + 16) kept.splice(0, kept.length - count);
-    }
-
-    yield* kept.slice(Math.max(0, kept.length - count));
+    yield* entriesAfter({
+      file: this.#file,
+      channel: this.#channel,
+      seen,
+      every,
+      cursor: from.after,
+    });
   }
 }

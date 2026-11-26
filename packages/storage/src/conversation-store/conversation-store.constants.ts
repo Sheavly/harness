@@ -58,11 +58,22 @@ export const CHANNEL_LOG_SUFFIX = '.jsonl';
 export const CHANNEL_FULL_SUFFIX = '.full';
 
 /**
- * What a conversation's channels may hold unless the app says otherwise, the same as its command
- * output may: 128 MiB for one channel, 1 GiB for all of them, and 5,000 channels.
+ * What a conversation's channels may hold unless the app says otherwise: 4 GiB for one channel,
+ * 32 GiB for all of them, and 5,000 channels. A conversation used for weeks keeps its whole story in
+ * its main agent's channel, and light turns measure about 10 KiB of channel each while a turn that
+ * reads files and runs commands is several times that, so 128 MiB lasts a week or two of heavy use;
+ * 4 GiB lasts months. A channel past a limit still refuses every later entry (it fails closed), and
+ * what to drop from the oldest end is retention, not a limit.
  */
 export const DEFAULT_CHANNEL_LIMITS = {
-  channelBytes: 128 * 1024 * 1024,
-  conversationBytes: 1024 * 1024 * 1024,
+  channelBytes: 4 * 1024 * 1024 * 1024,
+  conversationBytes: 32 * 1024 * 1024 * 1024,
   conversationChannels: 5000,
 } as const;
+
+/**
+ * How many entries lie between two offsets a channel remembers: it keeps where every 1,024th line
+ * starts, so a read from a cursor or a tail begins at most this many lines before the one it wants,
+ * and the index of a channel of a million entries is a thousand numbers.
+ */
+export const CHANNEL_INDEX_EVERY = 1024;

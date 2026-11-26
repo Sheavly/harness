@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { StorageFileError } from '../../errors/storage.errors.js';
 import { expectPrivate, useTempFolder } from '../../testing/temp-folder.fake.js';
-import { appendJsonLine, readJsonLines, trimPartialLine } from '../jsonl-file.helper.js';
+import {
+  appendJsonLine,
+  readJsonLines,
+  readJsonLinesAt,
+  trimPartialLine,
+} from '../jsonl-file.helper.js';
 
 const schema = z.object({ n: z.number(), text: z.string() });
 /** Private text no error may quote. */
@@ -76,6 +81,53 @@ describe('appendJsonLine and readJsonLines', () => {
     expect((await lines()).map((line) => line.n).sort((a, b) => a - b)).toEqual(
       Array.from({ length: 30 }, (_, n) => n),
     );
+  });
+});
+
+describe('readJsonLinesAt', () => {
+  const log = () => file.replace('deep', '.');
+  const second = Buffer.from('{"n":2,"text":"é€🎉"}\n');
+  /** Four lines: plain, with multibyte text, with a byte that is not UTF-8 (a damaged disk's), plain. */
+  const bytes = Buffer.concat([
+    Buffer.from('{"n":1,"text":"a"}\n'),
+    second,
+    Buffer.from('{"n":3,"text":"x'),
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from('y"}\n{"n":4,"text":"d"}\n'),
+  ]);
+  /** Where each line starts, counted in the bytes the file has. */
+  const thirdStart = 19 + second.length;
+  const fourthStart = bytes.indexOf('{"n":4');
+  const starts = [0, 19, thirdStart, fourthStart];
+
+  it('says where each line starts in bytes, whatever its text, and a byte that is not UTF-8 is one byte', async () => {
+    await writeFile(log(), bytes);
+
+    const offsets: number[] = [];
+
+    for await (const { offset } of readJsonLinesAt({ file: log(), schema })) offsets.push(offset);
+
+    expect(offsets).toEqual(starts);
+  });
+
+  it('begins at a line it was given the place of, numbering it as asked', async () => {
+    await writeFile(log(), bytes);
+
+    const read: { n: number; offset: number }[] = [];
+
+    for await (const { value, offset } of readJsonLinesAt({
+      file: log(),
+      schema,
+      start: thirdStart,
+      firstLine: 3,
+    })) {
+      read.push({ n: value.n, offset });
+    }
+
+    expect(read).toEqual([
+      { n: 3, offset: thirdStart },
+      { n: 4, offset: fourthStart },
+    ]);
   });
 });
 
