@@ -2,13 +2,14 @@
  * Test-only: `fetch`, with the streams it answers wrapped so a test can cut them, as a network that
  * fails does: the reader gets an error where the stream was, and what the server went on to send is
  * never read. `cut` cuts every stream that is open; a stream opened after it is whole. `opened` is
- * how many streams were opened, which says that a client opened again.
+ * how many streams were opened, which says that a client opened again. It wraps the global `fetch`,
+ * or `inner`: a test that serves an app in-process passes a fetch that calls it.
  */
-export function cuttingFetch() {
+export function cuttingFetch(inner: typeof globalThis.fetch = fetch) {
   const cuts: (() => void)[] = [];
   let opened = 0;
   const wrapped = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const response = await fetch(input, init);
+    const response = await inner(input, init);
 
     if (!response.body) return response;
 
