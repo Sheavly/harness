@@ -1,184 +1,19 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createClient } from '@sheavly/client/client/client.helper';
 import { followNode } from '@sheavly/client/nodes/follow-node.helper';
 import type { NodeChannelEntry } from '@sheavly/client/nodes/nodes.types';
-import { promptEntries } from '@sheavly/client/prompt/prompt.helper';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
-import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import { fakeFetch } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { until } from '@sheavly/testing/wait/until.fake';
-import { testBackend } from '../../testing/backend.fake.js';
 import { cuttingFetch } from '../../testing/cutting-fetch.fake.js';
-import { modelRequest } from '../../testing/model-request.fake.js';
-import { seedFakeModel } from '../../testing/seed-model.fake.js';
-import { untilSettled } from '../../testing/settled.fake.js';
+import { useSubAgentRuns } from '../../testing/sub-agent-run.fake.js';
 import { TEST_TOKEN } from '../../testing/testing.constants.js';
 
 // A conversation that runs a prompt in which the main agent starts a sub-agent, on the real
 // backend and the real loop, read from its agents' channels through the client over the real
 // routes: what a client that follows one node needs to show its run, and what it costs.
 
-const FIRST = 'Inspect the project';
-const CHILD_TASK = 'READER_TASK';
-
-const opened: { base: string; close: () => Promise<void> }[] = [];
-
-afterEach(async () => {
-  for (const { base, close } of opened.splice(0)) {
-    await close();
-    await rm(base, { recursive: true, force: true });
-  }
-});
-
-const text = (delta: string) => ({ type: 'response.output_text.delta', delta });
-const call = (params: { id: string; name: string; input: object }) => ({
-  type: 'response.output_item.done',
-  item: {
-    type: 'function_call',
-    call_id: params.id,
-    name: params.name,
-    arguments: JSON.stringify(params.input),
-  },
-});
-const usage = {
-  type: 'response.completed',
-  response: { usage: { input_tokens: 100, output_tokens: 20 } },
-};
-
-/**
- * The model: the first prompt makes the main agent say a few words (three deltas) and start a
- * sub-agent; the sub-agent waits for `release`, then reports its status and says it is done; what
- * follows for the main agent (the report that wakes it) is answered in a few words. The sub-agent
- * waiting is what makes the main agent's first run end before the report, so the run the report
- * wakes is a second one, whatever the timing.
- */
-function scriptedModel(release: Promise<undefined>): typeof globalThis.fetch {
-  let childCalls = 0;
-  let mainCalls = 0;
-
-  return async (input, init) => {
-    const { task } = await modelRequest(input, init);
-
-    if (task === CHILD_TASK) {
-      await release;
-      childCalls += 1;
-
-      return fakeFetch(
-        childCalls === 1
-          ? [call({ id: 'r1', name: 'report_status', input: { status: 'reading' } }), usage]
-          : [text('Child finished.'), usage],
-      ).fetch(input, init);
-    }
-
-    mainCalls += 1;
-
-    return fakeFetch(
-      mainCalls === 1
-        ? [
-            text('Reading '),
-            text('the '),
-            text('notes. '),
-            call({
-              id: 'a1',
-              name: 'start_agent',
-              input: { description: 'Start a reader', title: 'Reader', task: CHILD_TASK },
-            }),
-            usage,
-          ]
-        : [text(`Main turn ${String(mainCalls)}.`), usage],
-    ).fetch(input, init);
-  };
-}
-
-/**
- * A real backend over a folder made for the test, with the scripted model as its network. Closing
- * it releases the sub-agent first: a test that failed before it did would otherwise leave the
- * sub-agent waiting, and the close would wait for it.
- */
-async function openBackend(gate: PromiseWithResolvers<undefined>) {
-  const base = await mkdtemp(path.join(tmpdir(), 'agent-channel-run-'));
-
-  await mkdir(path.join(base, 'project'));
-
-  const backend = testBackend({
-    home: path.join(base, 'home'),
-    workspace: path.join(base, 'project'),
-    fetch: scriptedModel(gate.promise),
-  });
-
-  opened.push({
-    base,
-    close: () => {
-      gate.resolve(undefined);
-
-      return backend.conversations.closeAll();
-    },
-  });
-  await seedFakeModel(backend);
-
-  return backend;
-}
-
-type OpenBackend = Awaited<ReturnType<typeof openBackend>>;
-
-/** Sends `prompt` to conversation `id` and reads the main agent's stream entries until its run ends. */
-async function sentPrompt(params: { backend: OpenBackend; id: ConversationId; prompt: string }) {
-  const entries: StreamEntry[] = [];
-
-  for await (const entry of promptEntries({
-    client: params.backend.client,
-    id: params.id,
-    prompt: { text: params.prompt },
-  })) {
-    entries.push(entry);
-  }
-
-  return entries;
-}
-
-/**
- * A conversation whose first prompt has run to its end: the main agent said its words and started
- * a sub-agent, which waits for `release()`. The report that comes after it wakes a second run.
- */
-async function startedRun() {
-  const gate = Promise.withResolvers<undefined>();
-  const backend = await openBackend(gate);
-  const id = conversationIdSchema.parse(
-    (await backend.client.call('startConversation', { body: {} })).id,
-  );
-  const stream = await sentPrompt({ backend, id, prompt: FIRST });
-  const tree = await backend.client.call('getTree', { id });
-  const main = tree.nodes.find((node) => node.kind === 'agent' && node.parent === undefined);
-  const child = tree.nodes.find((node) => node.kind === 'agent' && node.parent !== undefined);
-
-  if (!main || !child) throw new Error('the conversation has no main agent and sub-agent');
-
-  return {
-    backend,
-    id,
-    stream,
-    main: main.id,
-    child: child.id,
-    release: () => gate.resolve(undefined),
-  };
-}
-
-/** `startedRun`, with the sub-agent released and everything it started settled and stored. */
-async function ranFirst() {
-  const run = await startedRun();
-  const live = run.backend.conversations.get(run.id);
-
-  run.release();
-  await untilSettled(live);
-  await live.harness.nodeChannels?.flush();
-
-  return run;
-}
+const runs = useSubAgentRuns();
 
 /** The `done` events among `entries`. */
 const dones = (entries: NodeChannelEntry[]) =>
@@ -195,7 +30,7 @@ const textOf = (entries: NodeChannelEntry[]) =>
  * read `stopAfter` `done` events (the channel of a node that closes ends by itself).
  */
 async function followed(params: {
-  client: OpenBackend['client'];
+  client: ReturnType<typeof createClient>;
   id: ConversationId;
   node: NodeId;
   stopAfter?: number;
@@ -226,7 +61,7 @@ const tag = (entry: NodeChannelEntry) =>
 
 describe('the main agent’s channel, read from its start over the routes', () => {
   it('holds the whole run, in the order it happened, with the sub-agent it started and the run its report woke', async () => {
-    const { backend, id, main, child } = await ranFirst();
+    const { backend, id, main, child } = await runs.ranFirst();
     const seen = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
     const events = seen.flatMap((entry) => (entry.type === 'event' ? [entry.event] : []));
     const types = events.map((event) => event.type);
@@ -258,7 +93,7 @@ describe('the main agent’s channel, read from its start over the routes', () =
   });
 
   it('stores the three deltas of a few words as one entry, with the seq of the last one', async () => {
-    const { backend, id, main } = await ranFirst();
+    const { backend, id, main } = await runs.ranFirst();
     const seen = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
     const first = seen.find((entry) => entry.type === 'event' && entry.event.type === 'text_delta');
 
@@ -272,7 +107,7 @@ describe('the main agent’s channel, read from its start over the routes', () =
   });
 
   it('gives every event of both runs the message the conversation was started by', async () => {
-    const { backend, id, main } = await ranFirst();
+    const { backend, id, main } = await runs.ranFirst();
     const seen = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
     const events = seen.filter((entry) => entry.type === 'event');
     const ids = new Set(events.map((entry) => entry.messageId));
@@ -287,7 +122,7 @@ describe('the main agent’s channel, read from its start over the routes', () =
 
 describe('a sub-agent’s own channel', () => {
   it('holds its run and not its parent’s, and ends with the run’s end and then its close', async () => {
-    const { backend, id, main, child } = await ranFirst();
+    const { backend, id, main, child } = await runs.ranFirst();
     const own = await followed({ client: backend.client, id, node: child });
     const parent = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
     const types = own.flatMap((entry) => (entry.type === 'event' ? [entry.event.type] : []));
@@ -309,7 +144,7 @@ describe('a sub-agent’s own channel', () => {
 
 describe('following the main agent’s channel while a connection is cut', () => {
   it('misses nothing and repeats nothing when the connection is cut before a whole run, and reads what a client that connects now reads', async () => {
-    const { backend, id, main, release } = await startedRun();
+    const { backend, id, main, release } = await runs.started();
     const network = cuttingFetch(async (input, init) =>
       backend.app.request(new Request(input, init)),
     );
@@ -349,7 +184,7 @@ describe('following the main agent’s channel while a connection is cut', () =>
 
 describe('what a run costs on its channel', () => {
   it('is no more than a quarter above the stream the same run takes, and has fewer entries for the streamed text', async () => {
-    const { backend, id, main, stream } = await ranFirst();
+    const { backend, id, main, stream } = await runs.ranFirst();
     const seen = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
     // The first run only: from the channel's start to its first `done`, and the stream's entries
     // of the main agent (the run's prompt is its first entry) up to its `done`.
