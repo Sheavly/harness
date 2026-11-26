@@ -44,6 +44,14 @@ export type ChannelEntry = ChannelHead & { at: number } & Record<string, unknown
 export type ChannelFrom = 'start' | { tail: number } | { after: string };
 
 /**
+ * What a channel holds, said without reading it: how many entries it has, and the newest one (its
+ * channel, cursor and type). A channel nothing was written to has none of either. A numbered
+ * channel's cursors have no gap, so its newest cursor is `s` and one less than `count`; a byte
+ * channel counts its entries, not its bytes, which are in its cursor.
+ */
+export type ChannelSummary = { count: number; newest: ChannelHead | undefined };
+
+/**
  * One channel's durable log: the entries of a node, or of the conversation's `tree`, in the order
  * they were written, each with the cursor of its channel. A channel is made by its first entry,
  * which is `opened`, and ends with `closed`; between them the cursor goes on from the one before
@@ -72,9 +80,16 @@ export type ChannelFrom = 'start' | { tail: number } | { after: string };
  * store serves, and several entries can share an offset: `after` that cursor starts after the
  * first of them. A log holds only the entries it was given, so a cursor between two of them is
  * not one it can continue from.
+ *
+ * `head` says what the channel holds (`ChannelSummary`) without reading its entries, at the moment
+ * it is asked: an entry appended after is not in it. `read` from a cursor or a tail reads the entries
+ * it gives and no more than a bounded few besides, however long the channel is, so a channel that
+ * holds weeks of a conversation is not read whole to give its last entries; `start` reads all of it,
+ * which is what it asks for. Either rejects with a `StoreError` when storage fails.
  */
 export type ChannelLog = {
   append(entry: ChannelEntry): Promise<void>;
+  head(): Promise<ChannelSummary>;
   read(from?: ChannelFrom): AsyncIterable<ChannelEntry>;
 };
 

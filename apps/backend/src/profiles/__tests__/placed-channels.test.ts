@@ -64,14 +64,21 @@ async function cursorsOf(store: PlacedConversationStore) {
   return cursors;
 }
 
+/** A conversation that was placed in a folder, with the two entries of its `main` channel written. */
+async function placedWithTwoEntries() {
+  const files = kept();
+  const placed = placedOver(files);
+
+  await placed.decide({ id: ID, asked: {} });
+  await placed.channel({ id: ID, channel: 'main' }).append(opened);
+  await placed.channel({ id: ID, channel: 'main' }).append(updated);
+
+  return { files, placed };
+}
+
 describe('a conversation’s channels through the placed store', () => {
   it('are written where the conversation was placed, and read back from there', async () => {
-    const files = kept();
-    const placed = placedOver(files);
-
-    await placed.decide({ id: ID, asked: {} });
-    await placed.channel({ id: ID, channel: 'main' }).append(opened);
-    await placed.channel({ id: ID, channel: 'main' }).append(updated);
+    const { files, placed } = await placedWithTwoEntries();
 
     expect(await cursorsOf(placed)).toEqual(['s0', 's1']);
 
@@ -83,6 +90,15 @@ describe('a conversation’s channels through the placed store', () => {
     }
 
     expect(cursors).toEqual(['s1']);
+  });
+
+  it('say what they hold from where the conversation is kept', async () => {
+    const { files, placed } = await placedWithTwoEntries();
+    const newest = { channel: 'main', cursor: 's1', type: 'updated' };
+
+    expect(await placed.channel({ id: ID, channel: 'main' }).head()).toEqual({ count: 2, newest });
+    // The store that keeps the conversation says the same: the wrapper only found the place.
+    expect(await files.channel({ id: ID, channel: 'main' }).head()).toEqual({ count: 2, newest });
   });
 
   it('are listed from where the conversation is kept, and none for one nobody kept', async () => {
@@ -112,6 +128,10 @@ describe('a conversation’s channels through the placed store', () => {
     const placed = placedOver(kept());
 
     expect(await cursorsOf(placed)).toEqual([]);
+    expect(await placed.channel({ id: ID, channel: 'main' }).head()).toEqual({
+      count: 0,
+      newest: undefined,
+    });
     await expect(placed.channel({ id: ID, channel: 'main' }).append(opened)).rejects.toMatchObject({
       name: 'StoreError',
       reason: 'failed',

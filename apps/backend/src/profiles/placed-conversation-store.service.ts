@@ -3,6 +3,7 @@ import type { OutputStore } from '@sheavly/core/output/output.types';
 import type {
   ChannelFrom,
   ChannelLog,
+  ChannelSummary,
   ConversationStore,
   DocumentStore,
   EntryStore,
@@ -89,6 +90,7 @@ export class PlacedConversationStore implements ConversationStore {
     return {
       append: async (entry) =>
         (await this.#placed(id)).store.channel({ id, channel }).append(entry),
+      head: () => this.#headOf({ id, channel }),
       read: (from) => this.#readChannel({ id, channel, from }),
     };
   }
@@ -98,6 +100,13 @@ export class PlacedConversationStore implements ConversationStore {
     const home = await this.#homeOf(id);
 
     return home ? home.store.channels(id) : [];
+  }
+
+  /** What a channel holds, wherever its conversation is kept; nothing for one nobody kept. */
+  async #headOf(params: { id: ConversationId; channel: string }): Promise<ChannelSummary> {
+    const home = await this.#homeOf(params.id);
+
+    return home ? home.store.channel(params).head() : { count: 0, newest: undefined };
   }
 
   async *#readChannel(params: {

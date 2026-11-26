@@ -8,6 +8,14 @@ import { checkPosition, kindOf, readSelection } from '../subscription-read.helpe
 /** A log holding `entries`, which a subscription only reads. */
 const logOf = (entries: ChannelEntry[]): ChannelLog => ({
   append: () => Promise.resolve(),
+  head: () => {
+    const newest = entries.at(-1);
+
+    return Promise.resolve({
+      count: entries.length,
+      newest: newest && { channel: newest.channel, cursor: newest.cursor, type: newest.type },
+    });
+  },
   async *read() {
     yield* entries;
   },

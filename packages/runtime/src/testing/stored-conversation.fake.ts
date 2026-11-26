@@ -34,6 +34,7 @@ export function conversation(
         if (!params.attempts) return log;
 
         return {
+          head: () => log.head(),
           read: (from) => log.read(from),
           append: async (entry) => {
             params.attempts?.push(`${entry.type} ${entry.cursor}`);

@@ -1,6 +1,11 @@
 import { stat } from 'node:fs/promises';
 import { StoreError } from '@sheavly/core/errors/store.errors';
-import type { ChannelEntry, ChannelFrom, ChannelLog } from '@sheavly/core/store/store.types';
+import type {
+  ChannelEntry,
+  ChannelFrom,
+  ChannelLog,
+  ChannelSummary,
+} from '@sheavly/core/store/store.types';
 import {
   channelAppendEntry,
   channelAppendProblem,
@@ -62,6 +67,15 @@ export class ChannelFile implements ChannelLog {
   async append(entry: ChannelEntry): Promise<void> {
     try {
       await this.#queue.run(async () => this.#appendOne(entry));
+    } catch (caughtError) {
+      throw asStoreError(caughtError);
+    }
+  }
+
+  async head(): Promise<ChannelSummary> {
+    try {
+      // After the appends already queued, so what it says includes them.
+      return await this.#queue.run(async () => this.#summary());
     } catch (caughtError) {
       throw asStoreError(caughtError);
     }
@@ -212,6 +226,21 @@ export class ChannelFile implements ChannelLog {
 
     this.#last = last;
     this.#loaded = true;
+  }
+
+  async #summary(): Promise<ChannelSummary> {
+    let count = 0;
+    let newest: ChannelHead | undefined;
+
+    for await (const each of readJsonLines({
+      file: this.#file,
+      schema: storedChannelEntrySchema,
+    })) {
+      count += 1;
+      newest = { channel: each.channel, cursor: each.cursor, type: each.type };
+    }
+
+    return { count, newest };
   }
 
   async *#entriesFrom(from: ChannelFrom): AsyncGenerator<ChannelEntry> {

@@ -37,6 +37,7 @@ class SlowChannels extends MemoryConversationStore {
     const log = super.channel(params);
 
     return {
+      head: () => log.head(),
       read: (from?: Parameters<typeof log.read>[0]) => log.read(from),
       append: async (entry: Parameters<typeof log.append>[0]) => {
         await new Promise<void>((resolve) => setTimeout(resolve, 20));

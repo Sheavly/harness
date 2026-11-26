@@ -148,6 +148,7 @@ describe('closing the channels a stopped server left open', () => {
         params.channel === 'agent-1'
           ? {
               append: async () => undefined,
+              head: () => Promise.reject(damaged),
               read: () => {
                 throw damaged;
               },
