@@ -129,8 +129,39 @@ phase wraps today's events, unchanged in content, in the new per-channel envelop
 every entry as today does (the entry log keeps all of them, live-only ones included). That phase is
 its own issue, #511. The item model comes later (#434). `text_delta`, `reasoning_activity`,
 `model_connection` and `run_state` are the entries that become live only in the item model, and
-before it they are stored with the rest. Today an agent's channel holds its lifecycle only
-(`opened`, `updated`, `closed`), so a UI reads a run's events from the conversation's stream.
+before it they are stored with the rest.
+
+**The first phase's entries.** An agent's channel holds its lifecycle (`opened`, `updated`,
+`closed`) and one entry that wraps a loop event, `event`: the event as the stream carries it (its
+own `seq`, which counts the session's events and is not the channel's cursor, and `done` without its
+`messages`), with the originating `messageId` where the stream's entry had one, under the channel's
+own cursor and `at`. It is one entry type, not one for each of the 24 loop events: the event keeps
+its own `type`. Every loop event but `storage_failed` and `extension_event` is one
+(`TREE_ONLY_EVENT_TYPES`, which stay on the tree channel); a test over the event union fails when a
+loop event is added without deciding which it is.
+
+- **An event too large to store** (a store keeps an entry of `MAX_CHANNEL_ENTRY_CHARS`, 64 KiB of
+  JSON, and refuses a longer one) is stored as `event_omitted`: the event's `eventType`, its `seq`
+  and its `size` in characters, never its content. The combined stream still holds the whole event.
+- **Streamed text is merged.** Stored one delta at a time, text costs about 16 times its size in
+  entries (a line's envelope outweighs a few words), so adjacent `text_delta` events of one session
+  are stored as one `event` entry: the first delta's, with the text of all of them in order and
+  `lastSeq`, the `seq` of the last delta in it. A reader that follows a session by `seq` knows
+  what it has from `lastSeq`. Only a text delta is merged, and a merged entry holds at most 8,192
+  characters of text (a longer stream is several entries). A single delta too large for an entry is
+  an omitted event like any other, so its text is then only in the combined stream.
+- **A run's end comes before the channel's.** The loop ends a sub-agent's session just before it
+  sends the run's `done`, so the node's `closed` entry is held for that `done` (for the rest of the
+  step at most) and the channel ends with `done`, then `closed`. An event that comes after the
+  channel closed is not stored: `closed` says how the node ended.
+- **A channel that cannot be written takes no more.** At its limit, on a disk that fails, or for an
+  event JSON cannot write, a channel stops where it is and its subscribers are told it failed; the
+  writer reports its first failure once, and the run goes on: a record that is missing an entry is
+  never read as whole. A reopened conversation closes it as
+  `lost`. The combined stream still has everything.
+
+A subscription to an agent's channel from `start`, a cursor, `tail` or `now` reads them as it reads
+any channel's entries.
 
 ### Command and service channels
 

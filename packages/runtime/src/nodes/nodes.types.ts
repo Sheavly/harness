@@ -1,12 +1,37 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
-import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { CallId, MessageId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunOutcome, SessionId } from '@sheavly/protocol/session/session.types';
 import type { StateOf } from '@sheavly/protocol/status/status.types';
+import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+
+/**
+ * What the node channel writer needs of the sessions to store the loop's events: the combined
+ * stream's entries from now on, and the node a session is (a session's id is not its node's).
+ * `SessionRegistry` is one.
+ */
+export type EventSource = {
+  subscribeEntries: (listener: (entry: StreamEntry) => void) => () => void;
+  nodeIdOf: (id: SessionId) => NodeId | undefined;
+};
+
+/**
+ * The text of the `text_delta` events of one session that have not been stored yet: from the
+ * delta with `seq` to the one with `lastSeq`, in order, one entry when its window ends.
+ */
+export type PendingText = {
+  seq: number;
+  lastSeq: number;
+  text: string;
+  /** When the first delta was added to the stream. */
+  at: number;
+  /** The user message the deltas answer: the deltas of another one are not merged with them. */
+  messageId?: MessageId | undefined;
+};
 
 /** Where a node is: the protocol's one lifecycle, whatever its kind. */
 export type NodeState = StateOf<'node'>;

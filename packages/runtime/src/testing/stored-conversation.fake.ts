@@ -27,6 +27,7 @@ export function conversation(
   const writer = NodeChannelWriter.attach({
     nodes: sessions.nodes,
     tasks,
+    events: sessions,
     storage: {
       log: (channel) => {
         const log = store.channel({ id: conversationId, channel });

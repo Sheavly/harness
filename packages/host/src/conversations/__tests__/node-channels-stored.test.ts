@@ -126,13 +126,18 @@ describe('a conversation’s node channels in its store', () => {
 
     const entries = await entriesOf({ store, id, channel: channel ?? '' });
 
-    // The prompt ran (the agent was running, then idle again): each change is an entry, in order
-    // and with no gap, and the channel is not closed while the conversation lives.
+    // The prompt ran (the agent was running, then idle again): each change is an entry, and so is
+    // each event of the run, all in order and with no gap, and the channel is not closed while the
+    // conversation lives.
     expect(entries[0]).toMatchObject({ type: 'opened', cursor: 's0', node: { kind: 'agent' } });
     expect(entries.map((each) => each.cursor)).toEqual(
       entries.map((_each, index) => `s${String(index)}`),
     );
-    expect(entries.at(-1)).toMatchObject({ type: 'updated', node: { state: 'idle' } });
+    expect(entries.map((each) => each.type)).toContain('event');
+    expect(entries.filter((each) => each.type !== 'event').at(-1)).toMatchObject({
+      type: 'updated',
+      node: { state: 'idle' },
+    });
     expect(entries.map((each) => each.type)).not.toContain('closed');
   });
 
