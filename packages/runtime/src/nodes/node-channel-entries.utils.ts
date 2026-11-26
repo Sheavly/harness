@@ -1,5 +1,10 @@
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
-import { MAX_CHANNEL_ENTRY_CHARS } from '@sheavly/protocol/channel/channel.constants';
+import {
+  MAX_CHANNEL_ENTRY_CHARS,
+  TREE_ONLY_EVENT_TYPES,
+} from '@sheavly/protocol/channel/channel.constants';
+import type { EntryEvent } from '@sheavly/protocol/event/event.types';
+import type { MessageId } from '@sheavly/protocol/message/message.types';
 import {
   MAX_NODE_COMMAND_CHARS,
   MAX_NODE_DESCRIPTION_CHARS,
@@ -175,6 +180,51 @@ export function closedEntry(params: {
     ...(task?.exitCode !== undefined && { exitCode: task.exitCode }),
     ...(output && { output }),
     ...(task?.error !== undefined && { error: task.error.slice(0, MAX_NODE_ERROR_CHARS) }),
+  };
+}
+
+/** Whether a loop event of `type` is the conversation's (the tree channel's) and not an agent's. */
+export const isTreeOnlyEvent = (type: string): boolean =>
+  (TREE_ONLY_EVENT_TYPES as readonly string[]).includes(type);
+
+/**
+ * The entry that stores a loop event on its agent's channel: the event as the stream carried it,
+ * with the originating `messageId` where there was one, and, for a text delta that merges the ones
+ * after it, the `seq` of the last (`lastSeq`). A store keeps an entry of at most
+ * `MAX_CHANNEL_ENTRY_CHARS` and refuses a longer one, which would leave the channel closed to every
+ * entry after it, so an event that does not fit is stored as what says there was one (`event_omitted`:
+ * its type, its `seq` and its size, never its content). The combined stream still holds it whole.
+ */
+export function eventEntry(params: {
+  channel: string;
+  cursor: string;
+  at: number;
+  event: EntryEvent;
+  messageId?: MessageId | undefined;
+  lastSeq?: number | undefined;
+}): ChannelEntry {
+  const { channel, cursor, at, event, messageId, lastSeq } = params;
+  const entry: ChannelEntry = {
+    channel,
+    cursor,
+    at,
+    type: 'event',
+    event,
+    ...(messageId !== undefined && { messageId }),
+    ...(lastSeq !== undefined && { lastSeq }),
+  };
+
+  if (JSON.stringify(entry).length <= MAX_CHANNEL_ENTRY_CHARS) return entry;
+
+  return {
+    channel,
+    cursor,
+    at,
+    type: 'event_omitted',
+    eventType: event.type,
+    seq: event.seq,
+    size: JSON.stringify(event).length,
+    ...(messageId !== undefined && { messageId }),
   };
 }
 

@@ -21,6 +21,20 @@ export const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}\p{Co}]+/gu;
  */
 export const HEAD_FACTOR = 8;
 
+/**
+ * How long a streamed text delta waits for the ones after it before it is stored, in milliseconds:
+ * the deltas of one window are one entry (about twenty entries a second while a model streams),
+ * where one entry for each would cost about sixteen times the text in lines.
+ */
+export const TEXT_DELTA_WINDOW_MS = 50;
+
+/**
+ * The most text, in characters, a stored delta holds after merging: one more delta that would pass
+ * it starts a new entry. JSON writes a control character as up to six, so this is at most about
+ * 48 KiB of the 64 KiB an entry may be (`MAX_CHANNEL_ENTRY_CHARS`), with room for the rest of it.
+ */
+export const MAX_MERGED_TEXT_CHARS = 8_192;
+
 /** The title of a node whose own title is blank once it is one line. */
 export const UNTITLED = 'untitled';
 

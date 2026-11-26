@@ -2,7 +2,10 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry, ConversationStore } from '@sheavly/core/store/store.types';
 import { toStoreError } from '@sheavly/core/store/store.utils';
+import type { EntryEvent } from '@sheavly/protocol/event/event.types';
+import type { MessageId } from '@sheavly/protocol/message/message.types';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
+import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
 import { notifyAll } from '../sessions/listeners.helper.js';
 import type { TaskRegistry } from '../tasks/tasks.service.js';
@@ -11,6 +14,8 @@ import { closeLostChannels } from './lost-channels.helper.js';
 import {
   byteCursor,
   closedEntry,
+  eventEntry,
+  isTreeOnlyEvent,
   openedAgentEntry,
   openedWorkEntry,
   sequenceCursor,
@@ -20,12 +25,15 @@ import type { NodeRegistry } from './node-registry.service.js';
 import type {
   ChannelEvent,
   ChannelPosition,
+  EventSource,
   LostChannels,
   NodeChannelStorage,
   NodeEntry,
   NodeRecord,
+  PendingText,
 } from './nodes.types.js';
 import { isOpenState } from './nodes.utils.js';
+import { TextDeltaWindow } from './text-delta-window.service.js';
 
 /** What the writer knows of a channel it has begun: where it stands, and whether it still writes. */
 type Begun = ({ kind: 'sequence'; next: number } | { kind: 'bytes'; offset: number }) & {
@@ -38,9 +46,15 @@ type Begun = ({ kind: 'sequence'; next: number } | { kind: 'bytes'; offset: numb
 
 /**
  * Stores each node's channel as its own log: `opened`, then, for an agent, an `updated` for each
- * change while it lives, then `closed`. It is told what the registry does (`startAgent`,
- * `followAgent`) and what a task does (`openWork`, `closeWork`), numbers each entry as it is told,
- * and writes them one after another, in the order they happened.
+ * change while it lives and an `event` for each loop event its session sends (`hearEvent`), then
+ * `closed`. It is told what the registry does (`startAgent`, `followAgent`), what a task does
+ * (`openWork`, `closeWork`) and what the loop publishes, numbers each entry as it is told, and
+ * writes them one after another, in the order they happened.
+ *
+ * Streamed text is the exception to one entry for each event: the `text_delta` events of one
+ * session that come within a short window are stored as one (`TextDeltaWindow`), and any entry that
+ * comes after them on the channel, an event, an update or the close, stores them first, so the
+ * order is the order they happened in.
  *
  * Only a channel it saw open is written: a node restored from a stored conversation that ended
  * already has its channel in the store, from the process that lived it, and is not written again;
@@ -57,7 +71,17 @@ export class NodeChannelWriter {
   readonly #begun = new Map<string, Begun>();
   /** Channels whose node ended and whose `closed` entry is not stored yet: still being written. */
   readonly #closing = new Map<string, Begun>();
+  /**
+   * Agents that ended and whose `closed` entry waits for the `done` of the run that ended them: the
+   * loop ends a run's session just before it sends the run's last event, in the same step, so the
+   * close is held until that event is stored, and for no longer than the step.
+   */
+  readonly #ending = new Map<string, { state: Begun & { kind: 'sequence' }; node: NodeRecord }>();
   readonly #followers = new ChannelFollowers();
+  /** Streamed text waiting out its window, to be stored as one entry. */
+  readonly #text = new TextDeltaWindow(({ channel, text }) => {
+    this.#storeText({ channel, text });
+  });
   /** Every write, one after another. Never rejects: a failure is told, not thrown. */
   #written: Promise<void> = Promise.resolve();
   #failure: StoreError | undefined;
@@ -73,14 +97,16 @@ export class NodeChannelWriter {
    * begin a channel. An agent's changes come from the node registry, a command's or a service's
    * from the task registry, which holds what the node registry does not: the command, its exit code
    * and the size of its output. Its nodes are in `tasks.nodes`, the same registry when the tasks
-   * are built on the sessions' nodes, which is what `createHarness` does.
+   * are built on the sessions' nodes, which is what `createHarness` does. With `events` (the
+   * sessions), the loop's events from now on are stored on their agent's channel too.
    */
   static attach(params: {
     nodes: NodeRegistry;
     tasks: TaskRegistry;
     storage: NodeChannelStorage;
+    events?: EventSource;
   }): NodeChannelWriter {
-    const { nodes, tasks, storage } = params;
+    const { nodes, tasks, storage, events } = params;
     const writer = new NodeChannelWriter(storage);
 
     // Parents before children: the registry lists nodes in the order they were made.
@@ -96,6 +122,11 @@ export class NodeChannelWriter {
 
       if (update.type === 'task_started') writer.openWork({ node, task: update.task });
       else writer.closeWork({ node, task: update.task });
+    });
+    events?.subscribeEntries((entry) => {
+      const channel = events.nodeIdOf(entry.sessionId);
+
+      if (channel !== undefined) writer.hearEvent({ channel, entry });
     });
 
     return writer;
@@ -118,8 +149,15 @@ export class NodeChannelWriter {
     return this.#failure;
   }
 
-  /** Resolves once every entry told so far has been written, or its write has failed. */
+  /**
+   * Resolves once every entry told so far has been written, or its write has failed, streamed text
+   * still waiting out its window included.
+   */
   flush(): Promise<void> {
+    for (const channel of [...this.#ending.keys()]) this.#writeClose(channel);
+
+    this.#text.flushAll();
+
     return this.#written;
   }
 
@@ -154,6 +192,44 @@ export class NodeChannelWriter {
     if (entry.type === 'opened') this.startAgent(node);
     else if (entry.type === 'updated') this.#updateAgent(node);
     else this.#closeAgent(node);
+  }
+
+  /**
+   * An entry of the combined stream, for the agent whose channel is `channel` (the node of the
+   * session it is about). A loop event is stored on that channel as an `event` entry, in the order
+   * it came; streamed text waits out its window and is stored as one. What is not a loop event, and
+   * the two that are the conversation's (`isTreeOnlyEvent`), are not stored here, and neither is an
+   * event of a node with no channel this writer writes, or whose channel is closed. An agent that
+   * just ended still takes the run's `done`, which the loop sends right after ending the session,
+   * and that event is what its `closed` entry comes after.
+   */
+  hearEvent(params: { channel: string; entry: StreamEntry }): void {
+    const { channel, entry } = params;
+    const state = this.#sequenceState(channel);
+
+    if (entry.kind !== 'event' || isTreeOnlyEvent(entry.event.type)) return;
+
+    if (!state) return;
+
+    const { event, at, messageId } = entry;
+
+    if (event.type === 'text_delta') {
+      this.#text.add({ channel, seq: event.seq, text: event.text, at, messageId });
+
+      return;
+    }
+
+    this.#text.flush(channel);
+    this.#writeEvent({ channel, state, event, at, messageId });
+
+    if (event.type === 'done') this.#writeClose(channel);
+  }
+
+  /** The state of an agent's channel that still takes entries: one that is open, or has just ended. */
+  #sequenceState(channel: string): (Begun & { kind: 'sequence' }) | undefined {
+    const state = this.#begun.get(channel) ?? this.#ending.get(channel)?.state;
+
+    return state?.kind === 'sequence' ? state : undefined;
   }
 
   /**
@@ -211,10 +287,58 @@ export class NodeChannelWriter {
 
     if (state?.kind !== 'sequence' || !isOpenState(node.state)) return;
 
+    this.#text.flush(node.id);
     this.#write({ state, entry: updatedEntry({ node, at: now(), position: state.next }) });
     state.next += 1;
   }
 
+  /** Stores the text a window held, as one `text_delta` event that merges the ones it held. */
+  #storeText(params: { channel: string; text: PendingText }): void {
+    const { channel, text } = params;
+    const state = this.#sequenceState(channel);
+
+    if (!state) return;
+
+    this.#writeEvent({
+      channel,
+      state,
+      event: { seq: text.seq, type: 'text_delta', text: text.text },
+      at: text.at,
+      messageId: text.messageId,
+      ...(text.lastSeq > text.seq && { lastSeq: text.lastSeq }),
+    });
+  }
+
+  /** Queues the `event` entry (or the marker for one too large) for the channel's next place. */
+  #writeEvent(params: {
+    channel: string;
+    state: Begun & { kind: 'sequence' };
+    event: EntryEvent;
+    at: number;
+    messageId: MessageId | undefined;
+    lastSeq?: number;
+  }): void {
+    const { state, ...entry } = params;
+    let built: ChannelEntry;
+
+    try {
+      built = eventEntry({ ...entry, cursor: sequenceCursor(state.next) });
+    } catch (caughtError) {
+      // An event JSON cannot carry (a BigInt in a tool's artifact): the channel cannot hold the run
+      // whole, so it takes no more entries, as after a write that failed. Queued with the writes, so
+      // what was told before it is stored first, and this listener never throws into the run.
+      this.#written = this.#written.then(() => {
+        this.#break({ channel: entry.channel, state, error: caughtError });
+      });
+
+      return;
+    }
+
+    this.#write({ state, entry: built });
+    state.next += 1;
+  }
+
+  /** The node ended: its `closed` entry waits for the run's `done` (`#ending`), or the end of this step. */
   #closeAgent(node: NodeRecord): void {
     const state = this.#begun.get(node.id);
 
@@ -222,6 +346,23 @@ export class NodeChannelWriter {
 
     this.#begun.delete(node.id);
     this.#closing.set(node.id, state);
+    this.#ending.set(node.id, { state, node });
+    queueMicrotask(() => {
+      this.#writeClose(node.id);
+    });
+  }
+
+  /** Stores the text waiting for `channel`, then its `closed` entry: what an ended agent's channel ends with. */
+  #writeClose(channel: string): void {
+    const ending = this.#ending.get(channel);
+
+    if (!ending) return;
+
+    const { state, node } = ending;
+
+    // The text first, while the channel still takes entries (`#sequenceState`); then it is closed.
+    this.#text.flush(channel);
+    this.#ending.delete(channel);
     this.#write({
       state,
       entry: closedEntry({ node, at: now(), cursor: sequenceCursor(state.next) }),
@@ -295,10 +436,17 @@ export class NodeChannelWriter {
       });
       state.written += 1;
     } catch (caughtError) {
-      state.broken = true;
-      this.#followers.tell({ channel: entry.channel, event: { type: 'failed' } });
-      this.#fail(caughtError);
+      this.#break({ channel: entry.channel, state, error: caughtError });
     }
+  }
+
+  /** `channel` takes no more entries: its followers are told, and the failure is reported once. */
+  #break(params: { channel: string; state: Begun; error: unknown }): void {
+    const { channel, state, error } = params;
+
+    state.broken = true;
+    this.#followers.tell({ channel, event: { type: 'failed' } });
+    this.#fail(error);
   }
 
   /** The `spawnedAt` of a child of `parent`: none for a node with no parent; throws if unlinkable. */
