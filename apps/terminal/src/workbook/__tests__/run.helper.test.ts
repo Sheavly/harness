@@ -3,14 +3,14 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeServer } from '@sheavly/client/testing/fake-server.fake';
+import { treeEntry, treeSnapshot } from '@sheavly/client/testing/frames.fake';
 import {
   approvalRequestSchema,
   approvalResponseSchema,
 } from '@sheavly/protocol/approval/approval.validator';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { connectBackend } from '../../client/backend.helper.js';
 import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
-import { treeFeed } from '../../testing/tree-feed.fake.js';
+import { MAIN_AGENT, treeFeed } from '../../testing/tree-feed.fake.js';
 import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
 import {
@@ -65,44 +65,44 @@ async function setup(
   const server = fakeServer({
     startConversation: () => ({ id }),
     getConversation: () => fakeConversationDetails(params.mismatch ? root : generatedWorkspace),
-    // The tree the run follows for the background work it settles: none shows.
-    streamChannels: () => treeFeed().follow(),
-    async *streamConversation({ body }) {
-      if ((body as { approvals?: boolean }).approvals) {
-        await promptSent.promise;
-        yield {
-          seq: 0,
-          at: 0,
-          sessionId: main,
-          kind: 'approval',
-          update: {
-            type: 'approval_requested',
-            request: approvalRequestSchema.parse({
-              id: 'approval',
-              callId: 'call',
-              tool: 'run_command',
-              command: params.command ?? 'node check.mjs',
-              concerns: [
-                { argument: params.command ?? 'node check.mjs', reason: 'is not allowed yet' },
-              ],
-              options: ['approve', 'allow_session', 'always_allow', 'skip'],
-              keeps: ['node *'],
-            }),
-          },
-        } satisfies StreamEntry;
-
-        if (params.failStream) {
-          await answered.promise;
-          throw new Error('fake stream failure');
-        }
-      }
-
-      if ((body as { approvals?: boolean }).approvals) {
-        await streamEnded.promise;
+    // The tree channel: the subscription that answers approvals hears one asked once the prompt is
+    // sent, as on a real backend; the other shows the run no background work.
+    async *streamChannels({ body }) {
+      if (!(body as { approvals?: boolean }).approvals) {
+        yield* treeFeed().follow();
 
         return;
       }
 
+      yield treeSnapshot({ n: 1, nodes: [MAIN_AGENT] });
+      await promptSent.promise;
+      yield treeEntry({
+        n: 2,
+        type: 'approval_requested',
+        fields: {
+          node: 'main',
+          request: approvalRequestSchema.parse({
+            id: 'approval',
+            callId: 'call',
+            tool: 'run_command',
+            command: params.command ?? 'node check.mjs',
+            concerns: [
+              { argument: params.command ?? 'node check.mjs', reason: 'is not allowed yet' },
+            ],
+            options: ['approve', 'allow_session', 'always_allow', 'skip'],
+            keeps: ['node *'],
+          }),
+        },
+      });
+
+      if (params.failStream) {
+        await answered.promise;
+        throw new Error('fake stream failure');
+      }
+
+      await streamEnded.promise;
+    },
+    async *streamConversation({ body }) {
       // The saved raw stream gets nothing here; the live followers get every run.
       if ((body as { replay?: boolean }).replay) await liveEnded.promise;
       else yield* feed.follow();
@@ -209,7 +209,7 @@ describe('check workbook run on fake backend', () => {
     expect(fake.stop).toHaveBeenCalledOnce();
     const watcherIndex = fake.server.calls.findIndex(
       ({ name, call }) =>
-        name === 'streamConversation' && (call.body as { approvals?: boolean }).approvals,
+        name === 'streamChannels' && (call.body as { approvals?: boolean }).approvals,
     );
     const promptIndex = fake.server.calls.findIndex(({ name }) => name === 'sendPrompt');
 

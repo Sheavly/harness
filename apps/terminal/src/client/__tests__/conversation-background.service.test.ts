@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ChannelFailedError } from '@sheavly/client/errors/client.errors';
 import { endedAs, treeSnapshot } from '@sheavly/client/testing/frames.fake';
 import { openOnFake } from '../../testing/remote-conversation.fake.js';
-import { MAIN_AGENT, childNode } from '../../testing/tree-feed.fake.js';
+import { FAILED_TREE, MAIN_AGENT, childNode, until } from '../../testing/tree-feed.fake.js';
 import type { Background } from '../client.types.js';
 
 const NONE: Background = { tasks: 0, agents: 0, services: 0 };
@@ -81,14 +81,7 @@ describe('RemoteConversation: the background work it counts', () => {
     stopped.stop.abort();
     await expect(stopped.watch.ended).resolves.toBeUndefined();
 
-    const failing = await openOnFake({
-      handlers: {
-        async *streamChannels() {
-          yield treeSnapshot({ n: 1, nodes: [MAIN_AGENT] });
-          yield endedAs({ name: 'tree', reason: 'failed' });
-        },
-      },
-    });
+    const failing = await openOnFake({ handlers: FAILED_TREE });
     const watch = await failing.conversation.watchBackground({
       listener: () => undefined,
       signal: new AbortController().signal,
@@ -120,11 +113,4 @@ async function openFollowingSnapshot() {
   await watch.ended;
 
   return { ...opened, told };
-}
-
-/** Waits until `check` holds, for the frames a fake server sends a moment after they are told. */
-async function until(check: () => boolean) {
-  for (let tries = 0; tries < 200 && !check(); tries += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
 }

@@ -1,9 +1,11 @@
 import {
   agentNode,
   approvalRequest,
+  endedAs,
   treeEntry,
   treeSnapshot,
 } from '@sheavly/client/testing/frames.fake';
+import type { FakeHandlers } from '@sheavly/client/testing/testing.types';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { liveFeed } from './live-feed.fake.js';
 
@@ -75,8 +77,26 @@ export function treeFeed(nodes: object[] = []) {
   };
 }
 
+/** Test-only: waits until `check` holds, for frames a fake server sends a moment after they are told. */
+export async function until(check: () => boolean): Promise<void> {
+  for (let tries = 0; tries < 200 && !check(); tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 /** Test-only: the main agent, the node with no parent, running. */
 export const MAIN_AGENT = agentNode({ id: 'main', state: 'running' });
+
+/**
+ * Test-only: the handlers of a backend whose tree channel fails right after its snapshot, as it
+ * does when the conversation is closed: nothing more will come.
+ */
+export const FAILED_TREE: FakeHandlers = {
+  async *streamChannels() {
+    yield treeSnapshot({ n: 1, nodes: [MAIN_AGENT] });
+    yield endedAs({ name: 'tree', reason: 'failed' });
+  },
+};
 
 /**
  * Test-only: a node under the main agent: a command, a service or a sub-agent, running unless
@@ -86,13 +106,14 @@ export function childNode(params: {
   id: string;
   kind: 'command' | 'service' | 'agent';
   state?: 'running' | 'completed';
+  title?: string;
 }) {
-  const { id, kind, state = 'running' } = params;
+  const { id, kind, state = 'running', title = id } = params;
   const common = {
     id,
     kind,
     parent: 'main',
-    title: id,
+    title,
     state,
     startedAt: 1,
     ...(state !== 'running' && { endedAt: 3 }),

@@ -1,4 +1,14 @@
 import type { ReconnectPolicy } from '@sheavly/client/client/client.types';
+import type { ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
+
+/** The sub-agent that asked an approval, as the screen shows it: by its title, never by an id. */
+export type ApprovalAsker = { title: string };
+
+/**
+ * An approval that waits, as the chat and the workbook handle it: the request, and the sub-agent
+ * that asked it. `asker` is unset for the main agent, whose approvals need no name.
+ */
+export type AskedApproval = { request: ApprovalRequest; asker?: ApprovalAsker };
 
 /** How the terminal reaches a backend: its settings, the CLI arguments it passes on, its output. */
 export type BackendOptions = {

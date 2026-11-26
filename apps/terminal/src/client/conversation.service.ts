@@ -1,5 +1,4 @@
-import { watchApprovals } from '@sheavly/client/approvals/approvals.helper';
-import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
+import { watchTreeApprovals } from '@sheavly/client/approvals/watch-tree-approvals.helper';
 import { createClient } from '@sheavly/client/client/client.helper';
 import { followConversation } from '@sheavly/client/client/follow.helper';
 import { RefusedError } from '@sheavly/client/errors/client.errors';
@@ -18,7 +17,7 @@ import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import { emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { backgroundOf, sameBackground } from './background.utils.js';
-import type { Backend, Background } from './client.types.js';
+import type { AskedApproval, Backend, Background } from './client.types.js';
 import { BackendError } from '../errors/backend.errors.js';
 
 type Client = ReturnType<typeof createClient>;
@@ -279,30 +278,38 @@ export class RemoteConversation {
   }
 
   /**
-   * Answers the conversation's approvals: while the returned `ended` runs, a command that needs
-   * one waits for the user instead of being refused at once, and `onUpdate` hears each approval
-   * asked, and each one answered or given up on (by this UI, another, or an interrupt).
+   * Answers the conversation's approvals through its tree channel: while the returned `ended` runs,
+   * a command that needs one waits for the user instead of being refused at once. `onApproval` hears
+   * each approval once when it shows in the tree (one already waiting when this connects included),
+   * with the sub-agent that asked it, and `onGone` hears each one that no longer waits (answered by
+   * this UI or another, or given up on).
    *
-   * Resolves once the backend has accepted the stream, which is when it counts: an approval asked
-   * before that is refused on the spot, so send the first prompt only after this resolves. `ended`
-   * resolves when `signal` aborts or the stream ends, and rejects on any other failure.
+   * Resolves once the backend has accepted the connection, which is when it counts: an approval
+   * asked before that is refused on the spot, so send the first prompt only after this resolves.
+   * A dropped connection is resumed and tells nothing twice. `ended` resolves when `signal` aborts
+   * and rejects when the tree channel fails (the conversation was closed), is refused or lost.
    */
   watchApprovals(params: {
-    onApproval: (heard: HeardApproval) => void;
-    /** Usage from every session also arrives between prompts, while background agents finish. */
-    onUsage?: (entry: StreamEntry) => void;
+    onApproval: (asked: AskedApproval) => void;
+    onGone: (id: ApprovalId) => void;
     signal: AbortSignal;
   }): Promise<{ ended: Promise<void> }> {
-    const { onApproval, onUsage, signal } = params;
+    const { onApproval, onGone, signal } = params;
 
-    return watchApprovals({
+    return watchTreeApprovals({
       client: this.#client,
       id: this.id,
-      onApproval,
-      onEntry: (entry) => {
-        if (entry.kind === 'event' && entry.event.type === 'usage') onUsage?.(entry);
-      },
       signal,
+      onGone,
+      onApproval: ({ request, asker }) => {
+        // Only a sub-agent is named: the main agent's approvals need no name.
+        const subAgent =
+          asker?.kind === 'agent' && asker.parent !== undefined
+            ? { title: asker.title }
+            : undefined;
+
+        onApproval({ request, ...(subAgent && { asker: subAgent }) });
+      },
     });
   }
 

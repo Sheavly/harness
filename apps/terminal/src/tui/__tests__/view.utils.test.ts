@@ -3,8 +3,6 @@ import { stripVTControlCharacters } from 'node:util';
 import type { ApprovalOption, ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
 import { approvalIdSchema } from '@sheavly/protocol/approval/approval.validator';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
-import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
-import { timestampSchema } from '@sheavly/protocol/time/time.validator';
 import { createPalette } from '../../theme/palette.utils.js';
 import { THEMES } from '../../theme/theme.constants.js';
 import { ApprovalPrompt } from '../approval-prompt.service.js';
@@ -56,24 +54,13 @@ describe('approvalText', () => {
     expect(plain(approvalText({ prompt }))).toContain('Skip printf "a\\r\\u001b[2J');
   });
 
-  it('names the sub-agent that asks, and never shows its session id', () => {
+  it('names the sub-agent that asks by its title, which is all that is known of it', () => {
     const prompt = new ApprovalPrompt();
-    const agent = {
-      id: sessionIdSchema.parse('secret-session-id'),
-      parentId: sessionIdSchema.parse('main'),
-      startedByCall: callIdSchema.parse('c0'),
-      rootId: sessionIdSchema.parse('main'),
-      depth: 2,
-      title: 'Update ESLint rules',
-      state: 'running' as const,
-      startedAt: timestampSchema.parse(1),
-    };
 
-    prompt.ask(request('a1'), agent);
+    prompt.ask(request('a1'), { title: 'Update ESLint rules' });
     const text = plain(approvalText({ prompt }));
 
     expect(text).toContain('Update ESLint rules (sub-agent) wants to run git push origin main?');
-    expect(text).not.toContain('secret-session-id');
 
     prompt.forget(approvalIdSchema.parse('a1'));
     prompt.ask(request('a2'));
@@ -83,16 +70,7 @@ describe('approvalText', () => {
 
   it('escapes control and bidi characters in a sub-agent title, in both phases', () => {
     const prompt = new ApprovalPrompt();
-    const agent = {
-      id: sessionIdSchema.parse('s'),
-      parentId: sessionIdSchema.parse('main'),
-      startedByCall: callIdSchema.parse('c0'),
-      rootId: sessionIdSchema.parse('main'),
-      depth: 2,
-      title: 'evil\u001b[2J\u001b]52;c;x\u0007\u202etitle',
-      state: 'running' as const,
-      startedAt: timestampSchema.parse(1),
-    };
+    const agent = { title: 'evil\u001b[2J\u001b]52;c;x\u0007\u202etitle' };
 
     prompt.ask(request('a1'), agent);
 

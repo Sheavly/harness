@@ -1,21 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
 import { RefusedError } from '@sheavly/client/errors/client.errors';
+import type { ApprovalId } from '@sheavly/protocol/approval/approval.types';
 import {
   approvalIdSchema,
   approvalRequestSchema,
 } from '@sheavly/protocol/approval/approval.validator';
-import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
+import type { AskedApproval } from '../../client/client.types.js';
 import { CheckApprovals } from '../check-approvals.service.js';
 
 function fakeConversation() {
-  let hear: (heard: HeardApproval) => void = () => undefined;
+  let hear: (asked: AskedApproval) => void = () => undefined;
+  let gone: (id: ApprovalId) => void = () => undefined;
   const accepted = Promise.withResolvers<undefined>();
   const ended = Promise.withResolvers<undefined>();
   const controller = new AbortController();
   const watchApprovals = vi.fn(
-    async (params: { onApproval: (heard: HeardApproval) => void; signal: AbortSignal }) => {
+    async (params: {
+      onApproval: (asked: AskedApproval) => void;
+      onGone: (id: ApprovalId) => void;
+      signal: AbortSignal;
+    }) => {
       hear = params.onApproval;
+      gone = params.onGone;
       params.signal.addEventListener('abort', () => ended.resolve(undefined), { once: true });
       await accepted.promise;
       params.signal.throwIfAborted();
@@ -36,11 +42,7 @@ function fakeConversation() {
     keeps: ['node *'],
     options: ['approve', 'allow_session', 'always_allow', 'skip'],
   });
-  const ask = (command = request.command) =>
-    hear({
-      sessionId: sessionIdSchema.parse('main'),
-      update: { type: 'approval_requested', request: { ...request, command } },
-    });
+  const ask = (command = request.command) => hear({ request: { ...request, command } });
 
   return {
     watcher,
@@ -50,7 +52,7 @@ function fakeConversation() {
     conversation,
     verifyWorkspace,
     ask,
-    hear: (update: HeardApproval) => hear(update),
+    gone: (id: ApprovalId) => gone(id),
   };
 }
 
@@ -183,10 +185,7 @@ describe('check watcher lifecycle', () => {
       operation: async () => {
         fake.verifyWorkspace.mockImplementationOnce(() => verified.promise);
         fake.ask();
-        fake.hear({
-          sessionId: sessionIdSchema.parse('main'),
-          update: { type: 'approval_cancelled', id: approvalIdSchema.parse('one') },
-        });
+        fake.gone(approvalIdSchema.parse('one'));
         verified.resolve(undefined);
         await verified.promise;
         expect(fake.conversation.answerApproval).not.toHaveBeenCalled();
