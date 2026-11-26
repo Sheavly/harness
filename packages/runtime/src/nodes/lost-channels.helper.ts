@@ -1,7 +1,10 @@
 import type { ChannelEntry, ConversationStore } from '@sheavly/core/store/store.types';
 import { toStoreError } from '@sheavly/core/store/store.utils';
-import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
+import {
+  cursorKind,
+  cursorNumber,
+  isConversationChannel,
+} from '@sheavly/protocol/channel/channel.utils';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { byteCursor, lostEntry, sequenceCursor } from './node-channel-entries.utils.js';
 import type { LostChannels } from './nodes.types.js';
@@ -11,8 +14,8 @@ import type { LostChannels } from './nodes.types.js';
  * `closed` entry: the server stopped under the node. It is the repair of a reopened conversation,
  * and runs before the conversation's own nodes exist, so every unfinished channel in the store is a
  * previous process's. A channel that already ends in `closed` is left alone, so running it again
- * changes nothing. The tree channel is the conversation's and is not a node's: nothing stores it
- * yet, and it is left alone.
+ * changes nothing. A channel of the conversation itself (the tree) is not a node's, its writer goes
+ * on from what it stored, and it is left alone.
  *
  * The `lost` entry has no outcome and no exit code, since nobody saw the node end, and goes where
  * the channel stood: the next number in a numbered channel, the last offset in a counted one. A
@@ -33,7 +36,7 @@ export async function closeLostChannels(params: {
   const result: LostChannels = { closed: [], full: [], failed: [] };
 
   for (const channel of await store.channels(id)) {
-    if (channel === TREE_CHANNEL_NAME) continue;
+    if (isConversationChannel(channel)) continue;
 
     try {
       if (await closeOne({ log: store.channel({ id, channel }), channel, at })) {

@@ -33,6 +33,8 @@ export { connectionConfinement } from './connection-confinement.js';
 export { storedFileReads } from './stored-file-reads.js';
 // The providers package's rule that a model call goes through the injected fetch, not the global.
 export { modelFetchConfinement } from './model-fetch-confinement.js';
+// The host package's rule that its subscription code knows no conversation channel by its own name.
+export { conversationChannelConfinement } from './conversation-channel-confinement.js';
 
 const TYPED_FILES = ['**/*.ts', '**/*.tsx'];
 const PLAIN_JS_FILES = ['**/*.js', '**/*.mjs'];

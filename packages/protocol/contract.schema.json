@@ -1680,7 +1680,7 @@
     "ByteCursor": { "type": "string", "pattern": "^b(?:0|[1-9]\\d{0,14})$" },
     "Cursor": { "anyOf": [{ "$ref": "#/$defs/SequenceCursor" }, { "$ref": "#/$defs/ByteCursor" }] },
     "ChannelName": {
-      "anyOf": [{ "type": "string", "const": "tree" }, { "$ref": "#/$defs/NodeId" }]
+      "anyOf": [{ "type": "string", "enum": ["tree"] }, { "$ref": "#/$defs/NodeId" }]
     },
     "ChannelBoundary": {
       "anyOf": [

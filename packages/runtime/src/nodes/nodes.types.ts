@@ -1,11 +1,13 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
+import type { ConversationChannelName } from '@sheavly/protocol/channel/channel.types';
 import type { CallId, MessageId } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunOutcome, SessionId } from '@sheavly/protocol/session/session.types';
 import type { StateOf } from '@sheavly/protocol/status/status.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import type { ConversationSnapshot } from '@sheavly/protocol/subscription/subscription.types';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 
@@ -133,6 +135,37 @@ export type ResumedTree =
  */
 export type ChannelEvent =
   { type: 'stored'; entry: ChannelEntry; ordinal: number } | { type: 'failed' };
+
+/**
+ * A channel of the conversation itself, as the host serves it (the tree is the first): a writer
+ * that stores its entries, tells its followers, and holds a view a subscriber can start from. The
+ * host knows a channel only by this, so it serves a new one with no change of its own.
+ */
+export type ConversationChannel = {
+  readonly name: ConversationChannelName;
+  /** The first failed write, if any. The channel takes no more entries after it. */
+  readonly failure: StoreError | undefined;
+  /** Resolves once every entry told so far has been written, or its write has failed. */
+  flush: () => Promise<void>;
+  /**
+   * The channel's view as the stored entries leave it, with the cursor of the last: what a
+   * subscriber starts from (`from: snapshot`), then follows after that cursor. Waits for the entries
+   * told so far to be stored first, and rejects with the failure once the channel has failed.
+   */
+  snapshot: () => Promise<ConversationSnapshot>;
+  /**
+   * Calls `listener` for each entry the store takes from now on, with its place in the log, and
+   * once if the channel fails or its writer is stopped. Returns the stop.
+   */
+  follow: (listener: (event: ChannelEvent) => void) => () => void;
+  /** Whether the writer may still write: it has not failed or been stopped. */
+  writing: () => boolean;
+  /**
+   * Stops writing, for a conversation that was closed: what was told is written, then the followers
+   * are told nothing more will come. Safe to repeat.
+   */
+  stop: () => Promise<void>;
+};
 
 /** What `closeLostChannels` did: the channels it closed, and the ones it could not. */
 export type LostChannels = {

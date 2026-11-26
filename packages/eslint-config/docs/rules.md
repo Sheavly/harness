@@ -480,6 +480,22 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   - **What it can't see:** a key held in a variable (`globalThis[name]`), a chained or sequence
     object (`globalThis.globalThis.fetch`, `(0, globalThis).fetch`), or `Reflect.get(globalThis,
 'fetch')`.
+- **No tree in the host's subscription code** (`conversationChannelConfinement`, the host
+  workspace's `src/subscriptions/**`, spread into `packages/host/eslint.config.js`):
+  - **What it rejects:** an import of `TreeChannelWriter` (`@sheavly/runtime/nodes/tree-channel-writer.service`)
+    or of `TREE_CHANNEL_NAME`, a plain import or a type import, through `no-restricted-imports`.
+    The host serves the conversation's own channels by the name a request gives, through
+    `ConversationChannels` and `isConversationChannel`, so a channel added to the family is served
+    with no change in that folder.
+  - **What it allows:** the family (`ConversationChannels`, `isConversationChannel`) and the
+    other exports of the same modules, such as `MAX_TREE_NODES`.
+  - **Where it's off:** the tests of that folder, which build the tree writer to exercise the
+    family, and the rest of the host, which reaches what only the tree has (the notices it tells
+    the tree, `GET /tree`) through `Harness.treeChannel`.
+    `conversation-channel-confinement.test.js` pins the rejections, and checks that every file of
+    the folder resolves the rule with these options, so an override that drops them fails.
+  - **What it can't see:** a tree named by a string (`'tree'`) or reached through a renamed import
+    of the harness; those are left to review.
 - **Reading a model reply** (`harness/no-handrolled-reply-reader`, source files): no import of the
   SSE reader (`http/sse.utils`). A protocol gives `readReply`
   (`packages/providers/src/http/reply-reader.helper.ts`) its `parse`, `step` and `finish`, so

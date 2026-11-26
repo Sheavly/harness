@@ -4,7 +4,7 @@ import {
   channelNameSchema,
   cursorSchema,
 } from '../channel/channel.validator.js';
-import { cursorKind } from '../channel/channel.utils.js';
+import { cursorKind, isConversationChannel } from '../channel/channel.utils.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import {
@@ -20,10 +20,11 @@ import { tailCount, tailLimit } from './subscription.utils.js';
 /**
  * Where in a channel to start. `start`: the first entry. `now`: nothing that is already there,
  * only what comes. `tail:<n>`: the last `n` entries of a channel that numbers its entries, the
- * last `n` bytes of the output of a command or a service. `snapshot`, for the tree channel only:
- * the tree as it stands, then what follows. Or a cursor the client was given: what follows it.
- * The schema cannot see which kind a node's channel is, so it bounds `n` by `MAX_TAIL_BYTES` for
- * any channel and by `MAX_TAIL` on the tree channel only. The server must apply `tailLimit` of the
+ * last `n` bytes of the output of a command or a service. `snapshot`, for a channel of the
+ * conversation itself (the tree): its view as it stands, then what follows. Or a cursor the client
+ * was given: what follows it. The schema cannot see which kind a node's channel is, so it bounds
+ * `n` by `MAX_TAIL_BYTES` for any channel and by `MAX_TAIL` on a channel of the conversation itself
+ * only. The server must apply `tailLimit` of the
  * kind it resolves each channel to (`MAX_TAIL` for an agent's), and refuse a `tail` or cursor of
  * the wrong kind for its channel, before it reads anything. A position is refused, never clamped.
  */
@@ -54,9 +55,9 @@ const followsTree = (subscriptions: readonly { channel: string }[]) =>
  * an answer; with none connected an approval is refused at once. It is a claim, not a check.
  *
  * The request holds together: at least one channel and at most `MAX_SUBSCRIPTIONS`, none twice,
- * `snapshot` only on the tree channel, the tree channel numbered (a byte offset or a tail over
- * `MAX_TAIL` on it is refused), and `approvals` only with the tree channel, where an approval can
- * be seen. Whether a channel is the conversation's, and whether a cursor is past the end or before
+ * `snapshot` only on a channel of the conversation itself, those channels numbered (a byte offset
+ * or a tail over `MAX_TAIL` on one is refused), and `approvals` only with the tree channel, where
+ * an approval can be seen. Whether a channel is the conversation's, and whether a cursor is past the end or before
  * what the log still holds (`cursor_out_of_range`), only the server can tell.
  */
 export const subscribeRequestSchema = z
@@ -75,14 +76,14 @@ export const subscribeRequestSchema = z
   .refine(
     ({ subscriptions }) =>
       subscriptions.every(
-        ({ channel, from }) => from !== 'snapshot' || channel === TREE_CHANNEL_NAME,
+        ({ channel, from }) => from !== 'snapshot' || isConversationChannel(channel),
       ),
-    { error: 'only the tree channel has a snapshot', path: ['subscriptions'] },
+    { error: 'only a channel of the conversation itself has a snapshot', path: ['subscriptions'] },
   )
   .refine(
     ({ subscriptions }) =>
       subscriptions
-        .filter(({ channel }) => channel === TREE_CHANNEL_NAME)
+        .filter(({ channel }) => isConversationChannel(channel))
         .every(({ from }) => {
           const tail = tailCount(from);
 
@@ -91,7 +92,8 @@ export const subscribeRequestSchema = z
           return !cursorSchema.safeParse(from).success || cursorKind(from) === 'sequence';
         }),
     {
-      error: 'the tree channel is numbered: a sequence cursor, and a tail of at most MAX_TAIL',
+      error:
+        'a channel of the conversation itself is numbered: a sequence cursor, and a tail of at most MAX_TAIL',
       path: ['subscriptions'],
     },
   )

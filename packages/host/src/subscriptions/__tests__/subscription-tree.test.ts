@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
+import { ConversationChannels } from '@sheavly/runtime/nodes/conversation-channels.service';
 import { conversationId } from '@sheavly/runtime/testing/stored-conversation.fake';
 import { treeConversation } from '@sheavly/runtime/testing/tree-conversation.fake';
 import { HeldBytes } from '../held-bytes.service.js';
@@ -12,6 +13,15 @@ const CALL = callIdSchema.parse('call_1');
 const ROOMY = 1_000_000;
 
 type World = ReturnType<typeof treeConversation>;
+
+/** The conversation's channels as the host holds them: the tree writer, by its name. */
+function conversationOf(tree: World['tree']) {
+  const channels = new ConversationChannels();
+
+  channels.add(tree);
+
+  return channels;
+}
 
 /** Opens a subscription to the tree channel from `from`, with the tree writer unless `tree` is false. */
 function openTree(params: {
@@ -25,7 +35,7 @@ function openTree(params: {
 
   return Subscription.open({
     writer: world.writer,
-    ...(tree && { tree: world.tree }),
+    ...(tree && { conversation: conversationOf(world.tree) }),
     channels: [
       {
         channel: 'tree',

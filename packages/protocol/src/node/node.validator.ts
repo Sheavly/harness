@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isConversationChannel } from '../channel/channel.utils.js';
 import {
   extensionEnvelopeShape,
   extensionQualifiedNameSchema,
@@ -24,20 +25,21 @@ import {
   NODE_ID_PATTERN,
   RESERVED_EXTENSION_NAMES,
   SINGLE_LINE_PATTERN,
-  TREE_CHANNEL_NAME,
 } from './node.constants.js';
 import { isConsistentNode, isReservedExtensionName } from './node.utils.js';
 
 /**
  * A node's id, unique within its conversation. Branded, so it can't be passed where a session's,
- * task's or tool call's goes; it is still a plain string on the wire. It is never `tree`, the name
- * of the conversation's tree channel, since a node's channel is named by its id.
+ * task's or tool call's goes; it is still a plain string on the wire. It is never the name of one
+ * of the conversation's own channels (`tree`), since a node's channel is named by its id.
  */
 export const nodeIdSchema = z
   .string()
   .max(MAX_NODE_ID_CHARS)
   .regex(NODE_ID_PATTERN, 'must be lowercase letters, digits, hyphens and underscores')
-  .refine((id) => id !== TREE_CHANNEL_NAME, { error: 'is the name of the tree channel' })
+  .refine((id) => !isConversationChannel(id), {
+    error: 'is the name of one of the conversation’s own channels',
+  })
   .brand<'NodeId'>();
 
 /** Where a node is: its one lifecycle, whatever its kind. */

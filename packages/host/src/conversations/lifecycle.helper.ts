@@ -65,7 +65,7 @@ export async function closeLiveConversation(params: {
       // After the close, so the nodes it ended are on the tree, and whatever a flush above did: a
       // writer that is never stopped leaves a client that follows the tree waiting for ever. It
       // stops and does not close the channel: the conversation is kept, and a reopen goes on from it.
-      await live.harness.treeChannel?.stop();
+      await live.harness.conversationChannels?.stop();
     }
   }
 }
@@ -83,9 +83,12 @@ export function announceChannelFailures(params: {
   repairs: readonly { failure: StoreError }[];
 }): void {
   const { live, repairs } = params;
-  // A disk that fails fails both writers with one message, told once; a different failure of the
-  // other writer (a tree channel that cannot be gone on from) is told too.
-  const early = [live.harness.nodeChannels?.failure, live.harness.treeChannel?.failure].filter(
+  // A disk that fails fails every writer with one message, told once; a different failure of
+  // another writer (a tree channel that cannot be gone on from) is told too.
+  const early = [
+    live.harness.nodeChannels?.failure,
+    ...(live.harness.conversationChannels?.failures ?? []),
+  ].filter(
     (failure, index, all): failure is StoreError =>
       failure !== undefined &&
       all.findIndex((other) => other?.message === failure.message) === index,

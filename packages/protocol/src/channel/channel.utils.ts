@@ -1,5 +1,14 @@
-import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
-import type { ChannelHead, CursorKind } from './channel.types.js';
+import { CONVERSATION_CHANNEL_NAMES } from '../node/node.constants.js';
+import type { ChannelHead, ConversationChannelName, CursorKind } from './channel.types.js';
+
+/**
+ * Whether `name` is one of the conversation's own channels (`tree`), as opposed to a node's,
+ * which is its id. These number their entries, have a view to start from (`snapshot`), and are
+ * names no node may have.
+ */
+export function isConversationChannel(name: string): name is ConversationChannelName {
+  return (CONVERSATION_CHANNEL_NAMES as readonly string[]).includes(name);
+}
 
 /** What a cursor counts, read from the letter it starts with. It takes a cursor the schema accepted. */
 export function cursorKind(cursor: string): CursorKind {
@@ -51,8 +60,8 @@ function cursorFits(params: {
 /**
  * Whether the entries of one channel, oldest first, have the shape a channel has. It starts with
  * `opened` and ends with `closed`, each once; every entry names the same channel and uses cursors
- * of one kind; a sequence has no gap and a byte offset never goes back; and the tree channel
- * numbers its entries. An empty log is well formed: nothing has opened the channel yet. What each
+ * of one kind; a sequence has no gap and a byte offset never goes back; and a conversation's own
+ * channel numbers its entries. An empty log is well formed: nothing has opened the channel yet. What each
  * entry holds is checked by its own schema, which only the issue that serves that type has.
  */
 export function isWellFormedChannelLog(entries: readonly ChannelHead[]): boolean {
@@ -63,7 +72,7 @@ export function isWellFormedChannelLog(entries: readonly ChannelHead[]): boolean
 
   const kind = cursorKind(first.cursor);
 
-  if (first.channel === TREE_CHANNEL_NAME && kind !== 'sequence') return false;
+  if (isConversationChannel(first.channel) && kind !== 'sequence') return false;
 
   return entries.every(
     (entry, index) =>

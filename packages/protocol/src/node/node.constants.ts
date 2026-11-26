@@ -5,6 +5,14 @@
 export const TREE_CHANNEL_NAME = 'tree';
 
 /**
+ * The channels of the conversation itself, as opposed to a node's (named by its id): each is named
+ * by a fixed word that no node may have and no extension may take, numbers its entries, and has a
+ * view a subscriber can start from (`snapshot`). The tree is the first; a new one is added here,
+ * and the schemas, the subscription and the host take it from this list.
+ */
+export const CONVERSATION_CHANNEL_NAMES = [TREE_CHANNEL_NAME] as const;
+
+/**
  * A node's id: lowercase letters, digits, hyphens and underscores, so it is safe in a message and
  * cannot collide with another by case on a case-insensitive disk, or look like `Tree`.
  */
@@ -71,8 +79,9 @@ export const MAX_NODE_ERROR_CHARS = 2_000;
 export const MAX_TREE_NODES = 1_000;
 
 /**
- * Names an extension may not take: the built-in node kinds and the tree channel, so an extension's
- * kind or event can never read as one of ours.
+ * Names an extension may not take: the built-in node kinds and the conversation's own channels, so
+ * an extension's kind or event can never read as one of ours. A test holds it to
+ * `CONVERSATION_CHANNEL_NAMES`.
  */
 export const RESERVED_EXTENSION_NAMES = ['agent', 'command', 'service', 'tree'] as const;
 

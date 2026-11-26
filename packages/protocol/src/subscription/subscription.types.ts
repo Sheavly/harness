@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 import type { channelEntrySchema, channelNameSchema } from '../channel/channel.validator.js';
-import type { TreeChannelEntry } from '../tree/tree.types.js';
+import type { TreeChannelEntry, TreeSnapshot } from '../tree/tree.types.js';
 import type {
   channelEndFrameSchema,
   channelHeadFrameSchema,
@@ -19,6 +19,12 @@ export type SubscribeRequest = z.infer<typeof subscribeRequestSchema>;
  * closed) or of the tree channel.
  */
 export type ServedEntry = z.infer<typeof channelEntrySchema> | TreeChannelEntry;
+
+/**
+ * The view a channel of the conversation itself starts a subscriber from (`from: snapshot`): the
+ * channel's state as it stands, with the cursor it covers up to. The tree's is the only one.
+ */
+export type ConversationSnapshot = TreeSnapshot;
 
 /** Where a channel stood when a subscription at `now` opened. */
 export type ChannelHeadFrame = z.infer<typeof channelHeadFrameSchema>;

@@ -101,6 +101,18 @@ Each node has one channel. Every entry has the same envelope:
   clock or a shared counter. The stored channels name the newest parent entry the store holds when
   the child's entry is written, which is the same entry unless a write of the parent's failed.
 
+### The conversation's own channels
+
+Besides each node's, the conversation has channels of its own, named by a fixed word that no node
+may have and no extension may take (`CONVERSATION_CHANNEL_NAMES`; the tree is the first). Each
+numbers its entries (`s0`, `s1`, …), and has a **view** a subscriber can start from: `from:
+snapshot` gives the view as it stands with the cursor it covers, then the entries after it. A new
+one is one more name in that list, with its entry schema (`conversationEntrySchema`, which the type
+check requires a case of), its view (`ConversationSnapshot`) and a writer added to the harness's
+`ConversationChannels`. The host serves it from there by name, with no branch of its own in the
+subscription code; what only one channel has (the tree's approvals, `approvals` on a subscribe
+request) stays that channel's own.
+
 ### The tree channel
 
 It carries three things, each with the node's id:

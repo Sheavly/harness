@@ -1,8 +1,8 @@
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import { channelEntrySchema } from '@sheavly/protocol/channel/channel.validator';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
-import { treeChannelEntrySchema } from '@sheavly/protocol/tree/tree.validator';
 import { END_EVENT, HEAD_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
+import { conversationEntrySchema } from '@sheavly/protocol/subscription/subscription.utils';
 import type {
   ChannelEndFrame,
   ChannelHeadFrame,
@@ -17,10 +17,9 @@ import type {
  * as failed rather than sending a frame no client could read.
  */
 export function entryFrame(entry: ChannelEntry): ServedEntry | undefined {
-  const parsed =
-    entry.channel === TREE_CHANNEL_NAME
-      ? treeChannelEntrySchema.safeParse(entry)
-      : channelEntrySchema.safeParse(entry);
+  const parsed = isConversationChannel(entry.channel)
+    ? conversationEntrySchema(entry.channel).safeParse(entry)
+    : channelEntrySchema.safeParse(entry);
 
   return parsed.success ? parsed.data : undefined;
 }
