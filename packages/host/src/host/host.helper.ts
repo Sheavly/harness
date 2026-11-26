@@ -41,9 +41,15 @@ export function createHarness(options: HarnessOptions): Harness {
   const approvals = options.approvals ?? new ApprovalRegistry();
   const tasks = options.tasks ?? new TaskRegistry(sessions.nodeOwners);
   // Now that the main session exists, and a reopened conversation's nodes are back, so the writer
-  // sees every node that is open.
+  // sees every node that is open. The sessions are its event source: the loop's events of each
+  // agent go to that agent's channel as the stream carries them.
   const nodeChannels = options.channels
-    ? NodeChannelWriter.attach({ nodes: sessions.nodes, tasks, storage: options.channels })
+    ? NodeChannelWriter.attach({
+        nodes: sessions.nodes,
+        tasks,
+        events: sessions,
+        storage: options.channels,
+      })
     : undefined;
   // The tree channel is told what the registries do from here on, so it is attached before
   // anything else can start a node or ask for an approval.
