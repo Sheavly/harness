@@ -95,6 +95,8 @@ a sub-agent asked. The id is always there; whether and how to show `agent` is th
 `followApprovals` does the same over any stream of entries. A replay also re-sends approvals
 already answered, each followed by its answer, so key a UI by the approval's id.
 
+`watchTreeApprovals` reads them from the tree channel instead, see [Subscriptions](#subscriptions).
+
 ## Reconnecting
 
 The backend resumes a stream after the `Last-Event-ID` it is given, so a dropped connection loses
@@ -128,12 +130,89 @@ aborts.
 `answerWhileWaiting` (`approvals/`) wraps a call to `answerApproval` and treats `unknown_approval`
 (answered elsewhere, or its call was interrupted) as done: the one place that rule lives.
 
+## Subscriptions
+
+A conversation's channels are read through `QUERY /subscribe`: the tree channel (what exists and what
+waits for the user) and one channel for each node a UI shows. The server keeps no state for a
+connection, so the client keeps each channel's cursor and sends them again when it opens again.
+
+```ts
+const stop = new AbortController();
+const watch = await watchTree({ client, id, onChange: render, signal: stop.signal });
+const entries = await followNode({ client, id, node, from: 'tail:200', signal: stop.signal });
+
+for await (const entry of entries) show(entry);
+
+// Commands are typed calls of the contract's routes, no wrapper:
+await client.send('cancelNode', { id, node });
+await client.send('messageNode', { id, node, body: { text: 'look at the tests first' } });
+const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // PromptSent
+```
+
+- `subscribeChannels({ client, id, subscriptions, approvals?, signal })` (`client/`) is the base:
+  the frames of the channels, each once. Entries and `head` and `snapshot` frames are given as they
+  came; a channel that ended `completed` or `failed` ends with an `end` frame, and the generator
+  ends when every channel has. It resolves once the server accepted the first connection.
+- **Resuming.** A dropped connection is opened again with each channel that has not ended asked
+  from the cursor of its last frame (a channel with no frame yet is asked as it was first asked, so a
+  drop before the `head` of a `now` subscription reopens at `now`), so nothing is missed and
+  nothing comes twice: a frame at or before a channel's last cursor is dropped, except a command's
+  `closed` entry, whose cursor is that of the output before it. The wait, the budget and the
+  `StreamLostError` are those of `reconnectingEntries` (`ClientOptions.reconnect`). A channel the
+  server cut off because the reader did not keep up (`end` with `cut_off`) is left and asked for
+  again from its cursor, and counts as a failed attempt when nothing came of it, so it cannot loop for ever.
+  A refusal (a 4xx, `cursor_out_of_range` included) and an entry off the contract are thrown, since
+  asking again gets the same answer: the caller asks from somewhere else. The one refusal that is
+  asked again is `429` (`too_many_subscriptions`: the server serves as many as it may and says to
+  ask again when one has ended, which a client that leaves one connection and opens another meets
+  for a moment), once the first connection is open; the first connection's refusal is thrown at once.
+  A server that cuts a channel off after every frame it sends is reconnected to with a wait each time
+  and never reaches the budget, since a frame that arrives starts the count again: the same as the
+  conversation stream's reconnect.
+- **Bounded.** The reader is pulled, and holds the frame being read (and the frames one chunk of the
+  transport completes), in pieces joined a thousand at a time so that its size is about its
+  characters however the server cuts it into chunks (3,000,000 one-character chunks of a frame held
+  about 3 MiB). A frame past `MAX_SUBSCRIBE_FRAME_CHARS` (64 MiB; the tree's snapshot at its bounds
+  is about 32 MiB) throws `AnswerTooLargeError` and is not retried; the bound is checked after each
+  chunk, so a frame may pass it by one. A slow reader is cut off by the server and resumed, never
+  buffered for. The conversation stream's reader (`readEntries`) has no such bound and is not used
+  for subscriptions. A tree that grows past what a snapshot may hold (more than 1,000 nodes, or
+  more than 1,000 waiting approvals) is off the contract and is refused (`AnswerError`), not kept:
+  the protocol's rule drops only an ended node nothing hangs from, so open nodes and the parents of
+  kept ones would pile up without end, and each entry costs a pass over them all.
+- `watchTree({ client, id, approvals?, onChange, signal })` (`tree/`) keeps the tree: the snapshot,
+  then each entry folded in with the protocol's one rule (`applyTreeEntry`). `tree()` is what it is
+  now and `onChange` is told of each change, not of an entry that changes nothing in it. After a
+  reconnect the tree equals the snapshot of that moment; when the server no longer holds the position
+  (`cursor_out_of_range`) it asks again from `snapshot`, which replaces the tree. `ended` resolves
+  when the tree channel ends `completed` and when the signal aborts, and rejects with
+  `ChannelFailedError` when the channel ends `failed` (storing it failed, or its conversation closed:
+  nothing more will come and the claim to answer approvals is gone), with a refusal, with
+  `AnswerError` for a tree off the contract, and with whatever `onChange` throws. It starts at once,
+  so attach a handler to `ended` (a rejection nobody handles is an unhandled rejection).
+- `followNode({ client, id, node, from?, signal })` (`nodes/`) reads one node's channel to its
+  `closed` entry: an agent's `updated` entries, a command's or a service's output in pieces at byte
+  offsets. It throws `ChannelFailedError` when the channel ended `failed`, since what was read is not
+  all of it.
+- `watchTreeApprovals({ client, id, onApproval, onGone?, signal })` (`approvals/`) follows the tree
+  as one that answers approvals, so a tool that asks waits for the user instead of being refused, and
+  tells of each approval once with the node that asked (`TreeApproval`), and when it no longer waits.
+  It resolves once the server accepted the connection, which is when the claim counts: send the
+  first prompt after it. While the connection is down nobody listens, and a request made then is
+  refused. It replaces `watchApprovals`, which reads the whole stream and goes with it.
+- The old whole-stream readers (`followConversation`, `promptEntries`, `watchApprovals`) stay until
+  the terminal moves off them (the chat) and the stream route is removed (the cleanup).
+
 ## Testing a UI
 
 `fakeServer(handlers)` (`testing/`) is a `fetch` that answers the API's routes as a test says:
 each request is matched to its route in `API_ROUTES`, a JSON answer is checked against the route's
 schema (so a fake can't answer what the real backend couldn't), and `calls` records what was sent.
-A UI tests its own logic on it; the real routes are tested end to end in the backend.
+A UI tests its own logic on it; the real routes are tested end to end in the backend. A stream
+route's handler yields that route's own frames (a conversation stream's entries, a subscribe
+stream's frames, sent as the backend sends them, with their event names and no id) or a refusal.
+Its streams are taken as they are read, so a handler that throws drops the connection after the
+frames before it, as a network does.
 
 ## Other languages
 

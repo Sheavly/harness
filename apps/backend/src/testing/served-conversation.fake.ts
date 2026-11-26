@@ -28,5 +28,5 @@ export async function servedConversation(params: {
   await harness.nodeChannels?.flush();
   await harness.treeChannel?.flush();
 
-  return { api, store, client, id, conversation, harness };
+  return { api, store, client, url, id, conversation, harness };
 }
