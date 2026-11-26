@@ -126,12 +126,12 @@ export function useSubAgentRuns() {
     });
     await seedModel({ backend, ...(params.pricing && { pricing: params.pricing }) });
 
-    return backend;
+    return { backend, base };
   }
 
   /** Sends `prompt` to conversation `id` and reads the main agent's stream entries until its run ends. */
   async function sentPrompt(params: {
-    backend: Awaited<ReturnType<typeof openBackend>>;
+    backend: Awaited<ReturnType<typeof openBackend>>['backend'];
     id: ConversationId;
     prompt: string;
   }) {
@@ -154,7 +154,7 @@ export function useSubAgentRuns() {
    */
   async function started(options: RunOptions = {}) {
     const gate = Promise.withResolvers<undefined>();
-    const backend = await openBackend({ gate, ...options });
+    const { backend, base } = await openBackend({ gate, ...options });
     const id = conversationIdSchema.parse(
       (await backend.client.call('startConversation', { body: {} })).id,
     );
@@ -167,6 +167,8 @@ export function useSubAgentRuns() {
 
     return {
       backend,
+      /** The folder the backend lives in: its `home` and `project` are where another can reopen it. */
+      base,
       id,
       stream,
       main: main.id,
