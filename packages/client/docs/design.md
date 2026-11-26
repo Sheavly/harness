@@ -95,7 +95,8 @@ a sub-agent asked. The id is always there; whether and how to show `agent` is th
 `followApprovals` does the same over any stream of entries. A replay also re-sends approvals
 already answered, each followed by its answer, so key a UI by the approval's id.
 
-`watchTreeApprovals` reads them from the tree channel instead, see [Subscriptions](#subscriptions).
+`watchTreeApprovals` reads them from the tree channel instead, see [Subscriptions](#subscriptions);
+it is what the terminal's chat and workbook use.
 
 ## Reconnecting
 
@@ -200,8 +201,10 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   It resolves once the server accepted the connection, which is when the claim counts: send the
   first prompt after it. While the connection is down nobody listens, and a request made then is
   refused. It replaces `watchApprovals`, which reads the whole stream and goes with it.
-- The old whole-stream readers (`followConversation`, `promptEntries`, `watchApprovals`) stay until
-  the terminal moves off them (the chat) and the stream route is removed (the cleanup).
+- The old whole-stream readers (`followConversation`, `promptEntries`, `watchApprovals`) stay while
+  the stream route does. The terminal has moved its approvals and its background counts to the tree
+  (`watchTreeApprovals`, `watchTree`); what still reads the stream is its transcript, which moves
+  once an agent's channel carries the loop's events, and the readers go with the stream route.
 
 ## Testing a UI
 

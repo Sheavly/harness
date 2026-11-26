@@ -73,6 +73,16 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   and what runs in the background (`2 tasks and 1 service running in background`: finite work
   and services counted apart, each only when some run). Without a terminal (piped input, or
   `SHEAVLY_PLAIN=1`) it reads and writes lines, as it always did.
+- **What the chat follows.** The transcript, a run's text and steps, is read from the conversation's
+  stream. What runs in the background and what waits for you are read from its tree channel
+  (`QUERY /conversations/{id}/subscribe`), through the client's `watchTree` and `watchTreeApprovals`:
+  the status line counts the nodes that run under the main agent (a sub-agent, a service, any other
+  node a task), from their opening to their end, so a command that starts and ends while no prompt is
+  open is counted too, and nothing is counted twice. An approval shows once when it is asked, with
+  the title of the sub-agent that asked it (none for the main agent), and goes when it is answered,
+  here or elsewhere. Each of them is a connection that resumes after a drop; one lost for good says
+  so in the transcript (`✗ lost the background status`, `✗ lost the approval stream`). A tool that
+  asks while the approvals connection is down is refused, not held.
 - **React and Ink draw the screen.** Completed lines are committed once with Ink's static output;
   the bounded live footer shows activity, elapsed time and `Ctrl+C to stop` while working.
   While a tool runs it also names the step and how long that step has run

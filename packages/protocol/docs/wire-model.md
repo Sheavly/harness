@@ -126,9 +126,11 @@ late subscriber gets the completed items plus a snapshot of the item in progress
 
 That is the principle. The work is scheduled in two phases so nothing waits for it: the first
 phase wraps today's events, unchanged in content, in the new per-channel envelope, and stores
-every entry as today does (the entry log keeps all of them, live-only ones included); the item
-model comes later (#434). `text_delta`, `reasoning_activity`, `model_connection` and `run_state`
-are the entries that become live only in the item model, and until then are stored with the rest.
+every entry as today does (the entry log keeps all of them, live-only ones included). That phase is
+its own issue, #511. The item model comes later (#434). `text_delta`, `reasoning_activity`,
+`model_connection` and `run_state` are the entries that become live only in the item model, and
+before it they are stored with the rest. Today an agent's channel holds its lifecycle only
+(`opened`, `updated`, `closed`), so a UI reads a run's events from the conversation's stream.
 
 ### Command and service channels
 
@@ -546,13 +548,15 @@ All of it is sub-issues of #387, one pull request each, blocked by #438 through 
 | #428  | A command's or service's output through the API                           |
 | #429  | Commands addressed by node; prompts answer with ids                       |
 | #430  | The client on subscriptions                                               |
-| #431  | The terminal chat on subscriptions                                        |
+| #431  | The terminal's status line and approvals on the tree channel              |
 | #432  | Replay and the workbook reading channel logs                              |
 | #433  | Extensions contributing node kinds                                        |
 | #434  | The item model on agent channels                                          |
 | #435  | The `Origin` and `Host` check, before or with #426 and #428               |
 | #436  | Removing the old stream, session and task wire types                      |
 | #437  | Migrating conversations stored in the old layout                          |
+| #511  | The loop's events on agent channels (phase 1), which #437 and #512 need   |
+| #512  | The terminal's transcript on the main agent's channel                     |
 
 The first release waits for this: the protocol version is not frozen until the model is built. It
 does not hold up the discovery, service and `sheavly` command work, which touch no event schema.
