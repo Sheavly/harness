@@ -448,6 +448,29 @@
         }
       }
     },
+    "/conversations/{id}/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "summary": "What the conversation has used: the total of every model call, and each node’s own, with the cursor to follow the usage channel from",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UsageSnapshot" } }
+            }
+          },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
     "/stored-conversations": {
       "query": {
         "operationId": "queryStoredConversations",

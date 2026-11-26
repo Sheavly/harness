@@ -28,8 +28,9 @@ without one (the contract marks them `public`; every other route needs the token
 | `GET /conversations/:id/queue`                                                | `{ queued }`: the lines waiting to start; kept across a restart, outside history, and never started by reopening                                                                                                                                                                          |
 | `PUT /conversations/:id/queue`, `{ queued }`                                  | `204`: replaces the waiting lines whole; they start in their new order                                                                                                                                                                                                                    |
 | `QUERY /conversations/:id/stream`                                             | every entry, as SSE, while the client stays                                                                                                                                                                                                                                               |
-| `QUERY /conversations/:id/subscribe`, `{ subscriptions, approvals? }`         | channels (a node's, or the tree's), as SSE: the stored history each position asks for, then what is stored next ([following channels](#following-channels))                                                                                                                               |
+| `QUERY /conversations/:id/subscribe`, `{ subscriptions, approvals? }`         | channels (a node's, or the tree's or usage's), as SSE: the stored history each position asks for, then what is stored next ([following channels](#following-channels))                                                                                                                    |
 | `GET /conversations/:id/tree`                                                 | the tree as it stands: every node, ended ones included, every approval waiting, and the cursor to follow the tree channel from ([the tree](#the-tree))                                                                                                                                    |
+| `GET /conversations/:id/usage`                                                | what the conversation has used: the total of every model call and each node's own, with the cursor to follow the usage channel from ([usage](#usage))                                                                                                                                     |
 | `POST /conversations/:id/stop`                                                | `204`: the running prompt stops; history stays valid                                                                                                                                                                                                                                      |
 | `POST /conversations/:id/nodes/:node/cancel`                                  | `204`: the node is cancelled, whatever its kind, and has exited ([commands to a node](#commands-to-a-node))                                                                                                                                                                               |
 | `POST /conversations/:id/nodes/:node/messages`, `{ text }`                    | `204`: the main agent is sent the text as the user, at its next model call ([commands to a node](#commands-to-a-node))                                                                                                                                                                    |
@@ -243,11 +244,12 @@ when it stops, stops its prompts, tasks and processes.
 
 `QUERY /conversations/:id/subscribe` follows the channels the server keeps beside the
 conversation's stream, one log per node (the main agent's, each sub-agent's, a command's, a
-service's) and the conversation's own tree, as the
+service's) and the conversation's own channels, its tree and its usage, as the
 [wire model](../../../packages/protocol/docs/wire-model.md) describes them. The body is
-`{ subscriptions: [{ channel, from }] }`: `channel` is a node's id, or `tree`, and `from` is `start`,
-`now`, `tail:<n>` (the last `n` entries of an agent's channel, the last `n` bytes of a command's
-output), a cursor the client was given (what follows it) or, for the tree only, `snapshot`.
+`{ subscriptions: [{ channel, from }] }`: `channel` is a node's id, or `tree` or `usage`, and `from`
+is `start`, `now`, `tail:<n>` (the last `n` entries of an agent's channel, the last `n` bytes of a
+command's output), a cursor the client was given (what follows it) or, for the conversation's own
+channels only, `snapshot`.
 
 ```bash
 curl -N -X QUERY "$URL/conversations/$ID/subscribe" \
@@ -263,8 +265,9 @@ channel's last cursor and sends them again as `from` when it reconnects.
 - **`entry`**: an entry of a channel: `opened`, an agent's `updated` (the node as it is now) and its
   loop events (see below), a command's `output` (see below) and `closed`; on the tree channel, what
   it holds (`node_opened`, `approval_requested`, `queue_changed`, …).
-- **`snapshot`**: for `from: snapshot` on the tree channel, the tree as it stands, first, with the
-  cursor of the entry it covers up to; the entries after that cursor follow as `entry` frames.
+- **`snapshot`**: for `from: snapshot` on the tree channel or the usage channel, its view as it
+  stands (the tree, or the usage), first, with the cursor of the entry it covers up to; the entries
+  after that cursor follow as `entry` frames.
 - **`head`**: a channel asked from `now` opens with where it stands, the cursor of its newest entry,
   so a client that hears nothing before the connection drops can still resume after it.
 - **`end`**: one channel is over, and no more frames of it follow: `completed` (its `closed` entry
@@ -482,6 +485,59 @@ client leaving frees its place at once, also while its history is still being re
 quiet stream gets the same `: heartbeat` comment and `X-Accel-Buffering: no` as the conversation's
 stream.
 
+## Usage
+
+`GET /conversations/:id/usage` answers what the conversation's model calls have used, per node and
+in total (`UsageSnapshot`), with the `cursor` of the usage channel's last entry it covers. The
+backend counts it, once, from the loop's `usage` events; a client asks, or follows the channel, and
+counts nothing.
+
+```bash
+curl "$URL/conversations/$ID/usage" -H "Authorization: Bearer $TOKEN"
+# { "channel": "usage", "type": "snapshot", "cursor": "s5", "at": …,
+#   "total": { "calls": 6, "inputTokens": 41200, "outputTokens": 3100, "cacheReadTokens": 30800,
+#              "cacheWriteTokens": 2400, "estimatedCostUsd": 0.31, "missingUsageCalls": 0,
+#              "unpricedCalls": 0, "incomplete": false },
+#   "nodes": [ { "node": …, "calls": 4, …, "context": { "used": 9800, "cached": 7200, "window": 200000 } },
+#              { "node": …, "calls": 2, … } ] }
+```
+
+- **What it counts.** Each node's calls, its input, output, cache read and cache write tokens, its
+  estimated cost, and the total of every node. The cost is the sum of what each call's usage event
+  carries, which is the rate its model is configured with (`pricing`, USD per million tokens),
+  captured when the call is made, so switching models never reprices an earlier call. It is an
+  estimate from that rate, not a figure a provider billed. A call that reported tokens but had no
+  price is in `unpricedCalls`, adding nothing to the cost; one that reported no tokens is in
+  `missingUsageCalls`, never counted as zero usage. A provider's numbers are its own: tokens that
+  are negative, not whole or more cached than sent count as tokens it did not report, a cost that
+  is not a finite amount as no price. `incomplete` says the figures are a lower bound: a turn ended
+  with no usage reported, or the conversation was kept before the usage channel existed.
+- **How full the context is.** An agent's record has `context`: what its last call used, how much of
+  that the prompt cache served and the window of the model it ran against. A call that wrote a
+  summary is counted in the figures and is not the context.
+- **Following it.** The usage channel is a channel of the conversation itself, like the tree: a client
+  starts from the snapshot and follows after its cursor with `from: <cursor>`, or in one request
+  with `QUERY /subscribe` and `from: snapshot` on the channel `usage`. An entry (`node_usage`) carries
+  a node's figures and the total as they now are, not what was added, so a client replaces what it
+  holds, an entry told twice does no harm, and the usage a snapshot and the entries after it give is
+  the one the whole channel gives. A client never has to dedupe by a stream `seq`.
+- **Across a restart.** The usage is stored (`channels/usage.jsonl` in the conversation's folder).
+  A reopened conversation goes on from it: its first life's nodes keep their records, under the ids
+  they were made under, and the total still covers them. A conversation kept before the channel
+  existed opens it at its first reopen with its total `incomplete`: what it used before is not
+  counted, and says so rather than read as zero. Calls made while a write was failing, or just
+  before a crash, are not on the channel either.
+- **Bounds.** A snapshot holds at most 1,000 nodes; past that the records of the oldest nodes that are
+  not open are dropped (an entry that drops some says so, `evicted`), and their calls stay in the
+  total. The usage channel has the same quotas as any channel and shares the conversation's 32 GiB;
+  an entry is a few hundred bytes, one for each model call.
+
+It is `404` for a conversation that is not live (or closed) or whose host keeps nothing, and `507`
+when the usage channel could not be stored (a stored channel that a reopen could not go on from, or a
+write that failed): usage that stopped being written would stand still while the conversation went
+on, so it is refused rather than served as if it were current. A subscription to it is refused as
+any other is (below).
+
 ## Several UIs on one conversation
 
 An editor and an agent window can be views of one conversation. One starts it; the other finds it
@@ -519,7 +575,7 @@ Every failure is `{ error: { code, message } }` (`ServerError`):
 | 400    | `bad_request`            | a body that doesn't parse or is over 5 MB, or an approval answer its request didn't offer; a handshake body over 1 KB, or a nonce that is missing, shorter than 22 or longer than 86 characters, or not unpadded base64url (the message never repeats the nonce); a `QUERY /subscribe` for a position its channel cannot be asked for (a tail over 1,000 entries on an agent's channel or 65,536 bytes on a command's, a cursor of the other kind) or for more than 8 MiB of stored history, or a claim to answer approvals (`approvals: true`), which is not supported yet; a command to a node its kind cannot take (cancel an extension's node, message a command, a service or a sub-agent), or a message with no text or over 20,000 characters |
 | 401    | `unauthorized`           | no token, or a wrong one, on any route but `GET /health` and `QUERY /handshake`; also an unknown path, an `OPTIONS` request and another method on those two paths                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 403    | `forbidden`              | a request whose `Host` is not one of the server's names, or that carries an `Origin` the server does not list, on any route, before the token is looked at; also a setup that hands out access on a server that listens beyond this machine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| 404    | `not_found`              | no such conversation (or route), or one already closed; for `QUERY /subscribe`, a channel the conversation does not have, whatever the reason; for `GET /tree`, a conversation whose host keeps no tree; for a command to a node, one the conversation never had, one of another conversation, or an id that is not a node's                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 404    | `not_found`              | no such conversation (or route), or one already closed; for `QUERY /subscribe`, a channel the conversation does not have, whatever the reason; for `GET /tree` and `GET /usage`, a conversation whose host keeps no tree or no usage; for a command to a node, one the conversation never had, one of another conversation, or an id that is not a node's                                                                                                                                                                                                                                                                                                                                                                                            |
 | 404    | `unknown_approval`       | no approval waiting with that id                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 409    | `session_running`        | a prompt is still being prepared or running in that conversation, for a client that sends with `send` in-process                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 409    | `cannot_queue`           | the conversation is busy and this prompt cannot wait: it picks skills as `parts`, it is over 20,000 characters, or 100 lines already wait; for a message to an agent, its inbox already holds 100 messages or 400,000 characters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -528,7 +584,7 @@ Every failure is `{ error: { code, message } }` (`ServerError`):
 | 422    | `unknown_model`          | `PUT /model` named an id the conversation hasn't                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 422    | `cursor_out_of_range`    | `QUERY /subscribe` named a cursor the channel does not hold (or one past the end of a command's output); it is never clamped to the nearest, so ask again from `start` or a tail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 429    | `too_many_subscriptions` | the conversation already serves 64 subscriptions, or its subscriptions hold too much for the history asked for to fit; ask again when one has ended                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 507    | `storage_failed`         | the conversation could not be stored, so it takes no more prompts rather than carry on unrecorded; for `GET /tree`, its tree channel could not be stored; for `QUERY /subscribe`, a command's output could not be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 507    | `storage_failed`         | the conversation could not be stored, so it takes no more prompts rather than carry on unrecorded; for `GET /tree` and `GET /usage`, its tree or usage channel could not be stored; for `QUERY /subscribe`, a command's output could not be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 500    | `internal`               | the server failed; the message never holds its details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 A prompt that can't start is answered with an error before its stream opens.

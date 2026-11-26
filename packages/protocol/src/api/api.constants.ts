@@ -27,6 +27,7 @@ import {
   storedConversationsResponseSchema,
 } from '../store/store.validator.js';
 import { treeSnapshotSchema } from '../tree/tree.validator.js';
+import { usageSnapshotSchema } from '../usage/usage-channel.validator.js';
 import { FOLDER_ROUTES } from './folder-routes.constants.js';
 import { PUBLIC_ROUTES } from './public-routes.constants.js';
 import { SETUP_ROUTES } from './setup-routes.constants.js';
@@ -206,6 +207,14 @@ export const API_ROUTES = {
     summary:
       'The tree as it stands: every node, ended ones included, and every approval waiting, with the cursor to follow the tree channel from',
     response: { status: 200, schema: treeSnapshotSchema },
+  },
+  getUsage: {
+    effect: 'read',
+    method: 'get',
+    path: '/conversations/{id}/usage',
+    summary:
+      'What the conversation has used: the total of every model call, and each node’s own, with the cursor to follow the usage channel from',
+    response: { status: 200, schema: usageSnapshotSchema },
   },
 
   queryStoredConversations: {

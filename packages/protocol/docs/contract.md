@@ -428,6 +428,7 @@ operation carries `security: []`:
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
 | `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |
 | `GET /conversations/{id}/tree`                       | bearer | none                       | `TreeSnapshot`                |
+| `GET /conversations/{id}/usage`                      | bearer | none                       | `UsageSnapshot`               |
 | `QUERY /stored-conversations`                        | bearer | `StoredConversationsQuery` | `StoredConversationsResponse` |
 | `POST /stored-conversations/{id}/reopen`             | bearer | none                       | `StartConversationResponse`   |
 | `GET /setup`                                         | bearer | none                       | `Setup`                       |
