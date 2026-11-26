@@ -145,7 +145,8 @@ Before prompting or answering an approval, the terminal verifies that the backen
 workspace is exactly the workspace prepared by the workbook store under `workspaces/runs/`.
 This check applies even when the approved list is empty.
 
-The terminal waits for the existing approval stream to be accepted before sending the prompt.
+The terminal waits for the conversation's tree channel to accept its claim to answer approvals
+before sending the prompt; approvals are read from that channel, each with the node that asked.
 It answers only structured `run_command` requests whose **every** parsed command base, proposed
 kept entry and ordinary approval concern matches the explicit list. Mixed `node && curl` or
 `node | find` requests, other tools, unknown concerns, outside-workspace cwd concerns and
@@ -222,9 +223,13 @@ A run does not end at the prompt's own `done`. The backend ends a prompt when th
 while background commands or sub-agents run, then starts a run of its own to deliver what finished.
 The backend answers the prompt at once and every run's entries come on the conversation's stream;
 the prompt's own entries stop at its `done`, so the workbook also follows the whole stream,
-shows each entry once by `seq`, and saves the run once no command or sub-agent runs and the
-conversation is idle (at most ten minutes after the prompt ends). A check on background work
-therefore sees the delivered results even when the model never calls `await_tasks`.
+shows each entry once by `seq`, and saves the run once the conversation's tree shows no command or
+sub-agent running and the conversation is idle (at most ten minutes after the prompt ends; a tree
+that can no longer be followed fails the run, as a lost stream does). The tree and the stream are
+separate connections, so the tree can show a command a moment after the prompt's `done` arrives:
+the wait looks again after a short grace (`BACKGROUND_GRACE_MS`) before it trusts a count of zero.
+A check on background work therefore sees the delivered results even when the model never calls
+`await_tasks`.
 
 ## What a run saves
 

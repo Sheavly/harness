@@ -1,5 +1,6 @@
 import { answerWhileWaiting } from '@sheavly/client/approvals/approvals.helper';
-import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
+import type { ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
+import type { AskedApproval } from '../client/client.types.js';
 import type { RemoteConversation } from '../client/conversation.service.js';
 import { WorkbookCheckError } from './check.errors.js';
 import { checkApprovalResponse } from './check-approval.utils.js';
@@ -45,7 +46,8 @@ export class CheckApprovals {
       await this.params.verifyWorkspace();
       const { ended } = await this.params.conversation.watchApprovals({
         signal: this.#controller.signal,
-        onApproval: (heard) => this.#answer(heard),
+        onApproval: (asked) => this.#answer(asked),
+        onGone: (id) => this.#settled.add(id),
       });
 
       this.#ended = ended.then(
@@ -94,18 +96,12 @@ export class CheckApprovals {
     this.#controller.abort();
   }
 
-  #answer({ update }: HeardApproval): void {
-    if (update.type !== 'approval_requested') {
-      this.#settled.add(update.id);
-
-      return;
-    }
-
-    if (this.#seen.has(update.request.id) || this.#settled.has(update.request.id)) return;
-    this.#seen.add(update.request.id);
+  #answer({ request }: AskedApproval): void {
+    if (this.#seen.has(request.id) || this.#settled.has(request.id)) return;
+    this.#seen.add(request.id);
 
     // The call may be interrupted or answered elsewhere while workspace verification runs.
-    const answer = answerWhileWaiting(() => this.#sendAnswer(update.request)).catch(
+    const answer = answerWhileWaiting(() => this.#sendAnswer(request)).catch(
       (caughtError: unknown) => this.#failed(caughtError),
     );
 
@@ -113,9 +109,7 @@ export class CheckApprovals {
     void answer.then(() => this.#answers.delete(answer));
   }
 
-  async #sendAnswer(
-    request: Extract<HeardApproval['update'], { type: 'approval_requested' }>['request'],
-  ): Promise<void> {
+  async #sendAnswer(request: ApprovalRequest): Promise<void> {
     await this.params.verifyWorkspace();
     if (this.#controller.signal.aborted || this.#settled.has(request.id)) return;
 

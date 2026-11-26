@@ -1,4 +1,14 @@
 import type { ReconnectPolicy } from '@sheavly/client/client/client.types';
+import type { ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
+
+/** The sub-agent that asked an approval, as the screen shows it: by its title, never by an id. */
+export type ApprovalAsker = { title: string };
+
+/**
+ * An approval that waits, as the chat and the workbook handle it: the request, and the sub-agent
+ * that asked it. `asker` is unset for the main agent, whose approvals need no name.
+ */
+export type AskedApproval = { request: ApprovalRequest; asker?: ApprovalAsker };
 
 /** How the terminal reaches a backend: its settings, the CLI arguments it passes on, its output. */
 export type BackendOptions = {
@@ -18,6 +28,12 @@ export type BackendOptions = {
  * to it, and never starts or stops it.
  */
 export type FoundBackend = { url: string; token: string };
+
+/**
+ * The background work still running under the conversation's main agent: commands (and any other
+ * kind of node that is not one of the next two), sub-agents and services.
+ */
+export type Background = { tasks: number; agents: number; services: number };
 
 /**
  * A backend the terminal talks to; `stop` ends it if the terminal started it: SIGTERM to its

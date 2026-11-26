@@ -1,6 +1,6 @@
 import { TuiMainScreen } from '@earendil-works/pi-tui';
 import { answerWhileWaiting } from '@sheavly/client/approvals/approvals.helper';
-import type { HeardApproval } from '@sheavly/client/approvals/approvals.types';
+import type { ApprovalId } from '@sheavly/protocol/approval/approval.types';
 import type { ConversationDetails } from '@sheavly/protocol/server/server.types';
 import { ChatSession } from '../chat/chat-session.service.js';
 import { describeFailure } from '../render/terminal-text.utils.js';
@@ -9,6 +9,7 @@ import { UsageLedger } from '@sheavly/runtime/usage/usage.service';
 import { ContextUsageTracker } from '../usage/context-usage.service.js';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { ScrollbackTerminal } from './scrollback-terminal.service.js';
+import type { AskedApproval } from '../client/client.types.js';
 import type { RemoteConversation } from '../client/conversation.service.js';
 import { configureHyperlinks, createFileLinker } from '../links/links.helper.js';
 import { createChatLook } from '../render/chat-look.utils.js';
@@ -151,9 +152,11 @@ export async function startScreenChat(params: {
     onExit: () => leave(),
   });
 
+  // The approvals come from the conversation's tree. Usage no longer comes with them: the live
+  // stream below delivers every session's usage, between prompts too.
   const { ended } = await conversation.watchApprovals({
-    onUsage: keepUsage,
-    onApproval: (heard) => hear({ heard, screen, bell }),
+    onApproval: (asked) => askApproval({ asked, screen, bell }),
+    onGone: (id) => forgetApproval({ id, screen, bell }),
     signal: watching.signal,
   });
 
@@ -169,7 +172,16 @@ export async function startScreenChat(params: {
 
   void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
 
-  conversation.watchBackground((background) => screen.setStatus(background));
+  // The status line's counts of background work come from the conversation's tree.
+  const background = await conversation.watchBackground({
+    listener: (counts) => screen.setStatus(counts),
+    signal: watching.signal,
+  });
+
+  void background.ended.catch((caughtError: unknown) => {
+    screen.notice(`✗ lost the background status: ${describeFailure(caughtError)}`);
+  });
+
   screen.start();
   // Lines queued before a restart are shown as waiting and not sent: reopening never runs them.
   session.restoreQueued(await conversation.queue());
@@ -211,20 +223,24 @@ function branchOf(details: ConversationDetails): { workingBranch?: string } {
   return { workingBranch: workingRoot.branch ?? 'detached HEAD' };
 }
 
-/** What an approval update means for the screen: one asked appears, one gone disappears. */
-function hear(params: { heard: HeardApproval; screen: ChatScreen; bell: TerminalBell }): void {
-  const { heard, screen, bell } = params;
-  const { update, agent } = heard;
+/** An approval that was asked appears on the screen, with the sub-agent that asked it. */
+function askApproval(params: {
+  asked: AskedApproval;
+  screen: ChatScreen;
+  bell: TerminalBell;
+}): void {
+  const { asked, screen, bell } = params;
 
-  if (update.type === 'approval_requested') {
-    screen.ask(update.request, agent);
-    bell.requestApproval(update.request.id);
+  screen.ask(asked.request, asked.asker);
+  bell.requestApproval(asked.request.id);
+}
 
-    return;
-  }
+/** An approval that no longer waits (answered here or elsewhere, or given up) disappears. */
+function forgetApproval(params: { id: ApprovalId; screen: ChatScreen; bell: TerminalBell }): void {
+  const { id, screen, bell } = params;
 
-  screen.forget(update.id);
-  bell.forgetApproval(update.id);
+  screen.forget(id);
+  bell.forgetApproval(id);
 }
 
 /**

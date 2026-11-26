@@ -505,7 +505,9 @@ An approval names the session that asked by id only: the stream entry's `session
 not repeated in the request; they are in its `session_started` update, the one place they are
 kept. A UI that wants to show who asked follows the stream from its start (`replay`) and looks
 the id up, or uses `watchApprovals` from `@sheavly/client`, which does that and hands back the
-sub-agent with each approval. Whether and how to show it is the UI's choice.
+sub-agent with each approval. Whether and how to show it is the UI's choice. On the tree channel an
+approval carries the node that asked, and `watchTreeApprovals` hands that node back with each
+approval, so nothing has to be looked up.
 
 ## Approval permissions
 

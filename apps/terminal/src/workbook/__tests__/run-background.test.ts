@@ -19,6 +19,7 @@ import { connectBackend } from '../../client/backend.helper.js';
 import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
 import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
+import { childNode, treeFeed } from '../../testing/tree-feed.fake.js';
 
 // The same two replacements every workbook run test makes: the backend, and Git.
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn(() => '') }));
@@ -75,8 +76,10 @@ const done = (seq: number): StreamEntry => ({
  * A backend that ends the prompt while a command still runs, as the real one does when the model
  * stops without `await_tasks`. The run it then starts to deliver the finished command comes after
  * the prompt's `done`, so only a follower of the whole stream sees it, not the prompt's entries.
+ * The command runs for `commandRunsMs` in the conversation's tree; with `treeFails` the tree
+ * channel fails then, as it does when the conversation is closed under the run.
  */
-async function backendThatWakes() {
+async function backendThatWakes(params: { commandRunsMs?: number; treeFails?: boolean } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'workbook-background-'));
 
   environment.keep(root);
@@ -84,19 +87,30 @@ async function backendThatWakes() {
   const store = new WorkbookStore(path.join(root, 'workbook'));
   const liveEnded = Promise.withResolvers<undefined>();
   const feed = liveFeed();
+  const tree = treeFeed();
   const server = fakeServer({
     startConversation: () => ({ id }),
     getConversation: () => fakeConversationDetails(store.runWorkspaceDir(request.name)),
+    streamChannels: () => tree.follow(),
     sendPrompt: ({ body }) => {
       feed.publish(
         promptStarted({ seq: 0, text: (body as { text: string }).text }),
         taskEntry({ seq: 1, ended: false }),
         done(2),
       );
-      // The command finishes after the prompt ended, and the backend starts a run to deliver it.
-      void sleep(300).then(() =>
-        feed.publish(taskEntry({ seq: 5, ended: true }), textEntry(6), done(7)),
-      );
+      // The command runs in the conversation's tree, and finishes after the prompt ended, when the
+      // backend starts a run to deliver it.
+      tree.opened(childNode({ id: 'work', kind: 'command' }));
+      void sleep(params.commandRunsMs ?? 300).then(() => {
+        if (params.treeFails) {
+          tree.failed();
+
+          return;
+        }
+
+        tree.closed(childNode({ id: 'work', kind: 'command', state: 'completed' }));
+        feed.publish(taskEntry({ seq: 5, ended: true }), textEntry(6), done(7));
+      });
 
       return startedAnswer();
     },
@@ -126,15 +140,29 @@ async function backendThatWakes() {
 }
 
 describe('a run whose prompt ends while background work still runs', () => {
-  it('records the run the backend starts to deliver the finished work', async () => {
-    const { store } = await backendThatWakes();
+  // The prompt's entries end with its `done`. The woken run's text and its `done` came later:
+  // without following the whole stream they are never recorded. The second command runs past
+  // BACKGROUND_GRACE_MS: only the tree's count keeps the run waiting for it, so a run that did not
+  // read the count would end before the woken run's entries came.
+  it.each([
+    ['a command that ends within the grace', 300],
+    ['work the tree shows running for longer than the grace', 2_200],
+  ])('records the run the backend starts to deliver the finished work: %s', async (_name, ms) => {
+    const { store } = await backendThatWakes({ commandRunsMs: ms });
     const result = await runWorkbook({ store, request });
 
-    // The prompt's entries end with its `done`. The woken run's text and its `done` came later:
-    // without following the whole stream they are never recorded.
     expect(result.outcome).toBe('completed');
     expect(result.events).toBe(3);
     expect(result.lastEvent).toBe('#7 done');
+  });
+
+  it('fails the run, saying why, when the tree can no longer be followed while work runs', async () => {
+    const { store } = await backendThatWakes({ treeFails: true });
+    const result = await runWorkbook({ store, request });
+
+    // Without the tree the counts no longer move: waiting on them would only run out.
+    expect(result.outcome).toBe('failed');
+    expect(result.error).toContain('The channel tree ended');
   });
 
   it('shows each entry once although the prompt’s entries and the followed stream both carry it', async () => {

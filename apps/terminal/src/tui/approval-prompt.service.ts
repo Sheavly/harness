@@ -3,7 +3,7 @@ import type {
   ApprovalRequest,
   ApprovalResponse,
 } from '@sheavly/protocol/approval/approval.types';
-import type { AgentSession } from '@sheavly/client/approvals/approvals.types';
+import type { ApprovalAsker } from '../client/client.types.js';
 import { APPROVAL_LABELS, APPROVAL_ORDER } from './approval.constants.js';
 import { keepsHint } from './keeps.utils.js';
 import type { ApprovalChoice, ApprovalOutcome, ApprovalPhase } from './tui.types.js';
@@ -19,7 +19,7 @@ import type { ApprovalChoice, ApprovalOutcome, ApprovalPhase } from './tui.types
 export class ApprovalPrompt {
   #queue: ApprovalRequest[] = [];
   /** Who asked each waiting request, when a sub-agent did; dropped with the request. */
-  #agents = new Map<ApprovalId, AgentSession>();
+  #agents = new Map<ApprovalId, ApprovalAsker>();
   #picked: number | undefined;
   #phase: ApprovalPhase = 'choose';
 
@@ -63,14 +63,14 @@ export class ApprovalPrompt {
   }
 
   /** The sub-agent that asked the request shown; undefined for the main session or none shown. */
-  get currentAgent(): AgentSession | undefined {
+  get currentAgent(): ApprovalAsker | undefined {
     const request = this.current;
 
     return request ? this.#agents.get(request.id) : undefined;
   }
 
   /** Adds a request that was asked. One asked twice (a replay) is kept once. */
-  ask(request: ApprovalRequest, agent?: AgentSession): void {
+  ask(request: ApprovalRequest, agent?: ApprovalAsker): void {
     if (this.#queue.some(({ id }) => id === request.id)) {
       // A repeat may know who asked when the first delivery did not.
       if (agent && !this.#agents.has(request.id)) this.#agents.set(request.id, agent);

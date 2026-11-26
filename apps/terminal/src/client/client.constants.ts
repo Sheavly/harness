@@ -17,13 +17,6 @@ export const GROUP_REAP_MS = 2000;
  */
 export const LISTENING_LINE = /(?<![^\r\n])→ listening on (\S+)(?=[\r\n])/;
 
-/**
- * How many ended task ids a conversation remembers, so an entry the prompt's stream and the live
- * feed both carry counts once. Far beyond how far apart the two streams can run; past it the
- * oldest id is forgotten, so a start for it that arrives that late would count again.
- */
-export const ENDED_TASKS_KEPT = 1000;
-
 /** How long a backend that is already running may take to answer `--trust` before the start fails. */
 export const TRUST_TIMEOUT_MS = 10_000;
 

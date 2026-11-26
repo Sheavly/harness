@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { ApprovalOption, ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
 import { approvalIdSchema } from '@sheavly/protocol/approval/approval.validator';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
-import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
-import { timestampSchema } from '@sheavly/protocol/time/time.validator';
 import { ApprovalPrompt } from '../approval-prompt.service.js';
 
 const ALL: ApprovalOption[] = ['approve', 'always_allow', 'skip', 'skip_with_message'];
@@ -25,16 +23,7 @@ const asking = (...ids: string[]) => {
   return prompt;
 };
 
-const agent = {
-  id: sessionIdSchema.parse('s2'),
-  parentId: sessionIdSchema.parse('main'),
-  startedByCall: callIdSchema.parse('c0'),
-  rootId: sessionIdSchema.parse('main'),
-  depth: 2,
-  title: 'Helper',
-  state: 'running' as const,
-  startedAt: timestampSchema.parse(1),
-};
+const agent = { title: 'Helper' };
 
 describe('ApprovalPrompt', () => {
   it('learns who asked from a repeat of a request, keeps it once, and drops it with the request', () => {

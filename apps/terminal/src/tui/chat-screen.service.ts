@@ -1,8 +1,8 @@
 import { matchesKey, type Editor, type TUI } from '@earendil-works/pi-tui';
 import { now } from '@sheavly/core/clock/clock.helper';
 import { plainTerminalText } from '../render/terminal-text.utils.js';
-import type { AgentSession } from '@sheavly/client/approvals/approvals.types';
 import type { ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
+import type { ApprovalAsker } from '../client/client.types.js';
 import { CHAT_COMMANDS } from '../chat/chat.constants.js';
 import type { TurnOutcome } from '../chat/chat.types.js';
 import type { ShellMark } from '../marks/marks.types.js';
@@ -177,7 +177,7 @@ export class ChatScreen {
   }
 
   /** An approval was asked: it waits for the user's answer, behind any already waiting. */
-  ask(request: ApprovalRequest, agent?: AgentSession): void {
+  ask(request: ApprovalRequest, agent?: ApprovalAsker): void {
     this.#prompt.ask(request, agent);
     this.#refresh();
   }
