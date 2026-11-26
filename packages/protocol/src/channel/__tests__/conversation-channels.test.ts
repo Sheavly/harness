@@ -33,6 +33,10 @@ describe.each(CONVERSATION_CHANNEL_NAMES)('the conversation channel %s', (name) 
 
     expect(schema.safeParse(opened(name)).success).toBe(true);
     expect(schema.safeParse(opened('agent-1')).success).toBe(false);
+
+    for (const other of CONVERSATION_CHANNEL_NAMES.filter((member) => member !== name)) {
+      expect(schema.safeParse(opened(other)).success, `${other}’s entry as ${name}’s`).toBe(false);
+    }
   });
 
   it('has a snapshot to start from, and is numbered: a byte cursor or an over-long tail is refused', () => {

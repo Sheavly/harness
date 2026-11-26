@@ -27,6 +27,7 @@ import {
   storedConversationsResponseSchema,
 } from '../store/store.validator.js';
 import { treeSnapshotSchema } from '../tree/tree.validator.js';
+import { usageSnapshotSchema } from '../usage/usage-channel.validator.js';
 import { FOLDER_ROUTES } from './folder-routes.constants.js';
 import { PUBLIC_ROUTES } from './public-routes.constants.js';
 import { SETUP_ROUTES } from './setup-routes.constants.js';
@@ -195,7 +196,7 @@ export const API_ROUTES = {
     method: 'query',
     path: '/conversations/{id}/subscribe',
     summary:
-      "Follow channels, a node's or the conversation's tree: the stored history each position asks for (the tree as it stands, for the tree from snapshot), then what is stored next, as entry, head, end and snapshot frames",
+      "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames",
     body: subscribeRequestSchema,
     response: { status: 200, stream: subscribeFrameSchema },
   },
@@ -207,6 +208,15 @@ export const API_ROUTES = {
       'The tree as it stands: every node, ended ones included, and every approval waiting, with the cursor to follow the tree channel from',
     response: { status: 200, schema: treeSnapshotSchema },
   },
+  getUsage: {
+    effect: 'read',
+    method: 'get',
+    path: '/conversations/{id}/usage',
+    summary:
+      'What the conversation has used: the total of every model call, and each node’s own, with the cursor to follow the usage channel from',
+    response: { status: 200, schema: usageSnapshotSchema },
+  },
+
   queryStoredConversations: {
     effect: 'read',
     method: 'query',

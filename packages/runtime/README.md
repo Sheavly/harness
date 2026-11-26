@@ -127,6 +127,30 @@ from the stored channel, closing the nodes the stopped process left open as `los
 its waiting approvals, and writes nothing (telling the failure once) if the stored channel cannot
 be gone on from.
 
+The conversation's own channels share one piece of storing: `StoredChannel` (`nodes/`) numbers each
+entry it is told with no gap, writes them in the order they were told, keeps the view the stored
+entries build beside the cursor of the last (so `snapshot()` is the view of exactly what is stored),
+tells followers each entry with its place in the log, and ends on a failed write or a stop;
+`readStoredChannel` reads a stored one back for a reopen. `TreeChannelWriter` and
+`UsageChannelWriter` are each a `StoredChannel` plus what tells it entries, and both are a
+`ConversationChannel`, which `ConversationChannels` holds by name for the host.
+
+`UsageChannelWriter.attach({ nodes, events, storage })` stores the conversation's usage channel from
+the loop's `usage` and `turn_end` events as the sessions publish them (`events` is the registry's
+`subscribeEntries` and `nodeIdOf`). `NodeUsageLedger` (`usage/`) is the one place usage is counted:
+each node's calls, tokens with the cache tokens apart, the cost each call carries (the model's
+configured rate; a call with no price is counted as unpriced and adds nothing, one with no tokens as
+missing), `incomplete` when a turn ends with no usage reported, and an agent's context from its last
+call that counts (a summary call is in the figures and not in the context). It keeps at most
+`MAX_TREE_NODES` records, dropping the oldest of nodes that are not open and saying which, with their
+calls kept in the total. A provider's numbers are checked first: tokens that are not whole, negative
+or inconsistent count as not reported, a cost that is not a finite amount as no price, and sums are
+held at the largest safe integer, so no call can make an entry the channel's schema refuses (one
+refused entry ends the channel). A reopened conversation goes on from
+`UsageChannelWriter.readStored`; one stored before the channel existed (`NodeChannelStorage.reopened`
+with nothing stored) opens a new channel that says it did not count what came before
+(`earlierUncounted`), so its total is a lower bound.
+
 `SessionRegistry.setMessage` associates stream activity with the originating user message. New
 children inherit that identity; existing children keep it as the parent moves on. Correlation is
 restored from the stored stream. Error diagnostics retain selected, bounded fields and redact common

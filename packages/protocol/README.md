@@ -44,7 +44,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `id/`                | `lowercaseUuidSchema`: the shape of every id a file or folder is named by                     |
 | `profile/`           | A profile's identity and model preferences                                                    |
 | `terminal-settings/` | Global terminal preferences, shared by every profile                                          |
-| `usage/`             | Reported per-call token usage, recorded cost estimates and cumulative totals                  |
+| `usage/`             | Per-call token usage and cost estimates, and the usage channel: its entries and its snapshot  |
 | `notice/`            | `HarnessNotice`: model and UI data carried by `harness_notice` events                         |
 | `connection/`        | `ModelConnection`: a model call waiting for the network, or retrying an unreachable provider  |
 | `extension/`         | The envelope fields, name patterns and size caps of an extension's events and notices         |

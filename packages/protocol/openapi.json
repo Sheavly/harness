@@ -397,7 +397,7 @@
     "/conversations/{id}/subscribe": {
       "query": {
         "operationId": "streamChannels",
-        "summary": "Follow channels, a node's or the conversation's tree: the stored history each position asks for (the tree as it stands, for the tree from snapshot), then what is stored next, as entry, head, end and snapshot frames",
+        "summary": "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -437,6 +437,29 @@
             "description": "Success",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/TreeSnapshot" } }
+            }
+          },
+          "default": {
+            "description": "Refused: its `code` says why",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ServerError" } }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "summary": "What the conversation has used: the total of every model call, and each node’s own, with the cursor to follow the usage channel from",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UsageSnapshot" } }
             }
           },
           "default": {
@@ -1418,7 +1441,41 @@
       "UsageTotals": {
         "type": "object",
         "properties": {
-          "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 },
+          "calls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "outputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cacheReadTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cacheWriteTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "estimatedCostUsd": { "type": "number", "minimum": 0 },
+          "missingUsageCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "unpricedCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "incomplete": { "type": "boolean" },
+          "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 }
+        },
+        "required": [
+          "calls",
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheWriteTokens",
+          "estimatedCostUsd",
+          "missingUsageCalls",
+          "unpricedCalls",
+          "incomplete",
+          "throughSeq"
+        ]
+      },
+      "ContextFill": {
+        "type": "object",
+        "properties": {
+          "used": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cached": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "window": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000000 }
+        }
+      },
+      "UsageFigures": {
+        "type": "object",
+        "properties": {
           "calls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "inputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
           "outputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
@@ -1430,7 +1487,6 @@
           "incomplete": { "type": "boolean" }
         },
         "required": [
-          "throughSeq",
           "calls",
           "inputTokens",
           "outputTokens",
@@ -1441,6 +1497,92 @@
           "unpricedCalls",
           "incomplete"
         ]
+      },
+      "NodeUsage": {
+        "type": "object",
+        "properties": {
+          "calls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "inputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "outputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cacheReadTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "cacheWriteTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "estimatedCostUsd": { "type": "number", "minimum": 0 },
+          "missingUsageCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "unpricedCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "incomplete": { "type": "boolean" },
+          "node": { "$ref": "#/components/schemas/NodeId" },
+          "context": { "$ref": "#/components/schemas/ContextFill" }
+        },
+        "required": [
+          "calls",
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheWriteTokens",
+          "estimatedCostUsd",
+          "missingUsageCalls",
+          "unpricedCalls",
+          "incomplete",
+          "node"
+        ]
+      },
+      "UsageChannelEntry": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "usage" },
+              "type": { "type": "string", "const": "opened" },
+              "earlierUncounted": { "type": "boolean", "const": true }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "usage" },
+              "type": { "type": "string", "const": "closed" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "channel": { "type": "string", "const": "usage" },
+              "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "type": { "type": "string", "const": "node_usage" },
+              "usage": { "$ref": "#/components/schemas/NodeUsage" },
+              "total": { "$ref": "#/components/schemas/UsageFigures" },
+              "evicted": {
+                "maxItems": 1000,
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/NodeId" }
+              }
+            },
+            "required": ["channel", "cursor", "at", "type", "usage", "total"]
+          }
+        ]
+      },
+      "UsageSnapshot": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "const": "usage" },
+          "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
+          "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "type": { "type": "string", "const": "snapshot" },
+          "total": { "$ref": "#/components/schemas/UsageFigures" },
+          "nodes": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/NodeUsage" }
+          }
+        },
+        "required": ["channel", "cursor", "at", "type", "total", "nodes"]
       },
       "ModelEffort": { "type": "string", "enum": ["low", "medium", "high", "extreme"] },
       "ModelSelection": {
@@ -2865,7 +3007,10 @@
         ]
       },
       "ChannelName": {
-        "anyOf": [{ "type": "string", "enum": ["tree"] }, { "$ref": "#/components/schemas/NodeId" }]
+        "anyOf": [
+          { "type": "string", "enum": ["tree", "usage"] },
+          { "$ref": "#/components/schemas/NodeId" }
+        ]
       },
       "ChannelBoundary": {
         "anyOf": [
@@ -2931,6 +3076,27 @@
               "cursor": { "$ref": "#/components/schemas/Cursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "channel": { "type": "string", "const": "tree" },
+              "type": { "type": "string", "const": "closed" }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "usage" },
+              "type": { "type": "string", "const": "opened" },
+              "earlierUncounted": { "type": "boolean", "const": true }
+            },
+            "required": ["cursor", "at", "channel", "type"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "type": "string", "const": "usage" },
               "type": { "type": "string", "const": "closed" }
             },
             "required": ["cursor", "at", "channel", "type"]
@@ -3272,9 +3438,11 @@
         "anyOf": [
           { "$ref": "#/components/schemas/ChannelEntry" },
           { "$ref": "#/components/schemas/TreeChannelEntry" },
+          { "$ref": "#/components/schemas/UsageChannelEntry" },
           { "$ref": "#/components/schemas/ChannelHeadFrame" },
           { "$ref": "#/components/schemas/ChannelEndFrame" },
-          { "$ref": "#/components/schemas/TreeSnapshot" }
+          { "$ref": "#/components/schemas/TreeSnapshot" },
+          { "$ref": "#/components/schemas/UsageSnapshot" }
         ]
       },
       "MessageNodeRequest": {
@@ -3570,10 +3738,10 @@
           "contextUsage": {
             "type": "object",
             "properties": {
-              "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 },
               "used": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "cached": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-              "window": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000000 }
+              "window": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000000 },
+              "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 }
             },
             "required": ["throughSeq"]
           },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import { agentEventSchema, entryEventSchema } from '@sheavly/protocol/event/event.validator';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
@@ -44,7 +45,7 @@ async function ranPrompts(count: number) {
 
   for (let turn = 0; turn < count; turn += 1) await prompt(`prompt ${String(turn)}`);
 
-  const [channel = ''] = (await store.channels(id)).filter((name) => name !== 'tree');
+  const [channel = ''] = (await store.channels(id)).filter((name) => !isConversationChannel(name));
 
   return { store, id, conversations, channel, prompt };
 }

@@ -1,5 +1,6 @@
 import type { ConversationChannelName, CursorKind } from '../channel/channel.types.js';
 import { treeChannelEntrySchema } from '../tree/tree.validator.js';
+import { usageChannelEntrySchema } from '../usage/usage-channel.validator.js';
 import { MAX_TAIL, MAX_TAIL_BYTES, TAIL_PREFIX } from './subscription.constants.js';
 
 /**
@@ -11,6 +12,8 @@ export function conversationEntrySchema(name: ConversationChannelName) {
   switch (name) {
     case 'tree':
       return treeChannelEntrySchema;
+    case 'usage':
+      return usageChannelEntrySchema;
   }
 }
 

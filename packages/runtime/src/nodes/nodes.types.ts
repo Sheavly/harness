@@ -10,6 +10,8 @@ import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { ConversationSnapshot } from '@sheavly/protocol/subscription/subscription.types';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+import type { UsageView } from '@sheavly/protocol/usage/usage.types';
+import type { ChannelStamp, ResumedChannel } from './stored-channel.types.js';
 
 /**
  * What the node channel writer needs of the sessions to store the loop's events: the combined
@@ -115,6 +117,18 @@ export type NodeChannelStorage = {
    * channel stored yet.
    */
   resumedTree?: ResumedTree | undefined;
+  /**
+   * What the stored usage channel left when the conversation was reopened
+   * (`UsageChannelWriter.readStored`): the usage writer goes on from it. Absent for a new
+   * conversation, and for one that has no usage channel stored yet.
+   */
+  resumedUsage?: ResumedChannel<UsageView> | undefined;
+  /**
+   * The conversation is one reopened from the store, not a new one. When it has no usage channel
+   * stored, the one the usage writer opens did not count what the conversation had already used,
+   * and says so (`earlierUncounted`), so its figures read as a lower bound.
+   */
+  reopened?: boolean | undefined;
 };
 
 /**
@@ -184,7 +198,7 @@ export type LostChannels = {
 export type ChannelPosition = { channel: string; cursor: string };
 
 /** Where an entry of the conversation's tree channel is, and when it was written. */
-export type TreeStamp = { position: number; at: number };
+export type TreeStamp = ChannelStamp;
 
 /** Where to start reading a channel: its first entry, only what comes, or a position. */
 export type ChannelStart = 'start' | 'now' | number;

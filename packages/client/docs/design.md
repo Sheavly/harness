@@ -191,6 +191,15 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   nothing more will come and the claim to answer approvals is gone), with a refusal, with
   `AnswerError` for a tree off the contract, and with whatever `onChange` throws. It starts at once,
   so attach a handler to `ended` (a rejection nobody handles is an unhandled rejection).
+- `watchUsage({ client, id, onChange, signal })` (`usage/`) keeps what the conversation has used: the
+  snapshot, then each entry folded in with the protocol's one rule (`applyUsageEntry`). `usage()` is
+  the total and each node's figures (calls, tokens, the cache tokens among them, the estimated cost,
+  an agent's context), and `onChange` is told of each change. The backend counts it once, and an
+  entry says what a node and the total now are, not what was added, so the client adds nothing up
+  and has nothing to dedupe: an entry told twice gives the same usage. It follows as `watchTree`
+  does (both are `followChannelView`, in `client/`: the same reconnect, the same asking again from
+  `snapshot`, the same `ended`), and refuses usage off the contract (more than 1,000 nodes,
+  `AnswerError`). A one-off look is the typed call `client.call('getUsage', { id })`.
 - `followNode({ client, id, node, from?, signal })` (`nodes/`) reads one node's channel to its
   `closed` entry: an agent's `updated` entries, a command's or a service's output in pieces at byte
   offsets. It throws `ChannelFailedError` when the channel ended `failed`, since what was read is not

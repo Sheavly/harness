@@ -3,6 +3,8 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
+import type { ResumedChannel } from '@sheavly/runtime/nodes/stored-channel.types';
+import type { UsageSnapshot, UsageView } from '@sheavly/protocol/usage/usage.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionHub } from '../subscriptions/subscription-hub.service.js';
 import type { Subscription } from '../subscriptions/subscription.service.js';
@@ -150,10 +152,8 @@ export class Conversations {
       });
     }
 
-    const { stored, logged, messages, resume, resumedTree } = await readStoredConversation({
-      store: this.#store,
-      id,
-    });
+    const { stored, logged, messages, resume, resumedTree, resumedUsage } =
+      await readStoredConversation({ store: this.#store, id });
 
     // Before this process has a node of its own: every node channel still open in the store is the
     // stopped server's, so each is closed as lost. Done once; a second reopen finds them closed.
@@ -165,7 +165,8 @@ export class Conversations {
     // anything is live, rather than leave a conversation without its queue.
     const restored = await this.#inputs.stored(id);
     const keeper = this.#keeperFor(id);
-    const storage = keeper && this.#storageFor({ id, keeper, resumedTree }).storage;
+    const resumed = { tree: resumedTree, usage: resumedUsage };
+    const storage = keeper && this.#storageFor({ id, keeper, resumed }).storage;
     const live = await this.#create({
       id,
       messages,
@@ -266,29 +267,23 @@ export class Conversations {
   }
 
   /**
-   * What the app builds conversation `id` on so it is kept. A failed write of a node's channel or
-   * of the tree channel is announced on the conversation's stream, which is looked up when it fires:
-   * the conversation may be gone by then. The same failure is told once, though both writers hit it,
-   * and a different one later is told too.
+   * What the app builds conversation `id` on so it is kept. A failed write of a channel is
+   * announced on the conversation's stream, which is looked up when it fires: the conversation may
+   * be gone by then. The same failure is told once, and a different one later is told too.
    */
   #storageFor(params: {
     id: ConversationId;
     keeper: ConversationKeeper | undefined;
-    resumedTree?: ResumedTree | undefined;
+    resumed?: { tree?: ResumedTree | undefined; usage?: ResumedChannel<UsageView> | undefined };
   }) {
-    const { id, keeper, resumedTree } = params;
-    // The node channels and the tree channel share a disk, so both fail together with one message.
-    const told = new Set<string>();
+    const { id, keeper, resumed } = params;
 
     return storageOf({
       store: this.#store,
       keeper,
       id,
-      resumedTree,
+      ...(resumed && { resumed }),
       onChannelFailure: (failure) => {
-        if (told.has(failure.message)) return;
-
-        told.add(failure.message);
         announceStorageFailure({ live: this.#live.get(id), failure });
       },
     });
@@ -471,6 +466,17 @@ export class Conversations {
    */
   async tree(id: ConversationId): Promise<TreeSnapshot> {
     return snapshotOfChannel({ channel: this.get(id).harness.treeChannel, name: 'tree' });
+  }
+
+  /**
+   * What conversation `id` has used as it stands: the total of every model call and each node's
+   * own, with the cursor to follow the usage channel from (subscribe to `usage` after it). A client
+   * that starts from it and follows from that cursor has what one that replayed the channel has.
+   * `not_found` when the conversation is not live or keeps no usage, and `storage_failed` when its
+   * usage channel could not be stored.
+   */
+  async usage(id: ConversationId): Promise<UsageSnapshot> {
+    return snapshotOfChannel({ channel: this.get(id).harness.usageChannel, name: 'usage' });
   }
 
   /**

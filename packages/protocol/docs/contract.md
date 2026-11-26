@@ -88,20 +88,35 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   snapshot at its bounds is still a large document, which the server counts against what a
   conversation's subscriptions may hold. `applyTreeEntry` keeps the nodes within `MAX_TREE_NODES` by
   dropping the oldest ended one nothing hangs from.
+- **The usage channel** (`usage/`): what the conversation's model calls have used, per node and in
+  total, counted once by the backend. Its one entry besides its opening and closing is `node_usage`:
+  a node's figures (calls, tokens with the cache tokens apart, the estimated cost, calls with no
+  price or no tokens, `incomplete`, an agent's `context`) and the total **as they now are**, never
+  what was added, so a client replaces what it holds and an entry told twice does no harm; `evicted`
+  lists the records dropped to keep within `MAX_TREE_NODES`, whose calls stay in the total, and the
+  channel's opening says with `earlierUncounted` that the conversation had used calls it did not
+  count (it was kept before the channel), which makes the total `incomplete` from the start. A
+  snapshot is the total and each node once. `applyUsageEntry` is the one rule from entries to usage,
+  as `applyTreeEntry` is for the tree. `GET /conversations/{id}/usage` answers the snapshot.
+- **The conversation's own channels** (`CONVERSATION_CHANNEL_NAMES`: `tree`, `usage`): each is named
+  by a fixed word that no node may have and no extension may take, numbers its entries, and has a
+  snapshot. `isConversationChannel` says whether a name is one, and `conversationEntrySchema(name)`
+  is the schema of its entries.
 - **A subscription** (`subscription/`, `SubscribeRequest`): `{ subscriptions: [{ channel, from }],
-approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `tail:<n>` or a
-  cursor. The request holds at most `MAX_SUBSCRIPTIONS` channels, none twice, a `tail` of at most
-  `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries on the tree
-  channel, and `approvals` only with the tree channel. A cursor the log cannot start at is
-  `cursor_out_of_range`, which only the server can tell. What a frame of its stream holds is
-  `SubscribeFrame`, one of four: an entry of a channel (event `entry`, a node's or the tree's; the
-  envelope carries its own channel and cursor), `ChannelHeadFrame` (event `head`: where a channel
-  stood when a subscription at `now` opened), `ChannelEndFrame` (event `end`: that channel ended,
-  as `completed`, `cut_off` or `failed`, with the last cursor delivered), or `TreeSnapshot` (event
-  `snapshot`: the tree as it stands, sent first for `from: snapshot`). A frame has no `id`.
-  `applyTreeEntry` (`tree/`) is the one rule from entries to tree: a snapshot followed by the
-  entries after its cursor gives the tree of every entry from the start, so a client folds both
-  the same way.
+approvals? }`. `from` is `start`, `now`, `snapshot` (a channel of the conversation itself only),
+  `tail:<n>` or a cursor. The request holds at most `MAX_SUBSCRIPTIONS` channels, none twice, a
+  `tail` of at most `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries
+  on a channel of the conversation itself, and `approvals` only with the tree channel. A cursor the
+  log cannot start at is `cursor_out_of_range`, which only the server can tell. What a frame of its
+  stream holds is `SubscribeFrame`, one of four: an entry of a channel (event `entry`, a node's or
+  one of the conversation's own; the envelope carries its own channel and cursor),
+  `ChannelHeadFrame` (event `head`: where a channel stood when a subscription at `now` opened),
+  `ChannelEndFrame` (event `end`: that channel ended, as `completed`, `cut_off` or `failed`, with the
+  last cursor delivered), or a snapshot (`TreeSnapshot` or `UsageSnapshot`, event `snapshot`: the
+  view as it stands, sent first for `from: snapshot`). A frame has no `id`. `applyTreeEntry`
+  (`tree/`) and `applyUsageEntry` (`usage/`) are the rules from entries to a view: a snapshot
+  followed by the entries after its cursor gives the view of every entry from the start, so a
+  client folds both the same way.
 - **A command** (`node-command/`): `MessageNodeRequest` is the text sent to an agent node, whose
   sender is the caller. `PromptSent` is the answer to a prompt sent: the node that carries the run
   and, for a prompt that started, the id of its user message; it is the answer of
@@ -428,6 +443,7 @@ operation carries `security: []`:
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
 | `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |
 | `GET /conversations/{id}/tree`                       | bearer | none                       | `TreeSnapshot`                |
+| `GET /conversations/{id}/usage`                      | bearer | none                       | `UsageSnapshot`               |
 | `QUERY /stored-conversations`                        | bearer | `StoredConversationsQuery` | `StoredConversationsResponse` |
 | `POST /stored-conversations/{id}/reopen`             | bearer | none                       | `StartConversationResponse`   |
 | `GET /setup`                                         | bearer | none                       | `Setup`                       |

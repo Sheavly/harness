@@ -36,7 +36,9 @@ registry for the others. A reopened conversation does not bring back the session
 closed (`StoredLog.released`), so they do not count. A channel's entries are shared between its
 readers and read only by contract. This is the in-memory log of a node's changes. What is stored and
 served on an agent's channel is more: the node channel writer also stores each loop event of the
-agent's session, so a client follows one node's run by subscribing to its channel; the combined
+agent's session, so a client follows one node's run by subscribing to its channel; the conversation's
+own channels, the tree and usage (what each node's calls have used, counted once from the same
+events), are stored beside the nodes' by `TreeChannelWriter` and `UsageChannelWriter`; the combined
 stream below holds every session's entries, and is what the terminal reads the transcript from.
 
 Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a

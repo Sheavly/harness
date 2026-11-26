@@ -148,7 +148,18 @@ import {
 import { JSON_SCHEMA_DIALECT } from './contract.constants.js';
 import type { ContractJsonSchema } from './contract.types.js';
 import { terminalSettingsSchema } from '../terminal-settings/terminal-settings.validator.js';
-import { modelUsageSchema, tokenUsageSchema, usageTotalsSchema } from '../usage/usage.validator.js';
+import {
+  nodeUsageSchema,
+  usageChannelEntrySchema,
+  usageSnapshotSchema,
+} from '../usage/usage-channel.validator.js';
+import {
+  contextFillSchema,
+  modelUsageSchema,
+  tokenUsageSchema,
+  usageFiguresSchema,
+  usageTotalsSchema,
+} from '../usage/usage.validator.js';
 import {
   harnessNoticeSchema,
   persistentNoticeSchema,
@@ -172,6 +183,11 @@ function contractSchemas(): Record<string, z.ZodType> {
     ModelUsage: modelUsageSchema,
     ModelPricing: modelPricingSchema,
     UsageTotals: usageTotalsSchema,
+    ContextFill: contextFillSchema,
+    UsageFigures: usageFiguresSchema,
+    NodeUsage: nodeUsageSchema,
+    UsageChannelEntry: usageChannelEntrySchema,
+    UsageSnapshot: usageSnapshotSchema,
     ModelEffort: modelEffortSchema,
     ModelSelection: modelSelectionSchema,
     ModelIdentity: modelIdentitySchema,

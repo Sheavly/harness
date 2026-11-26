@@ -12,8 +12,8 @@ import {
   treeSummaryOf,
 } from '@sheavly/runtime/testing/tree-actions.fake';
 import { until } from '@sheavly/testing/wait/until.fake';
-import { reply, testApi } from '../../testing/api.fake.js';
 import { useOpenedServers } from '../../testing/opened-servers.fake.js';
+import { describeChannelRouteRefusals } from '../../testing/route-refusals.fake.js';
 import { servedConversation } from '../../testing/served-conversation.fake.js';
 import { framesOf } from '../../testing/subscription-frames.fake.js';
 
@@ -151,54 +151,4 @@ describe('the tree of a conversation, over HTTP', () => {
   });
 });
 
-describe('what the tree route refuses', () => {
-  it('is not found for a conversation that is not there, one that was closed, and a host that keeps nothing', async () => {
-    const world = await servedConversation({ servers });
-    const keepsNothing = testApi({ go: [reply('done')] });
-    const unkept = await keepsNothing.start();
-    const answers = [
-      await world.api.request('/conversations/00000000-0000-4000-8000-000000000000/tree'),
-      await keepsNothing.request(`/conversations/${unkept}/tree`),
-    ];
-
-    await world.api.request(`/conversations/${world.id}`, { method: 'DELETE' });
-    answers.push(await world.api.request(`/conversations/${world.id}/tree`));
-
-    expect(answers.map(({ status }) => status)).toEqual([404, 404, 404]);
-    expect(serverErrorSchema.parse(await answers[1]?.json()).error.code).toBe('not_found');
-  });
-
-  it('wants the token, as every route does', async () => {
-    const world = await servedConversation({ servers });
-    const response = await world.api.app.request(`/conversations/${world.id}/tree`);
-
-    expect(response.status).toBe(401);
-  });
-
-  it('is 507 when the conversation’s tree channel could not be stored, saying so', async () => {
-    const world = await servedConversation({ servers });
-    const stored = await readChannel({
-      store: world.store,
-      id: world.conversation,
-      channel: 'tree',
-    });
-
-    // A stored entry no client could read: a reopen cannot go on from the channel.
-    await world.store.channel({ id: world.conversation, channel: 'tree' }).append({
-      channel: 'tree',
-      cursor: `s${String(stored.length)}`,
-      at: 1,
-      type: 'note',
-    });
-
-    const reopened = testApi({ go: [reply('done')] }, world.store);
-    const reopen = await reopened.request(`/stored-conversations/${world.id}/reopen`, {
-      method: 'POST',
-    });
-    const answer = await reopened.request(`/conversations/${world.id}/tree`);
-
-    expect(reopen.status).toBe(200);
-    expect(answer.status).toBe(507);
-    expect(serverErrorSchema.parse(await answer.json()).error.code).toBe('storage_failed');
-  });
-});
+describeChannelRouteRefusals({ route: 'tree', channel: 'tree', servers });

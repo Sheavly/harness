@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
@@ -79,9 +80,9 @@ async function stored() {
   return { store, id, conversations, channel };
 }
 
-/** A conversation's node channels: every stored channel but the tree's. */
+/** A conversation's node channels: every stored channel but the conversation's own. */
 async function nodeChannelsOf(params: { store: MemoryConversationStore; id: ConversationId }) {
-  return (await params.store.channels(params.id)).filter((name) => name !== 'tree');
+  return (await params.store.channels(params.id)).filter((name) => !isConversationChannel(name));
 }
 
 describe('subscribing to a conversation’s channels', () => {

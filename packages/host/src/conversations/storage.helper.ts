@@ -1,6 +1,8 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import type { ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
+import type { ResumedChannel } from '@sheavly/runtime/nodes/stored-channel.types';
+import type { UsageView } from '@sheavly/protocol/usage/usage.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { LiveConversation, StorageOf } from './conversations.types.js';
@@ -44,17 +46,22 @@ export function announceStorageFailure(params: {
 
 /**
  * What the app builds conversation `id` on so it is kept: its stream's store, its history and its
- * nodes' channels. `onChannelFailure` is told once when a channel write fails.
+ * channels. The channels share a disk, so they fail together with one message: `onChannelFailure`
+ * is told each distinct failure once, though every writer hits it.
  */
 export function storageOf(params: {
   store: ConversationStore | undefined;
   keeper: ConversationKeeper | undefined;
   id: ConversationId;
   onChannelFailure: (failure: StoreError) => void;
-  /** What the stored tree channel left, for a reopened conversation's tree writer to go on from. */
-  resumedTree?: ResumedTree | undefined;
+  /** What the stored channels left, for a reopened conversation's writers to go on from. */
+  resumed?: {
+    tree?: ResumedTree | undefined;
+    usage?: ResumedChannel<UsageView> | undefined;
+  };
 }): StorageOf {
-  const { store, keeper, id, onChannelFailure, resumedTree } = params;
+  const { store, keeper, id, onChannelFailure, resumed } = params;
+  const told = new Set<string>();
 
   if (!keeper || !store) return {};
 
@@ -65,8 +72,15 @@ export function storageOf(params: {
       outputs: store.outputs(id),
       channels: {
         log: (channel) => store.channel({ id, channel }),
-        onFailure: onChannelFailure,
-        resumedTree,
+        onFailure: (failure) => {
+          if (told.has(failure.message)) return;
+
+          told.add(failure.message);
+          onChannelFailure(failure);
+        },
+        resumedTree: resumed?.tree,
+        resumedUsage: resumed?.usage,
+        reopened: resumed !== undefined,
       },
       keepHistory: (messages) => keeper.keepHistory(messages),
       keepAgentHistory: (agent) => keeper.keepAgentHistory(agent),

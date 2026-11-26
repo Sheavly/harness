@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import { conversationIdSchema, serverErrorSchema } from '@sheavly/protocol/server/server.validator';
 import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
@@ -15,7 +16,8 @@ const servers = useOpenedServers();
 /** A conversation that ran one prompt, kept in a store, served on a real port and in-process. */
 async function served(store = new MemoryConversationStore()) {
   const world = await servedConversation({ servers, store });
-  const channel = (await store.channels(world.conversation)).find((name) => name !== 'tree') ?? '';
+  const channel =
+    (await store.channels(world.conversation)).find((name) => !isConversationChannel(name)) ?? '';
 
   return { ...world, channel };
 }
@@ -100,7 +102,8 @@ describe('a request the server cannot serve', () => {
 
     await api.conversations.get(other).harness.nodeChannels?.flush();
 
-    const otherChannel = (await store.channels(other)).find((name) => name !== 'tree') ?? '';
+    const otherChannel =
+      (await store.channels(other)).find((name) => !isConversationChannel(name)) ?? '';
     const answers = [];
 
     expect(otherChannel).not.toBe('');
