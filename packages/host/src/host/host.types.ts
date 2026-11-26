@@ -4,6 +4,7 @@ import type { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.serv
 import type { ConversationChannels } from '@sheavly/runtime/nodes/conversation-channels.service';
 import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
+import type { UsageChannelWriter } from '@sheavly/runtime/nodes/usage-channel-writer.service';
 import type { NodeRegistry } from '@sheavly/runtime/nodes/node-registry.service';
 import type { NodeChannelStorage } from '@sheavly/runtime/nodes/nodes.types';
 import type { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
@@ -100,7 +101,14 @@ export type Harness = {
    */
   treeChannel?: TreeChannelWriter;
   /**
-   * The channels of the conversation itself, by name, the tree among them: what the host serves a
+   * What stores the conversation's usage channel, from the same `HarnessOptions.channels`: what each
+   * node's model calls have used, and the total, counted from the loop's `usage` events. The host
+   * reads its `snapshot` (`GET /usage`) and stops it when the conversation closes. Absent when the
+   * run's channels are not kept. An extension never holds it, as with `nodeChannels`.
+   */
+  usageChannel?: UsageChannelWriter;
+  /**
+   * The channels of the conversation itself, by name, the tree and usage among them: what the host serves a
    * subscription from, waits for and stops when the conversation closes, knowing none by its own
    * name. Absent when the run's channels are not kept. An extension never holds it, as with
    * `nodeChannels`.

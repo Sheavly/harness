@@ -3,6 +3,8 @@ import type { Conversation } from '../conversation/conversation.types.js';
 import type { OutputStore } from '@sheavly/core/output/output.types';
 import type { DocumentStore, EntryStore, HistoryLog } from '@sheavly/core/store/store.types';
 import type { NodeChannelStorage, ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
+import type { ResumedChannel } from '@sheavly/runtime/nodes/stored-channel.types';
+import type { UsageView } from '@sheavly/protocol/usage/usage.types';
 import type { StoredLog } from '@sheavly/runtime/sessions/sessions.types';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
@@ -168,4 +170,6 @@ export type StoredConversationState = {
   resume: StoredLog;
   /** Where its stored tree channel stands, for the tree writer to go on from; none stored yet. */
   resumedTree: ResumedTree | undefined;
+  /** Where its stored usage channel stands, for the usage writer to go on from; none stored yet. */
+  resumedUsage: ResumedChannel<UsageView> | undefined;
 };

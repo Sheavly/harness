@@ -3,6 +3,7 @@ import { readHistoryEntries } from '@sheavly/core/store/history-log.helper';
 import type { ConversationStore } from '@sheavly/core/store/store.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
+import { UsageChannelWriter } from '@sheavly/runtime/nodes/usage-channel-writer.service';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
@@ -40,8 +41,17 @@ export async function readStoredConversation(params: {
   // Where the tree channel stands and the tree it builds, for its writer to go on from. A channel
   // it cannot go on from is a failure in this value, not an error here: the conversation reopens.
   const resumedTree = await TreeChannelWriter.readStored({ store, id });
+  // The same for the usage channel: what each node used before, so the total still covers it.
+  const resumedUsage = await UsageChannelWriter.readStored({ store, id });
 
-  return { stored, logged: logged.length, messages: [...repaired, ...owed], resume, resumedTree };
+  return {
+    stored,
+    logged: logged.length,
+    messages: [...repaired, ...owed],
+    resume,
+    resumedTree,
+    resumedUsage,
+  };
 }
 
 /**

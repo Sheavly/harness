@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import { readChannel, shapeOf } from '@sheavly/runtime/testing/stored-channels.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import { say, scriptedConversations as setup } from '../../testing/conversations.fake.js';
 import { ranOnePrompt } from '../../testing/stored-conversation.fake.js';
@@ -14,9 +15,12 @@ const entriesOf = async (params: {
   channel: string;
 }) => readChannel(params);
 
-/** The conversation's node channels: every stored channel but the tree's, which has its own tests. */
+/**
+ * The conversation's node channels: every stored channel but the conversation's own (the tree's and
+ * usage's), which have their own tests.
+ */
 const nodeChannelsOf = async (params: { store: MemoryConversationStore; id: ConversationId }) =>
-  (await params.store.channels(params.id)).filter((channel) => channel !== 'tree');
+  (await params.store.channels(params.id)).filter((channel) => !isConversationChannel(channel));
 
 /** Lets every write of the conversation's node channels finish, as an app waits for its disk. */
 async function written(conversations: Conversations, id: ConversationId) {
@@ -217,7 +221,7 @@ describe('a conversation’s node channels in its store', () => {
       at: 1,
       node: { id: 'other-node', title: 'x' },
     });
-    damageChannels({ store, damaged: (channel) => channel !== 'tree' });
+    damageChannels({ store, damaged: (channel) => !isConversationChannel(channel) });
 
     const second = setup({ store, replies: [say('two')] });
 
