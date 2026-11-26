@@ -5,8 +5,8 @@ import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import { applyTreeEntry, emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import type { createClient } from '../client/client.helper.js';
-import { subscribeChannels } from '../client/subscribe.helper.js';
-import { AnswerError, ChannelFailedError, RefusedError } from '../errors/client.errors.js';
+import { followChannelView } from '../client/follow-view.helper.js';
+import { AnswerError } from '../errors/client.errors.js';
 import type { WatchedTree } from './tree.types.js';
 
 /**
@@ -47,25 +47,20 @@ function foldFrame(params: { tree: TreeView; frame: SubscribeFrame }): TreeView 
   return next;
 }
 
-/** The server no longer holds the position the client resumed from: it asks for the tree afresh. */
-const isOutOfRange = (error: unknown) =>
-  error instanceof RefusedError && error.code === 'cursor_out_of_range';
-
 /**
  * Follows conversation `id`'s tree: the snapshot first, then the tree channel's entries after it,
  * so `tree()` is the tree as it stands, and `onChange` is told each time it changes (not for an
- * entry that changes nothing in it). A dropped connection resumes after the last entry
- * (`subscribeChannels`), which gives the tree the snapshot of that moment would; a position the
- * server no longer holds (`cursor_out_of_range`) is asked for again from `snapshot`, which replaces
- * the tree. Resolves once the server has accepted the first connection.
+ * entry that changes nothing in it). It follows as any conversation channel is followed
+ * (`followChannelView`: a dropped connection resumes after the last entry, a position the server no
+ * longer holds is asked for again from `snapshot`).
  *
  * With `approvals`, this client answers approvals while it is open (the claim of the subscribe
  * route): one asked is held for an answer instead of refused, and shows in `tree().approvals`.
  * `ended` rejects with `ChannelFailedError` when the tree channel ends `failed` (storing it failed, or
  * its conversation closed: nothing more will come, and the claim is gone), with `AnswerError` for a
- * tree off the contract (more nodes or more approvals than a snapshot holds), with a refusal, and with whatever
- * `onChange` throws; it resolves when the channel ends `completed` and when `signal` aborts, which
- * ends it quietly.
+ * tree off the contract (more nodes or more approvals than a snapshot holds), with a refusal, and
+ * with whatever `onChange` throws; it resolves when the channel ends `completed` and when `signal`
+ * aborts, which ends it quietly.
  */
 export async function watchTree(params: {
   client: ReturnType<typeof createClient>;
@@ -75,56 +70,16 @@ export async function watchTree(params: {
   signal: AbortSignal;
 }): Promise<WatchedTree> {
   const { client, id, approvals, onChange, signal } = params;
-  let tree = emptyTree();
-  const open = (from: string) =>
-    subscribeChannels({
-      client,
-      id,
-      subscriptions: [{ channel: TREE_CHANNEL_NAME, from }],
-      signal,
-      ...(approvals !== undefined && { approvals }),
-    });
-  const follow = async (frames: AsyncGenerator<SubscribeFrame>): Promise<void> => {
-    for await (const frame of frames) {
-      // The channel failed: storing it failed, or its conversation closed. What was read is not all
-      // of it, and the connection, with the claim to answer approvals, is gone: a UI must be told.
-      if (frame.type === 'end' && frame.reason === 'failed') {
-        throw new ChannelFailedError({ channel: TREE_CHANNEL_NAME });
-      }
+  const watch = await followChannelView({
+    client,
+    id,
+    channel: TREE_CHANNEL_NAME,
+    empty: emptyTree(),
+    fold: ({ view, frame }) => foldFrame({ tree: view, frame }),
+    onChange,
+    signal,
+    ...(approvals !== undefined && { approvals }),
+  });
 
-      const next = foldFrame({ tree, frame });
-
-      if (next === tree) continue;
-
-      tree = next;
-      onChange(tree);
-    }
-  };
-  const run = async (first: AsyncGenerator<SubscribeFrame>): Promise<void> => {
-    let frames = first;
-
-    for (;;) {
-      try {
-        await follow(frames);
-
-        return;
-      } catch (caughtError) {
-        if (signal.aborted) return;
-
-        if (!isOutOfRange(caughtError)) throw caughtError;
-      }
-
-      // The server no longer holds the position: the tree is asked for afresh. An abort while it is
-      // being opened is the caller leaving, not a failure.
-      try {
-        frames = await open('snapshot');
-      } catch (caughtError) {
-        if (signal.aborted) return;
-
-        throw caughtError;
-      }
-    }
-  };
-
-  return { tree: () => tree, ended: run(await open('snapshot')) };
+  return { tree: watch.view, ended: watch.ended };
 }
