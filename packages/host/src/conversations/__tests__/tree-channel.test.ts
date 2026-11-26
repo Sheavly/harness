@@ -7,16 +7,22 @@ import { readChannel, shapeOf } from '@sheavly/runtime/testing/stored-channels.f
 import {
   answerWaitingApproval,
   askMainApproval,
+  askUnheardApproval,
   startRunningService,
   treeFollowedFrom,
   treeSummaryOf,
 } from '@sheavly/runtime/testing/tree-actions.fake';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { ConversationsError } from '../../errors/conversations.errors.js';
-import { SubscriptionError } from '../../errors/subscription.errors.js';
 import { say, scriptedConversations } from '../../testing/conversations.fake.js';
 import { ranOnePrompt } from '../../testing/stored-conversation.fake.js';
-import { refusalOf, requestOf, rest, take } from '../../testing/subscription-world.fake.js';
+import {
+  claimingApprovals,
+  refusalOf,
+  requestOf,
+  rest,
+  take,
+} from '../../testing/subscription-world.fake.js';
 import { announceStorageFailure } from '../storage.helper.js';
 
 const CALL = callIdSchema.parse('call_1');
@@ -287,23 +293,74 @@ describe('closing and reopening a conversation, for its tree', () => {
   });
 });
 
-describe('what a request for the tree cannot have', () => {
-  it('is refused when it claims to answer approvals, which nothing makes an approval wait for yet', async () => {
+describe('a connection that claims to answer approvals', () => {
+  it('counts as someone listening for as long as it is open, and each connection on its own', async () => {
+    const world = await kept();
+    const { approvals } = world.harness;
+    const open = () =>
+      world.conversations.subscribe({ id: world.id, request: claimingApprovals() });
+
+    expect(approvals.listening).toBe(false);
+
+    const first = await open();
+    const second = await open();
+
+    expect(approvals.listening).toBe(true);
+    first.close();
+    // The other connection still answers.
+    expect(approvals.listening).toBe(true);
+    second.close();
+    expect(approvals.listening).toBe(false);
+  });
+
+  it('makes an approval wait for an answer while it is open, and be refused at once once it is not', async () => {
+    const world = await kept();
+    const subscription = await world.conversations.subscribe({
+      id: world.id,
+      request: claimingApprovals(),
+    });
+    const waiting = askUnheardApproval(world.harness);
+
+    expect(world.harness.approvals.pending()).toHaveLength(1);
+    answerWaitingApproval(world.harness);
+    await waiting;
+
+    subscription.close();
+
+    expect(await refusalOf(askUnheardApproval(world.harness))).toMatchObject({
+      reason: 'no_listener',
+    });
+  });
+
+  it('does not listen for a request that makes no claim, which only watches the tree', async () => {
+    const world = await kept();
+    const subscription = await world.conversations.subscribe({
+      id: world.id,
+      request: requestOf('tree', 'now'),
+    });
+
+    expect(world.harness.approvals.listening).toBe(false);
+    expect(await refusalOf(askUnheardApproval(world.harness))).toMatchObject({
+      reason: 'no_listener',
+    });
+    subscription.close();
+  });
+
+  it('stops listening when the request is refused, whatever it was refused for', async () => {
     const world = await kept();
     const refusal = await refusalOf(
       world.conversations.subscribe({
         id: world.id,
-        request: {
-          subscriptions: [{ channel: 'tree', from: 'now' }],
-          approvals: true,
-        },
+        request: claimingApprovals([['agent-9', 'start']]),
       }),
     );
 
-    expect(refusal).toBeInstanceOf(SubscriptionError);
-    expect(refusal).toMatchObject({ reason: 'bad_request' });
+    expect(refusal).toMatchObject({ reason: 'not_found' });
+    expect(world.harness.approvals.listening).toBe(false);
   });
+});
 
+describe('what a request for the tree cannot have', () => {
   it('has no snapshot for a host that keeps nothing, or a conversation that is gone', async () => {
     const { conversations } = scriptedConversations({ replies: [say('one')] });
     const id = await conversations.start();
