@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { entryEventSchema } from '../event/event.validator.js';
 import { messageIdSchema } from '../message/message.validator.js';
 import {
+  CONVERSATION_CHANNEL_NAMES,
   MAX_NODE_ERROR_CHARS,
   MAX_NODE_REASON_CHARS,
   TREE_CHANNEL_NAME,
@@ -45,8 +46,11 @@ export const byteCursorSchema = z
 /** A cursor of either kind. Which kind a channel has is the channel's, and a client never builds one. */
 export const cursorSchema = z.union([sequenceCursorSchema, byteCursorSchema]);
 
-/** A channel's name: the id of the node it belongs to, or `tree` for the conversation's own. */
-export const channelNameSchema = z.union([z.literal(TREE_CHANNEL_NAME), nodeIdSchema]);
+/**
+ * A channel's name: the id of the node it belongs to, or the name of one of the conversation's own
+ * channels (`CONVERSATION_CHANNEL_NAMES`).
+ */
+export const channelNameSchema = z.union([z.enum(CONVERSATION_CHANNEL_NAMES), nodeIdSchema]);
 
 /** What every entry of every channel has: where it is and when it was written. */
 const entrySchema = z.object({ cursor: cursorSchema, at: timestampSchema });

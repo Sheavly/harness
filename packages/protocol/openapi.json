@@ -2865,7 +2865,7 @@
         ]
       },
       "ChannelName": {
-        "anyOf": [{ "type": "string", "const": "tree" }, { "$ref": "#/components/schemas/NodeId" }]
+        "anyOf": [{ "type": "string", "enum": ["tree"] }, { "$ref": "#/components/schemas/NodeId" }]
       },
       "ChannelBoundary": {
         "anyOf": [
