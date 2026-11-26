@@ -62,7 +62,9 @@ written or removed.
 conversation (the wire model's channels, #438): the entries of a node, or of the conversation's
 `tree`. It is `channels/<channel>.jsonl`, an entry a line, in the order they were written, each with
 the channel's own cursor: the entry's number in a channel that numbers its entries (`s0`, `s1`, …),
-or an offset in bytes in a command's or a service's (`b0`, `b40`). A channel is named for a node id
+or an offset in bytes in a command's or a service's (`b0`, `b40`). An agent's holds its lifecycle
+and each loop event of its session (an entry of up to 64 KiB, or a marker for one that would not
+fit), so its file grows with the conversation and is bounded by the channel quota like any other. A channel is named for a node id
 (lowercase, so two names cannot differ by case on a disk that ignores it) or is `tree`, and no
 other name becomes a file (`namedPath` with the channel name schema).
 

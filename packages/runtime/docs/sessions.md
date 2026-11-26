@@ -34,8 +34,10 @@ and work that never ends, stay until something releases or ends them; one scope 
 `MAX_SCOPE_CHILDREN` (250) sub-agents, a quarter of the bound, so no one extension can fill the
 registry for the others. A reopened conversation does not bring back the sessions released before it
 closed (`StoredLog.released`), so they do not count. A channel's entries are shared between its
-readers and read only by contract. Nothing serves these channels yet: the stream below is still the
-one a UI reads.
+readers and read only by contract. This is the in-memory log of a node's changes. What is stored and
+served on an agent's channel is more: the node channel writer also stores each loop event of the
+agent's session, so a client follows one node's run by subscribing to its channel; the combined
+stream below holds every session's entries, and is what the terminal reads the transcript from.
 
 Background tasks are nodes of the same registry ([scopes](scopes.md) and the README), so a
 command's node sits under the node of the session that started it. A sub-agent's task is told the
