@@ -183,6 +183,7 @@ describe('the registries are read from the Harness type, not listed', () => {
       SystemPrompt: '../instructions/system-prompt.service',
       TaskRegistry: '@sheavly/runtime/tasks/tasks.service',
       TreeChannelWriter: '@sheavly/runtime/nodes/tree-channel-writer.service',
+      UsageChannelWriter: '@sheavly/runtime/nodes/usage-channel-writer.service',
     });
   });
 
