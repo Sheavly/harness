@@ -1,9 +1,6 @@
 import { partsText } from '@sheavly/protocol/message/message.utils';
-import type {
-  ConversationId,
-  SendPromptRequest,
-  SendPromptResponse,
-} from '@sheavly/protocol/server/server.types';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
+import type { ConversationId, SendPromptRequest } from '@sheavly/protocol/server/server.types';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { createClient } from '../client/client.helper.js';
@@ -45,7 +42,7 @@ export async function* promptEntries(params: {
 }
 
 /** How many lines like `text` wait ahead of it: each starts before it, under the same text. */
-function identicalAhead(params: { answer: SendPromptResponse; text: string }): number {
+function identicalAhead(params: { answer: PromptSent; text: string }): number {
   const { answer, text } = params;
 
   if (answer.status === 'started') return 0;

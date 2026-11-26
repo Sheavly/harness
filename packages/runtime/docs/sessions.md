@@ -83,7 +83,7 @@ While idle it accepts messages, kept for its next prompt, but no status reports 
   sub-agent, recording the tool call in the parent's history that started it. It
   throws if the parent is unknown, has ended, or is at the depth cap.
 - Every refusal is a `SessionError` (`@sheavly/runtime/errors/`) with a `reason` (`unknown_session`,
-  `duplicate_session` for an id a live session already has, `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`) and the `sessionId` it was
+  `duplicate_session` for an id a live session already has, `session_released`, `parent_ended`, `too_deep`, `session_ended`, `session_running`, `not_an_ancestor`, `inbox_full` for a message sent to a full inbox, `outbox_full` and `invalid_notice` for an extension's notices) and the `sessionId` it was
   about, so a caller tells the cases apart without reading the message.
 - `release(id)` forgets an ended session and every sub-agent under it, with their queued messages,
   last tokens and message ids, announces each as `session_released`, and returns how many sessions
@@ -122,7 +122,11 @@ parent steers a running sub-agent ("research dogs", then "focus specifically on 
 
 - **Sending:** `sessions.send({ id, content, from })`. `from` is `'user'`, or the id of the
   sending session, which must be an ancestor of the target: a session steers only its own
-  sub-agents (and theirs), never a sibling or its parent. Ended sessions refuse messages.
+  sub-agents (and theirs), never a sibling or its parent. Ended sessions refuse messages. An
+  inbox holds at most `MAX_QUEUED_MESSAGES` (100) messages, and `MAX_QUEUED_MESSAGE_CHARS`
+  (400,000) characters together, until the loop takes them; past either, while others wait, `send`
+  throws `inbox_full` and queues nothing, and emits no `session_message`. A message sent to an empty
+  inbox is always queued, however long.
 - **The tool:** `message_agent({ session, message })` (`createMessageAgentTool`) sends from the
   calling session. `start_agent` returns the sub-agent's session id for it. Sub-agents below the
   depth cap get the tool too, for their own sub-agents.

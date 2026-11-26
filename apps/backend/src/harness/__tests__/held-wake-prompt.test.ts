@@ -90,7 +90,7 @@ describe('a line sent while the conversation waits on grouped work it started it
       );
 
       // Before, this request got no answer until the grouped work and the model had finished.
-      expect(await client.call('sendPrompt', { id, body: { text: 'meanwhile' } })).toEqual({
+      expect(await client.call('sendPrompt', { id, body: { text: 'meanwhile' } })).toMatchObject({
         status: 'queued',
         queued: ['meanwhile'],
       });

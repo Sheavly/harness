@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
+import { queuedAnswer } from '../testing/prompt-answers.fake.js';
 import { statusOfRun } from '../../tui/screen-chat.helper.js';
 import {
   backendStream,
@@ -14,7 +15,7 @@ const CHILD = sessionIdSchema.parse('child');
 
 /** A conversation that queues every line behind what runs, as a busy backend does. */
 const queueing = () =>
-  fakeChatConversation({ answer: (text) => Promise.resolve({ status: 'queued', queued: [text] }) });
+  fakeChatConversation({ answer: (text) => Promise.resolve(queuedAnswer([text])) });
 
 describe('ChatSession: the queue shown is the backend’s', () => {
   it('shows the lines its queue entries say wait, and none of what was typed until then', async () => {

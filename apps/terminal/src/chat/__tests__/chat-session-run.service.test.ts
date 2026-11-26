@@ -3,6 +3,7 @@ import { RefusedError } from '@sheavly/client/errors/client.errors';
 import { callIdSchema, messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import { startedAnswer } from '../testing/prompt-answers.fake.js';
 import {
   MAIN_SESSION as MAIN,
   backendStream,
@@ -55,7 +56,7 @@ describe('ChatSession: a prompt goes to the backend at once', () => {
           ? Promise.reject(
               new RefusedError({ status: 409, code: 'cannot_queue', message: 'The queue is full' }),
             )
-          : Promise.resolve({ status: 'started', queued: [] }),
+          : Promise.resolve(startedAnswer()),
     });
     const { session, output } = recordingChat({ fake });
 

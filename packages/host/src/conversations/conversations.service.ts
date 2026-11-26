@@ -12,6 +12,8 @@ import { skillsOf } from './skills.helper.js';
 import { ConversationKeeper } from './keeper.service.js';
 import { InFlight } from './in-flight.service.js';
 import { ConversationInputs } from './inputs.service.js';
+import { switchModel } from './model-switch.helper.js';
+import { cancelNode, messageNode } from './node-commands.helper.js';
 import { readStoredConversation } from './stored-conversation.helper.js';
 import { ModelChanges } from './model-changes.service.js';
 import type {
@@ -32,12 +34,12 @@ import { matchesStored, summaryOf } from './conversations.utils.js';
 import type { ApprovalId, ApprovalResponse } from '@sheavly/protocol/approval/approval.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
 import type { ModelEffort, ModelId } from '@sheavly/protocol/model/model.types';
+import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
 import type {
   ConversationDetails,
   ConversationId,
   ConversationSummary,
   SendPromptRequest,
-  SendPromptResponse,
 } from '@sheavly/protocol/server/server.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
@@ -258,20 +260,9 @@ export class Conversations {
     modelId: ModelId;
     effort?: ModelEffort;
   }): Promise<void> {
-    const { id, modelId } = params;
-    const live = this.get(id);
+    const { id, modelId, effort } = params;
 
-    if (!(await live.run.useModel(modelId, params.effort))) {
-      throw new ConversationsError({
-        reason: 'unknown_model',
-        message: `No model with id ${modelId} in conversation ${id}; its details list the models`,
-      });
-    }
-
-    const effort = live.run.details().model.effort ?? 'medium';
-
-    live.harness.sessions.setModel({ id: live.harness.mainSession.id, modelId, effort });
-    this.#keepers.get(id)?.keepIndex({ modelId, effort });
+    await switchModel({ id, live: this.get(id), keepers: this.#keepers, modelId, effort });
   }
 
   /**
@@ -357,12 +348,11 @@ export class Conversations {
    * waits in the conversation's queue, which starts it when what runs has ended. Either way the
    * conversation reads its run, so its entries reach clients on the stream whoever follows it.
    * Throws as `send` does for a prompt that starts, and `cannot_queue` for one that must wait but
-   * cannot: one that picks skills as `parts`, one too long for the queue, or a full queue.
+   * cannot: one that picks skills as `parts`, one too long for the queue, or a full queue. The
+   * answer names the agent node whose channel carries the run, and the message a prompt that
+   * started became.
    */
-  async submit(params: {
-    id: ConversationId;
-    prompt: SendPromptRequest;
-  }): Promise<SendPromptResponse> {
+  async submit(params: { id: ConversationId; prompt: SendPromptRequest }): Promise<PromptSent> {
     return this.#inputs.submit({ ...params, live: this.get(params.id) });
   }
 
@@ -390,6 +380,29 @@ export class Conversations {
     // Also stops a run the conversation started itself, which no `send` owns.
     this.get(id).conversation.stop();
     this.#inputs.stop(id);
+  }
+
+  /**
+   * Cancels node `node` of conversation `id`, whatever its kind: a command or a service is killed,
+   * a sub-agent stopped, and the main agent stopped as `stop` does. Waits until the process has
+   * exited. Throws `not_found` for a node the conversation does not have, `node_ended` for one
+   * that has ended and `bad_request` for a kind nothing can cancel.
+   */
+  async cancelNode(params: { id: ConversationId; node: string }): Promise<void> {
+    await cancelNode({
+      live: this.get(params.id),
+      node: params.node,
+      stopMain: () => this.stop(params.id),
+    });
+  }
+
+  /**
+   * Sends `text` to node `node` of conversation `id` as the user: the main agent takes it at its
+   * next model call. Throws as `cancelNode` does, and `bad_request` for a node that is no agent
+   * and for a sub-agent, which only the agent that started it may message.
+   */
+  messageNode(params: { id: ConversationId; node: string; text: string }): void {
+    messageNode({ live: this.get(params.id), node: params.node, text: params.text });
   }
 
   /** Answers a waiting approval of conversation `id`; throws for one that isn't waiting. */

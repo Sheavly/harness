@@ -2424,18 +2424,6 @@
         }
       ]
     },
-    "SendPromptResponse": {
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "enum": ["started", "queued"] },
-        "queued": {
-          "maxItems": 100,
-          "type": "array",
-          "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
-        }
-      },
-      "required": ["status", "queued"]
-    },
     "YieldPromptResponse": {
       "type": "object",
       "properties": { "accepted": { "type": "boolean" } },

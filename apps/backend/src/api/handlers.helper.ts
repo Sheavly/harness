@@ -27,6 +27,14 @@ export function idOf(c: Context): ConversationId {
   return parsed.data;
 }
 
+/**
+ * The node in a route's path, as the host judges it: a string that is not a node id's shape names
+ * no node, so it answers as one nothing has does (`not_found`), which the host decides in one place.
+ */
+function nodeOf(c: Context): string {
+  return c.req.param('node') ?? '';
+}
+
 /** Each conversation route's handler on `conversations`. */
 export function apiHandlers(
   conversations: Conversations,
@@ -87,6 +95,18 @@ export function apiHandlers(
     },
     stopPrompt: ({ c, id }) => {
       conversations.stop(id);
+
+      return c.body(null, 204);
+    },
+    // The node is in the path, resolved inside the conversation the path names: another
+    // conversation's node is `not_found` here, as one that never was.
+    cancelNode: async ({ c, id }) => {
+      await conversations.cancelNode({ id, node: nodeOf(c) });
+
+      return c.body(null, 204);
+    },
+    messageNode: ({ c, id, body }) => {
+      conversations.messageNode({ id, node: nodeOf(c), text: body.text });
 
       return c.body(null, 204);
     },

@@ -567,7 +567,7 @@ describe('a first run, set up only through the API', () => {
       body: { text: 'hi' },
     });
 
-    expect(await prompt.json()).toEqual({ status: 'started', queued: [] });
+    expect(await prompt.json()).toMatchObject({ status: 'started', queued: [] });
     // Answered at once: the run goes on in the conversation, which is idle again once it ended.
     await vi.waitFor(() => {
       expect(conversations.list()).toMatchObject([{ running: false }]);

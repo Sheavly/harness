@@ -185,17 +185,6 @@ export const queuedPromptsSchema = z.object({
     }),
 });
 
-/**
- * `POST /conversations/:id/prompts`, answered at once: the prompt `started`, or it waits in the
- * conversation's queue (`queued`) and the conversation starts it when what runs now has ended.
- * `queued` is the queue after this request. What the prompt does arrives on the conversation's
- * stream, never in this answer.
- */
-export const sendPromptResponseSchema = z.object({
-  status: z.enum(['started', 'queued']),
-  queued: queuedPromptsSchema.shape.queued,
-});
-
 /** `POST /conversations/:id/yield`: whether the active, non-stopping run accepted the request. */
 export const yieldPromptResponseSchema = z.object({ accepted: z.boolean() });
 

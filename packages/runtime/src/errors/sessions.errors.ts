@@ -11,13 +11,15 @@ type SessionFailure =
   | 'session_running'
   | 'not_an_ancestor'
   | 'outbox_full'
+  | 'inbox_full'
   | 'invalid_notice';
 
 /**
  * A session operation was refused: an unknown or released session, a session started or stored
  * under an id a live session already has (`duplicate_session`), a parent or target that has
  * ended, a sub-agent nested too deep, a message from a session that didn't start its target, an
- * extension notice that is malformed, or one queued while the session's outbox is full.
+ * extension notice that is malformed, one queued while the session's outbox is full, or a message
+ * sent while its inbox is (`inbox_full`).
  */
 export class SessionError extends Error {
   override name = 'SessionError';

@@ -7,7 +7,6 @@ import {
   messagesResponseSchema,
   yieldPromptResponseSchema,
   sendPromptRequestSchema,
-  sendPromptResponseSchema,
   serverErrorSchema,
   skillsResponseSchema,
   startConversationRequestSchema,
@@ -153,23 +152,6 @@ describe('yieldPromptResponseSchema', () => {
 
     for (const body of [{}, { accepted: 'true' }, { accepted: 1 }, null]) {
       expect(yieldPromptResponseSchema.safeParse(body).success).toBe(false);
-    }
-  });
-});
-
-describe('sendPromptResponseSchema', () => {
-  it('says whether the prompt started or waits, with the queue after it', () => {
-    for (const answer of [
-      { status: 'started', queued: [] },
-      { status: 'queued', queued: ['first', 'second'] },
-    ]) {
-      expect(sendPromptResponseSchema.parse(answer)).toEqual(answer);
-    }
-  });
-
-  it('rejects an answer without the queue, or with a status it does not define', () => {
-    for (const body of [{ status: 'started' }, { status: 'running', queued: [] }, {}]) {
-      expect(sendPromptResponseSchema.safeParse(body).success).toBe(false);
     }
   });
 });

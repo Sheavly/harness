@@ -10,6 +10,7 @@ import {
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { connectBackend } from '../../client/backend.helper.js';
 import { liveFeed, promptStarted } from '../../testing/live-feed.fake.js';
+import { startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
 import { endsOnAbort } from '../../testing/remote-conversation.fake.js';
 import {
   FAKE_CONVERSATION,
@@ -134,7 +135,7 @@ async function setup(
         });
       })();
 
-      return { status: 'started', queued: [] };
+      return startedAnswer();
     },
     getMessages: () =>
       params.failMessages

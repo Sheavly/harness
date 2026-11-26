@@ -108,10 +108,29 @@ describe('openApiDocument', () => {
       responses: {
         200: {
           content: {
-            'application/json': { schema: { $ref: '#/components/schemas/SendPromptResponse' } },
+            'application/json': { schema: { $ref: '#/components/schemas/PromptSent' } },
           },
         },
       },
+    });
+  });
+
+  it('addresses a command to a node in the path, with the node in no body: cancel has none, a message holds only its text', () => {
+    expect(API_ROUTES.cancelNode).toMatchObject({
+      effect: 'change',
+      method: 'post',
+      path: '/conversations/{id}/nodes/{node}/cancel',
+      response: { status: 204 },
+    });
+    expect('body' in API_ROUTES.cancelNode).toBe(false);
+    expect(API_ROUTES.messageNode).toMatchObject({
+      effect: 'change',
+      method: 'post',
+      path: '/conversations/{id}/nodes/{node}/messages',
+      response: { status: 204 },
+    });
+    expect(API_ROUTES.messageNode.body.safeParse({ text: 'go', node: 'agent-2' }).data).toEqual({
+      text: 'go',
     });
   });
 

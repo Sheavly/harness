@@ -257,7 +257,9 @@ export class SessionRegistry {
   /**
    * Queues a message for a running or idle session; its loop delivers it at the next model call
    * (an idle session's, at its next prompt), without stopping anything. `from` is `'user'`, or a session id, which must be an ancestor of the
-   * target: a session steers only its own sub-agents (and theirs). Throws otherwise.
+   * target: a session steers only its own sub-agents (and theirs). Throws otherwise, and
+   * `inbox_full` when others wait and the inbox holds `MAX_QUEUED_MESSAGES` messages, or this one
+   * would take them past `MAX_QUEUED_MESSAGE_CHARS` characters (see `Inboxes.add`).
    */
   send(params: { id: SessionId; content: string; from: InboxMessage['from'] }): void {
     const { id, content, from } = params;
@@ -267,8 +269,9 @@ export class SessionRegistry {
 
     const message: InboxMessage = { from, content, sentAt: now() };
 
-    this.#emit({ type: 'session_message', session, message });
+    // Queued first: a full inbox throws, and no `session_message` is told for what was refused.
     this.#inboxes.add({ id, message });
+    this.#emit({ type: 'session_message', session, message });
   }
 
   /**

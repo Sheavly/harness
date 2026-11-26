@@ -1,11 +1,15 @@
 import { collect } from '@sheavly/testing/fetch/fake-fetch.fake';
 import { useFixedClock } from '@sheavly/testing/clock/fixed-clock.fake';
 import { describe, expect, it } from 'vitest';
-import { toolCall } from '@sheavly/testing/provider/routed-provider.fake';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import { ConversationsError } from '../../errors/conversations.errors.js';
-import { say, scriptedConversations as setup } from '../../testing/conversations.fake.js';
+import {
+  blockedThenNext,
+  say,
+  scriptedConversations as setup,
+  stopWhenBlocked,
+} from '../../testing/conversations.fake.js';
 import { DEEP_ID, FAST_ID } from '../../testing/run.fake.js';
 
 describe('Conversations', () => {
@@ -183,32 +187,20 @@ describe('Conversations', () => {
   });
 
   it('stops a running prompt and keeps history valid; refuses a second while one runs', async () => {
-    const { conversations } = setup({
-      replies: [
-        [
-          toolCall({ id: 'b1', name: 'block', input: {} }),
-          { type: 'done', stopReason: 'tool_use' },
-        ],
-        say('next'),
-      ],
-    });
+    const { conversations } = setup({ replies: blockedThenNext() });
     const id = await conversations.start();
-    const { events } = await conversations.send({ id, prompt: { text: 'wait' } });
-    const seen: string[] = [];
-
-    for await (const event of events) {
-      seen.push(event.type);
-
-      if (event.type === 'tool_call_started') {
+    const stopped = await stopWhenBlocked({
+      conversations,
+      id,
+      stop: async () => {
         await expect(conversations.send({ id, prompt: { text: 'too soon' } })).rejects.toThrow(
           expect.objectContaining({ reason: 'session_running' }),
         );
         conversations.stop(id);
-      }
-    }
+      },
+    });
 
-    expect(seen.at(-1)).toBe('done');
-    expect(conversations.messages(id).map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+    expect(stopped).toEqual({ last: 'done', roles: ['user', 'assistant', 'tool'] });
   });
 
   it('closes a conversation, disposing what the app opened, and forgets it', async () => {

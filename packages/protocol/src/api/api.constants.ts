@@ -6,7 +6,6 @@ import {
   queuedPromptsSchema,
   yieldPromptResponseSchema,
   sendPromptRequestSchema,
-  sendPromptResponseSchema,
   skillsQuerySchema,
   skillsResponseSchema,
   startConversationRequestSchema,
@@ -14,6 +13,10 @@ import {
   streamQuerySchema,
   switchModelRequestSchema,
 } from '../server/server.validator.js';
+import {
+  messageNodeRequestSchema,
+  promptSentSchema,
+} from '../node-command/node-command.validator.js';
 import { streamEntrySchema } from '../stream/stream.validator.js';
 import {
   subscribeFrameSchema,
@@ -119,9 +122,9 @@ export const API_ROUTES = {
     method: 'post',
     path: '/conversations/{id}/prompts',
     summary:
-      "Send the next prompt, answered at once: it starts, or waits in the queue while the conversation is busy; its entries arrive on the conversation's stream",
+      "Send the next prompt, answered at once with the agent node that carries the run (and the message it became, for one that started): it starts, or waits in the queue while the conversation is busy; what it does arrives on the node's channel and the tree",
     body: sendPromptRequestSchema,
-    response: { status: 200, schema: sendPromptResponseSchema },
+    response: { status: 200, schema: promptSentSchema },
   },
   yieldPrompt: {
     effect: 'change',
@@ -152,6 +155,23 @@ export const API_ROUTES = {
     method: 'post',
     path: '/conversations/{id}/stop',
     summary: 'Stop the running prompt; history stays valid',
+    response: { status: 204 },
+  },
+  cancelNode: {
+    effect: 'change',
+    method: 'post',
+    path: '/conversations/{id}/nodes/{node}/cancel',
+    summary:
+      'Cancel one node, whatever its kind: a command or service is killed, a sub-agent stopped, the main agent as stop does; a node that has ended is node_ended',
+    response: { status: 204 },
+  },
+  messageNode: {
+    effect: 'change',
+    method: 'post',
+    path: '/conversations/{id}/nodes/{node}/messages',
+    summary:
+      'Send a message to an agent node, which sees it at its next model call; only the main agent takes one from the user, and a node that has ended is node_ended',
+    body: messageNodeRequestSchema,
     response: { status: 204 },
   },
   answerApproval: {

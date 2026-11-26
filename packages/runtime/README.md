@@ -85,19 +85,33 @@ import { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 ```
 
-| Module       | What it holds                                                                                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessions/`  | `SessionRegistry`: the session tree, inboxes, the SSE `stream`, and one ordered stream of every session (`publish`, `subscribeEntries`), kept in memory or written to a store                                                                     |
-| `nodes/`     | `NodeRegistry`: every node of a conversation, of any kind, its lifecycle through the one status machine, a log per channel. `NodeChannelWriter`: stores each node's channel, tells its followers, closes the ones a stopped server left as `lost` |
-| `tasks/`     | `TaskRegistry`: background tasks a run waits for, checks on and cancels                                                                                                                                                                           |
-| `approvals/` | `ApprovalRegistry`: requests a UI answers with `respond`                                                                                                                                                                                          |
-| `locks/`     | `KeyedLocks`: serializes changes per string key, so two changes to one key never overlap; it knows nothing about what a key names                                                                                                                 |
-| `usage/`     | `UsageLedger`: cumulative usage across sessions, deduplicated by stream sequence                                                                                                                                                                  |
-| `output/`    | `OutputBuffer`: bounded first/last lines and shortened long lines for process and task previews                                                                                                                                                   |
-| `errors/`    | `SessionError`, `TaskError`, the approval errors, and `errorMessage` / `isMissingPath`                                                                                                                                                            |
-| `testing/`   | Fakes for tests: sessions, approvals, `startTaskTool`, `useKeyedLocks`                                                                                                                                                                            |
+| Module       | What it holds                                                                                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessions/`  | `SessionRegistry`: the session tree, inboxes, the SSE `stream`, and one ordered stream of every session (`publish`, `subscribeEntries`), kept in memory or written to a store                                                                                                                                                                     |
+| `nodes/`     | `NodeRegistry`: every node of a conversation, of any kind, its lifecycle through the one status machine, a log per channel. `NodeChannelWriter`: stores each node's channel, tells its followers, closes the ones a stopped server left as `lost`. `NodeCommands`: resolves a node id to what a command to it reaches, and cancels or messages it |
+| `tasks/`     | `TaskRegistry`: background tasks a run waits for, checks on and cancels                                                                                                                                                                                                                                                                           |
+| `approvals/` | `ApprovalRegistry`: requests a UI answers with `respond`                                                                                                                                                                                                                                                                                          |
+| `locks/`     | `KeyedLocks`: serializes changes per string key, so two changes to one key never overlap; it knows nothing about what a key names                                                                                                                                                                                                                 |
+| `usage/`     | `UsageLedger`: cumulative usage across sessions, deduplicated by stream sequence                                                                                                                                                                                                                                                                  |
+| `output/`    | `OutputBuffer`: bounded first/last lines and shortened long lines for process and task previews                                                                                                                                                                                                                                                   |
+| `errors/`    | `SessionError`, `TaskError`, the approval errors, and `errorMessage` / `isMissingPath`                                                                                                                                                                                                                                                            |
+| `testing/`   | Fakes for tests: sessions, approvals, `startTaskTool`, `useKeyedLocks`                                                                                                                                                                                                                                                                            |
 
 ## Docs
+
+`NodeCommands` (`nodes/`), `new NodeCommands({ sessions, tasks })`, is what a command to a node by
+its id reaches. `target(nodeId)` is the main agent (its session), a sub-agent (its session and its
+task), a command or a service (its task), or `other` (an extension's kind); it throws
+`NodeCommandError` as `unknown_node` for a node this conversation never had, and `node_ended` for
+one that has ended, a released one included (the registry remembers the ids it released), decided
+in that order. `cancel` kills a command, a service or a sub-agent through its task and waits for it
+to exit, for at most `NODE_CANCEL_WAIT_MS` (a process that cannot be killed never ends its task);
+the main agent is refused (`cannot_cancel`), since its stop is the conversation's prompt switch.
+`message` queues the text for the main agent as the user, and refuses a sub-agent (only the agent
+that started it may message it), a command, a service and an extension's node (`cannot_message`),
+before anything is queued, and a full inbox (`inbox_full`): `SessionRegistry.send` holds at most
+`MAX_QUEUED_MESSAGES` messages or `MAX_QUEUED_MESSAGE_CHARS` characters together for a session, for
+every sender, and always queues a message when none waits, however long.
 
 `TreeChannelWriter` (`nodes/`) stores the conversation's tree channel from what the node, task and
 approval registries do, plus the notices the host tells it (`noteQueueChanged`,

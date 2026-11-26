@@ -104,8 +104,9 @@ approvals? }`. `from` is `start`, `now`, `snapshot` (the tree channel only), `ta
   the same way.
 - **A command** (`node-command/`): `MessageNodeRequest` is the text sent to an agent node, whose
   sender is the caller. `PromptSent` is the answer to a prompt sent: the node that carries the run
-  and, for a prompt that started, the id of its user message. A command to a node that ended is
-  `node_ended`. Cancelling a node has no body and no answer.
+  and, for a prompt that started, the id of its user message; it is the answer of
+  `POST …/prompts`. A command to a node that ended is `node_ended`. Cancelling a node has no body
+  and no answer.
 
 An agent's other entries and a command's output entries are not here: the issues that serve them
 define them.
@@ -416,11 +417,13 @@ operation carries `security: []`:
 | `PUT /conversations/{id}/model`                      | bearer | `SwitchModelRequest`       | nothing (`204`)               |
 | `GET /conversations/{id}/messages`                   | bearer | none                       | `MessagesResponse`            |
 | `QUERY /conversations/{id}/skills`                   | bearer | `SkillsQuery`              | `SkillsResponse`              |
-| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `SendPromptResponse`          |
+| `POST /conversations/{id}/prompts`                   | bearer | `SendPromptRequest`        | `PromptSent`                  |
 | `POST /conversations/{id}/yield`                     | bearer | none                       | `YieldPromptResponse`         |
 | `GET /conversations/{id}/queue`                      | bearer | none                       | `QueuedPrompts`               |
 | `PUT /conversations/{id}/queue`                      | bearer | `QueuedPrompts`            | nothing (`204`)               |
 | `POST /conversations/{id}/stop`                      | bearer | none                       | nothing (`204`)               |
+| `POST /conversations/{id}/nodes/{node}/cancel`       | bearer | none                       | nothing (`204`)               |
+| `POST /conversations/{id}/nodes/{node}/messages`     | bearer | `MessageNodeRequest`       | nothing (`204`)               |
 | `POST /conversations/{id}/approvals/{approval}`      | bearer | `AnswerApprovalRequest`    | nothing (`204`)               |
 | `QUERY /conversations/{id}/stream`                   | bearer | `StreamQuery`              | `StreamEntry`s (SSE)          |
 | `QUERY /conversations/{id}/subscribe`                | bearer | `SubscribeRequest`         | `SubscribeFrame`s (SSE)       |
@@ -465,8 +468,11 @@ next prompt. Unknown conversation ids use the ordinary `not_found` error.
 
 - A prompt is `text`, as a script types it (`/<name>` mentions in it run those skills), or
   `parts`, as a UI builds it (exactly the skills picked run). Not both.
-- `POST /conversations/:id/prompts` answers at once with `SendPromptResponse`, never with a
-  stream: `{ status: 'started' | 'queued', queued }`. A conversation that is busy (a prompt, or a
+- `POST /conversations/:id/prompts` answers at once with `PromptSent`, never with a stream:
+  `{ status: 'started', node, messageId, queued }` or `{ status: 'queued', node, queued }`, the
+  `node` being the agent whose channel carries the run and `messageId` the user message a started
+  prompt became (a queued one has none until it starts, and the tree channel's `prompt_started`
+  names it). A conversation that is busy (a prompt, or a
   run it started itself for finished work) keeps the line in its queue and starts it when that
   run ends, following the flow rules: after the model has finished when the run waits on
   `await_tasks`, otherwise once the model finishes its turn. What the prompt does arrives on the

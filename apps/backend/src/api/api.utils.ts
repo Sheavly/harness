@@ -20,6 +20,10 @@ const CONVERSATION_FAILURES: Record<ConversationsError['reason'], (message: stri
     not_set_up: (message) => ({ status: 409, code: 'not_set_up', message }),
     // The prompt cannot wait in the queue (skills picked as parts, too long, a full queue).
     cannot_queue: (message) => ({ status: 409, code: 'cannot_queue', message }),
+    // The node exists and is over: not `not_found`, which says it never was, in this conversation.
+    node_ended: (message) => ({ status: 409, code: 'node_ended', message }),
+    // A command the node's kind cannot take (cancel an extension's node, message a command).
+    bad_request: (message) => ({ status: 400, code: 'bad_request', message }),
   };
 
 /**
