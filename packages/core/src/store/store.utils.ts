@@ -1,8 +1,11 @@
 import { StoreError } from '../errors/store.errors.js';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import { MAX_CHANNEL_ENTRY_CHARS } from '@sheavly/protocol/channel/channel.constants';
 import type { ChannelHead } from '@sheavly/protocol/channel/channel.types';
-import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
+import {
+  cursorKind,
+  cursorNumber,
+  isConversationChannel,
+} from '@sheavly/protocol/channel/channel.utils';
 import {
   channelLogSchema,
   channelNameSchema,
@@ -21,8 +24,8 @@ function firstProblem(entry: ChannelHead): string | undefined {
     return `channel ${entry.channel} starts at cursor ${entry.cursor}, not at 0`;
   }
 
-  return entry.channel === TREE_CHANNEL_NAME && cursorKind(entry.cursor) !== 'sequence'
-    ? 'the tree channel is numbered, so its cursors are sequence cursors'
+  return isConversationChannel(entry.channel) && cursorKind(entry.cursor) !== 'sequence'
+    ? 'a channel of the conversation itself is numbered, so its cursors are sequence cursors'
     : undefined;
 }
 
