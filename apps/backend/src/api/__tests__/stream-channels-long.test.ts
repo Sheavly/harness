@@ -7,6 +7,7 @@ import type {
   ChannelLog,
   ConversationStore,
 } from '@sheavly/core/store/store.types';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import { FileConversationStore } from '@sheavly/storage/conversation-store/conversation-store.service';
 import { readChannel } from '@sheavly/runtime/testing/stored-channels.fake';
 import { useTempFolders } from '@sheavly/testing/files/temp-folders.fake';
@@ -56,7 +57,8 @@ const storeOf = () =>
 async function served() {
   const store = storeOf();
   const world = await servedConversation({ servers, store });
-  const main = (await store.channels(world.conversation)).find((name) => name !== 'tree') ?? '';
+  const main =
+    (await store.channels(world.conversation)).find((name) => !isConversationChannel(name)) ?? '';
   const [opened] = await readChannel({ store, id: world.conversation, channel: main });
 
   if (!opened) throw new Error('the main agent has no channel');
