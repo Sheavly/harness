@@ -260,9 +260,9 @@ after, in order, with none missed and none sent twice. A frame is one JSON `data
 name, and has no `id`: one id cannot carry the cursors of several channels, so a client keeps each
 channel's last cursor and sends them again as `from` when it reconnects.
 
-- **`entry`**: an entry of a channel: `opened`, an agent's `updated` (the node as it is now), a
-  command's `output` (see below) and `closed`; on the tree channel, what it holds (`node_opened`,
-  `approval_requested`, `queue_changed`, …).
+- **`entry`**: an entry of a channel: `opened`, an agent's `updated` (the node as it is now) and its
+  loop events (see below), a command's `output` (see below) and `closed`; on the tree channel, what
+  it holds (`node_opened`, `approval_requested`, `queue_changed`, …).
 - **`snapshot`**: for `from: snapshot` on the tree channel, the tree as it stands, first, with the
   cursor of the entry it covers up to; the entries after that cursor follow as `entry` frames.
 - **`head`**: a channel asked from `now` opens with where it stands, the cursor of its newest entry,
@@ -290,6 +290,41 @@ It is a claim, not a check: any token holder may make it. Answer with
 `POST /conversations/:id/approvals/:approval`. A conversation that closes ends the tree channel's
 subscriptions as `failed` (its writer stopped; the channel is not closed, and a reopen goes on from
 it).
+
+## An agent's run
+
+An agent's channel holds its run: each loop event its session sends is an `event` entry (the event
+as the conversation's stream carries it, with its own `seq` and the `messageId` of the prompt it
+answers), in the order they happened and numbered with the node's own `updated` entries, so one
+subscription to the node's id is enough to show what it did. The main agent's channel holds each run
+it ran, the runs its sub-agents' reports woke included; a sub-agent's is its own run only, and ends
+with the run's `done` and then its `closed`. A `task_running` event names the node a tool started
+(`nodeId`), so a client joins a tool call to the channel of the sub-agent or command it launched.
+
+```bash
+curl -N -X QUERY "$URL/conversations/$ID/subscribe" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"subscriptions":[{"channel":"<the main agent’s node id>","from":"tail:50"}]}'
+# data: {"cursor":"s6","channel":…,"type":"event","event":{"seq":4,"type":"text_delta","text":"Understood."},"messageId":…}
+```
+
+- **Streamed text is merged.** The `text_delta` events of a session that come within 50 ms are one
+  entry: the first delta's, with all their text and `lastSeq`, the `seq` of the last one in it, so a
+  client that follows a session by `seq` knows what it has. A merged entry holds at most 8,192
+  characters of text.
+- **An event too large to store** (an entry is at most 64 KiB of JSON) is an `event_omitted` entry
+  in its place: its type, its `seq` and its size, never its content. The conversation's stream still
+  has it whole.
+- **The conversation's own notices are not here**: a storage failure and an extension's own event
+  are on the tree channel, and an approval, a queue change and a node's lifecycle too.
+- **A run costs about what it costs on the stream**: about the same bytes (the merged text is
+  smaller, the entry's envelope a little larger; a test holds it to less than a quarter above, and
+  a real run of four prompts measured within a tenth below). Reading it is bounded like any channel:
+  a read that would send more than 8 MiB of stored history is refused as `400`, whether it asks
+  from `start`, from a cursor or for a `tail` (a tail may be up to 1,000 entries of up to 64 KiB),
+  so ask from a cursor near the end or for a smaller tail.
+- **A channel that could not be written** (its quota, a disk that failed, an event JSON cannot
+  carry) ends as `failed` at the last entry stored, and the run goes on; the stream has all of it.
 
 ## A command's output
 
@@ -549,6 +584,13 @@ A prompt that can't start is answered with an error before its stream opens.
   redact, and the token is not scoped to a profile or a conversation. That is why the `Host` and
   `Origin` check comes first and the token is never in a URL. A client shows it as untrusted
   terminal text.
+- **A conversation's stream and an agent's channel serve everything the agent did, to any token
+  holder** (`QUERY /stream`, and `QUERY /subscribe` on a node's id, see
+  [an agent's run](#an-agents-run)): the model's text and its reasoning state, each tool call's input and
+  result (file contents, command lines, a command's bounded output preview) and its sub-agents'
+  runs. The server does not redact it beyond what the loop already redacts of an error, and the
+  token is not scoped to a profile or a conversation. The channel is the stream's equal for
+  confidentiality, and a client shows it as untrusted text.
 - `internal` errors never carry their message: it can hold paths or a provider's reply. The
   backend logs each one once as `api.request_failed` (the route's pattern and status, and the
   error with its stack and cause chain, redacted by `@sheavly/logger`): to the conversation's
