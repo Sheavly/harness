@@ -1,5 +1,6 @@
 import type { Provider } from '@sheavly/core/provider/provider.types';
 import { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
+import { ConversationChannels } from '@sheavly/runtime/nodes/conversation-channels.service';
 import { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import { SessionRegistry } from '@sheavly/runtime/sessions/sessions.service';
@@ -62,6 +63,10 @@ export function createHarness(options: HarnessOptions): Harness {
         storage: options.channels,
       })
     : undefined;
+  // The host serves, waits for and stops the conversation's own channels through this, by name.
+  const conversationChannels = new ConversationChannels();
+
+  if (treeChannel) conversationChannels.add(treeChannel);
 
   // Approvals and background tasks join the combined stream, in order with the events of the
   // call that asked or started them.
@@ -85,7 +90,7 @@ export function createHarness(options: HarnessOptions): Harness {
     tasks,
     nodes: sessions.nodes,
     ...(nodeChannels && { nodeChannels }),
-    ...(treeChannel && { treeChannel }),
+    ...(treeChannel && { treeChannel, conversationChannels }),
     approvals,
   };
 }

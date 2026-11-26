@@ -6,7 +6,7 @@ import type { ResumedTree } from '@sheavly/runtime/nodes/nodes.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionHub } from '../subscriptions/subscription-hub.service.js';
 import type { Subscription } from '../subscriptions/subscription.service.js';
-import { treeSnapshotOf } from '../subscriptions/tree-snapshot.helper.js';
+import { snapshotOfChannel } from '../subscriptions/conversation-snapshot.helper.js';
 import { detailsOf } from './details.helper.js';
 import { skillsOf } from './skills.helper.js';
 import { ConversationKeeper } from './keeper.service.js';
@@ -470,7 +470,7 @@ export class Conversations {
    * its tree channel could not be stored.
    */
   async tree(id: ConversationId): Promise<TreeSnapshot> {
-    return treeSnapshotOf(this.get(id).harness.treeChannel);
+    return snapshotOfChannel({ channel: this.get(id).harness.treeChannel, name: 'tree' });
   }
 
   /**

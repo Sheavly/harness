@@ -8,12 +8,12 @@ import type { OutputRef } from '@sheavly/protocol/output/output.types';
 import { outputRefSchema } from '@sheavly/protocol/output/output.validator';
 import { SNAPSHOT_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
 import { tailCount, tailLimit } from '@sheavly/protocol/subscription/subscription.utils';
-import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
+import type { ConversationChannel } from '@sheavly/runtime/nodes/nodes.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import { SubscriptionError } from '../errors/subscription.errors.js';
+import { snapshotOfChannel } from './conversation-snapshot.helper.js';
 import type { HeldBytes } from './held-bytes.service.js';
 import { MAX_SUBSCRIBE_READ_BYTES, NO_SUCH_CHANNEL } from './subscriptions.constants.js';
-import { treeSnapshotOf } from './tree-snapshot.helper.js';
 import type { Selection } from './subscriptions.types.js';
 
 /** What the entry costs to hold: its JSON, as a store counts a line. */
@@ -319,13 +319,16 @@ function cursorOutOfRange(cursor: string): SubscriptionError {
 }
 
 /**
- * What `from: snapshot` on the tree channel sends first: the tree as the writer has stored it, as
- * one frame, and no history. `count` is the place after the entry it covers up to, so what the
- * writer told while it was taken, from that entry on, is dropped as already in it, and what comes
- * after is sent. Refuses as `treeSnapshotOf` does.
+ * What `from: snapshot` on a channel of the conversation itself sends first: its view as the writer
+ * has stored it, as one frame, and no history. `count` is the place after the entry it covers up
+ * to, so what the writer told while it was taken, from that entry on, is dropped as already in it,
+ * and what comes after is sent. Refuses as `snapshotOfChannel` does.
  */
-export async function snapshotSelection(tree: TreeChannelWriter | undefined): Promise<Selection> {
-  const snapshot = await treeSnapshotOf(tree);
+export async function snapshotSelection(params: {
+  channel: ConversationChannel | undefined;
+  name: string;
+}): Promise<Selection> {
+  const snapshot = await snapshotOfChannel(params);
 
   return {
     entries: [],

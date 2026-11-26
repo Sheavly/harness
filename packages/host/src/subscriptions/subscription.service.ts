@@ -1,8 +1,8 @@
+import type { ConversationChannels } from '@sheavly/runtime/nodes/conversation-channels.service';
 import type { NodeChannelWriter } from '@sheavly/runtime/nodes/node-channel-writer.service';
 import type { ChannelEvent } from '@sheavly/runtime/nodes/nodes.types';
-import type { TreeChannelWriter } from '@sheavly/runtime/nodes/tree-channel-writer.service';
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
+import { isConversationChannel } from '@sheavly/protocol/channel/channel.utils';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
 import type {
   ChannelEndFrame,
@@ -50,7 +50,7 @@ import type {
  */
 export class Subscription {
   readonly #writer: NodeChannelWriter | undefined;
-  readonly #tree: TreeChannelWriter | undefined;
+  readonly #conversation: ConversationChannels | undefined;
   readonly #output: OutputSource | undefined;
   readonly #pool: HeldBytes;
   readonly #queue = new FrameQueue();
@@ -62,13 +62,13 @@ export class Subscription {
 
   constructor(params: {
     writer: NodeChannelWriter | undefined;
-    tree?: TreeChannelWriter | undefined;
+    conversation?: ConversationChannels | undefined;
     output?: OutputSource | undefined;
     pool: HeldBytes;
     onClose: () => void;
   }) {
     this.#writer = params.writer;
-    this.#tree = params.tree;
+    this.#conversation = params.conversation;
     this.#output = params.output;
     this.#pool = params.pool;
     this.#onClose = params.onClose;
@@ -82,8 +82,8 @@ export class Subscription {
    */
   static async open(params: {
     writer: NodeChannelWriter | undefined;
-    /** The conversation's tree channel's writer, which the tree channel is followed through. */
-    tree?: TreeChannelWriter | undefined;
+    /** The conversation's own channels, which a channel of the conversation is followed through. */
+    conversation?: ConversationChannels | undefined;
     /** Where a command's complete output is read and followed, for a channel that kept it. */
     output?: OutputSource | undefined;
     channels: readonly ResolvedChannel[];
@@ -189,7 +189,9 @@ export class Subscription {
     const { channel, log, from, kind, output } = resolved;
     const pool = this.#pool;
 
-    if (from === 'snapshot') return snapshotSelection(this.#tree);
+    if (from === 'snapshot') {
+      return snapshotSelection({ channel: this.#conversation?.get(channel), name: channel });
+    }
 
     if (output && this.#output) {
       const outputs = this.#output.reader;
@@ -213,8 +215,8 @@ export class Subscription {
     const { channel } = resolved;
     const listener = (event: ChannelEvent) => this.#hear({ channel, event });
     const stopEntries =
-      (channel === TREE_CHANNEL_NAME
-        ? this.#tree?.follow(listener)
+      (isConversationChannel(channel)
+        ? this.#conversation?.get(channel)?.follow(listener)
         : this.#writer?.follow({ channel, listener })) ?? (() => undefined);
     const tail = this.#tailOf(resolved);
     const stopOutput = tail && this.#followOutput({ channel, tail });
@@ -333,9 +335,9 @@ export class Subscription {
     }
   }
 
-  /** Whether a writer may still write `channel`: its own, or the tree's for the tree channel. */
+  /** Whether a writer may still write `channel`: a node's channel's, or the conversation channel's own. */
   #writing(channel: ChannelName): boolean {
-    if (channel === TREE_CHANNEL_NAME) return this.#tree?.writing() === true;
+    if (isConversationChannel(channel)) return this.#conversation?.get(channel)?.writing() === true;
 
     return this.#writer?.writing(channel) === true;
   }

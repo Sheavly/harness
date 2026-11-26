@@ -1,5 +1,4 @@
 import type { ConversationStore } from '@sheavly/core/store/store.types';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SubscribeRequest } from '@sheavly/protocol/subscription/subscription.types';
 import { subscribeRequestSchema } from '@sheavly/protocol/subscription/subscription.validator';
@@ -91,11 +90,11 @@ export class SubscriptionHub {
     };
 
     try {
-      // The tree channel is listed once its first entry is stored, which is queued when the
-      // conversation starts: a client that asks at once must not be told it has none.
-      if (request.subscriptions.some(({ channel }) => channel === TREE_CHANNEL_NAME)) {
-        await live.harness.treeChannel?.flush();
-      }
+      // A channel of the conversation itself is listed once its first entry is stored, which is
+      // queued when the conversation starts: a client that asks at once must not be told it has none.
+      await live.harness.conversationChannels?.flush(
+        request.subscriptions.map(({ channel }) => channel),
+      );
 
       const channels = await this.#resolve({ id, request });
 
@@ -103,7 +102,7 @@ export class SubscriptionHub {
 
       return await Subscription.open({
         writer: live.harness.nodeChannels,
-        tree: live.harness.treeChannel,
+        conversation: live.harness.conversationChannels,
         output: this.#outputOf({ id, live }),
         channels,
         budget: { left: MAX_SUBSCRIBE_READ_BYTES },
