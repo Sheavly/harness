@@ -77,3 +77,17 @@ export const DEFAULT_CHANNEL_LIMITS = {
  * and the index of a channel of a million entries is a thousand numbers.
  */
 export const CHANNEL_INDEX_EVERY = 1024;
+
+/**
+ * What a channel keeps beside its log so a process that reads it later need not read all of it:
+ * `<channel>.idx`, where its lines start, every `CHANNEL_INDEX_EVERY`th. It is a cache the log can
+ * always rebuild, never the record.
+ */
+export const CHANNEL_INDEX_SUFFIX = '.idx';
+
+/**
+ * The most an index file may be for a channel to read it: 8 MiB is a channel of about a billion
+ * entries, far past what a channel may hold, so a bigger file is not an index the store wrote and is
+ * not read into memory.
+ */
+export const MAX_CHANNEL_INDEX_BYTES = 8 * 1024 * 1024;

@@ -1,11 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { ChannelEntry, ChannelFrom } from '@sheavly/core/store/store.types';
+import {
+  channelFileIn,
+  cursorsFrom,
+  entry,
+  range,
+  sequence,
+} from '../../testing/channel-file.fake.js';
 import { useTempFolder } from '../../testing/temp-folder.fake.js';
-import { ChannelFile } from '../channel-file.service.js';
-import { ChannelQuota } from '../channel-quota.service.js';
-import { DEFAULT_CHANNEL_LIMITS } from '../conversation-store.constants.js';
+import { linesFrom } from '../channel-seek.helper.js';
 
 const temp = useTempFolder('channel-seek-');
 
@@ -14,42 +17,9 @@ const EVERY = 4;
 /** Lines the tests' channels hold: six whole blocks and a part of a seventh. */
 const COUNT = EVERY * 6 + 3;
 
-const entry = (cursor: string, channel = 'main'): ChannelEntry => ({
-  channel,
-  type: cursor === 's0' || cursor === 'b0' ? 'opened' : 'updated',
-  cursor,
-  at: 1,
-  node: { id: channel, title: 'Chat' },
-});
-
-const sequence = (count: number) => Array.from({ length: count }, (_, n) => entry(`s${String(n)}`));
-const cursorsOf = (entries: ChannelEntry[]) => entries.map((each) => each.cursor);
-const range = (from: number, to: number) =>
-  Array.from({ length: Math.max(0, to - from) }, (_, n) => `s${String(from + n)}`);
-
 /** A channel file over the test's folder: a new one each call, as a restarted process would be. */
-function fileOf(channel = 'main') {
-  const folder = path.join(temp.path(), 'channels');
-
-  return {
-    path: path.join(folder, `${channel}.jsonl`),
-    log: new ChannelFile({
-      file: path.join(folder, `${channel}.jsonl`),
-      markerFile: path.join(folder, `${channel}.full`),
-      channel,
-      quota: new ChannelQuota({ folder, limits: DEFAULT_CHANNEL_LIMITS }),
-      indexEvery: EVERY,
-    }),
-  };
-}
-
-async function read(log: ChannelFile, from?: ChannelFrom) {
-  const entries: ChannelEntry[] = [];
-
-  for await (const each of log.read(from)) entries.push(each);
-
-  return cursorsOf(entries);
-}
+const fileOf = (channel = 'main') => channelFileIn({ folder: temp.path(), every: EVERY, channel });
+const read = cursorsFrom;
 
 /** A channel of `count` entries, appended by the process that then reads it (`live`) or by one before. */
 async function channelOf(params: { count: number; live: boolean }) {
@@ -117,28 +87,28 @@ describe('a channel file, as it is written to', () => {
     expect(await read(log, { after: 's2' })).toEqual(range(3, COUNT));
   });
 
-  it('gives a read what it held when the read began, and the next read what was added', async () => {
+  it('gives the next read what was added, and head the new count', async () => {
     const { log } = await channelOf({ count: COUNT, live: true });
-    const reading = log.read({ tail: 3 })[Symbol.asyncIterator]();
-    const seen: string[] = [];
-    const take = async () => {
-      const next = await reading.next();
 
-      if (!next.done) seen.push(next.value.cursor);
-
-      return next.done;
-    };
-
-    await take();
     await log.append(entry(`s${String(COUNT)}`));
 
-    while (!(await take())) {
-      // Each entry the read gives is taken as it comes.
-    }
-
-    expect(seen).toEqual(range(COUNT - 3, COUNT));
     expect(await read(log, { tail: 3 })).toEqual(range(COUNT - 2, COUNT + 1));
     expect((await log.head()).count).toBe(COUNT + 1);
+  });
+
+  it('goes no further than the lines it was told the file held, though the file has more', async () => {
+    const { path: file } = await channelOf({ count: COUNT, live: true });
+    const index = JSON.parse(await readFile(fileOf().indexPath, 'utf8')) as { offsets: number[] };
+
+    // The file holds 27 lines; a read that began when it held 25 is for those: the two that came
+    // after are the next read's, and the writer tells them.
+    const seen = { count: COUNT - 2, offsets: index.offsets, kind: 'sequence' } as const;
+    const lines = linesFrom({ file, seen, every: EVERY, index: COUNT - 5 });
+    const cursors: string[] = [];
+
+    for await (const each of lines) cursors.push(each.cursor);
+
+    expect(cursors).toEqual(range(COUNT - 5, COUNT - 2));
   });
 
   it('reads no more of the file than it gives: a damaged line before a cursor or a tail is not read', async () => {

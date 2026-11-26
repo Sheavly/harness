@@ -83,21 +83,34 @@ describe.runIf(ENTRIES > 0)('a channel of a very long conversation', () => {
       await writeChannel({ file, count: ENTRIES });
 
       const size = (await stat(file)).size;
-      const log = new ChannelFile({
-        file,
-        markerFile: path.join(folder, 'main.full'),
-        channel: 'main',
-        quota: new ChannelQuota({ folder, limits: DEFAULT_CHANNEL_LIMITS }),
-      });
+      // A new one each time, as a process that starts is: it knows only what is on disk.
+      const open = () =>
+        new ChannelFile({
+          file,
+          markerFile: path.join(folder, 'main.full'),
+          indexFile: path.join(folder, 'main.idx'),
+          channel: 'main',
+          quota: new ChannelQuota({ folder, limits: DEFAULT_CHANNEL_LIMITS }),
+        });
       const before = process.memoryUsage();
       const cold = performance.now();
-      const head = await log.head();
-      const coldMs = ms(cold);
 
-      expect(head.count).toBe(ENTRIES);
+      // No index yet: every line is read and validated, and the index is written.
+      expect((await open().head()).count).toBe(ENTRIES);
+
+      const coldMs = ms(cold);
+      const warm = performance.now();
+      const log = open();
+
+      // The index is there: the last line is checked and the lines after it are read.
+      expect((await log.head()).count).toBe(ENTRIES);
+
+      const warmMs = ms(warm);
+
       report.push(
-        `${String(ENTRIES)} entries, ${mib(size)} MiB on disk`,
-        `restart cost (the first ask of a channel: read, validate and index every line): ${String(coldMs)} ms`,
+        `${String(ENTRIES)} entries, ${mib(size)} MiB on disk, an index of ${String((await stat(path.join(folder, 'main.idx'))).size)} bytes`,
+        `first ask of a channel with no index (read and validate every line, write the index): ${String(coldMs)} ms`,
+        `first ask of a channel after a restart (check the index, read the lines after it): ${String(warmMs)} ms`,
       );
 
       const timed = async (name: string, run: () => Promise<number>, times = 20) => {
@@ -128,8 +141,8 @@ describe.runIf(ENTRIES > 0)('a channel of a very long conversation', () => {
       );
       process.stdout.write(`\n${report.join('\n')}\n`);
 
-      // Generous: the point is the numbers above. A read that scanned the log would take seconds.
-      expect(coldMs).toBeLessThan(10 * 60_000);
+      // Generous: the point is the numbers above. A restart that read the log would take seconds.
+      expect(warmMs).toBeLessThan(2_000);
     },
     30 * 60_000,
   );

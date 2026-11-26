@@ -10,6 +10,7 @@ import { ChannelFile } from './channel-file.service.js';
 import { ChannelQuota } from './channel-quota.service.js';
 import {
   CHANNEL_FULL_SUFFIX,
+  CHANNEL_INDEX_SUFFIX,
   CHANNEL_LOG_SUFFIX,
   CHANNELS_FOLDER,
 } from './conversation-store.constants.js';
@@ -43,6 +44,7 @@ export class ConversationChannels {
     const file = new ChannelFile({
       file: named(CHANNEL_LOG_SUFFIX),
       markerFile: named(CHANNEL_FULL_SUFFIX),
+      indexFile: named(CHANNEL_INDEX_SUFFIX),
       channel,
       quota: this.#quota,
     });

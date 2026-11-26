@@ -20,6 +20,24 @@ export class StorageFileError extends Error {
 }
 
 /**
+ * A read that began where a channel's index said found a line that is not the one it should be: the
+ * index does not agree with the log. The index is a cache, so the channel reads the log whole,
+ * replaces the places it gave and starts the read over. It reaches a caller of the store (as a
+ * `StoreError`, `failed`) only if it happens again at once, which is a log that changed during the
+ * read.
+ */
+export class ChannelIndexError extends Error {
+  override name = 'ChannelIndexError';
+  /** The log whose index was wrong, absolute. */
+  readonly file: string;
+
+  constructor(params: { file: string; line: number }) {
+    super(`The index of ${params.file} does not agree with the log at line ${String(params.line)}`);
+    this.file = params.file;
+  }
+}
+
+/**
  * A path was refused before anything was read, written or deleted, because it is not one a store
  * makes: it is relative, the top of a file system, or its name is not an id (a separator, `..`),
  * or it is the home folder. It is a bug in the caller, never bad data on disk, so nothing was

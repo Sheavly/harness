@@ -1,6 +1,7 @@
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
 import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
+import { ChannelIndexError } from '../errors/storage.errors.js';
 import { readJsonLines, readJsonLinesAt } from '../jsonl-file/jsonl-file.helper.js';
 import { storedChannelEntrySchema } from './channel-entry.validator.js';
 import type { ChannelSeen } from './channel-file.types.js';
@@ -10,6 +11,11 @@ import type { ChannelSeen } from './channel-file.types.js';
  * it held, reading from the start of the block of `every` lines that holds `index`, not from the
  * first line of the file: at most `every` lines are read that are not given. Nothing when `index` is
  * past the last line.
+ *
+ * A numbered channel's line `n` has the cursor `s<n>`, so each line up to and including the first
+ * one given is checked to: an index whose offsets are wrong (a place that hides lines, or the middle
+ * of one) shows there, before anything is given, as a `ChannelIndexError`. The lines after are not
+ * checked, so a read stays as long as what it gives.
  */
 export async function* linesFrom(params: {
   file: string;
@@ -24,12 +30,7 @@ export async function* linesFrom(params: {
   const block = Math.floor(index / every);
   const start = seen.offsets[block];
 
-  if (start === undefined) {
-    throw new StoreError({
-      reason: 'failed',
-      message: `Channel log ${file} has no index for line ${String(index)}`,
-    });
-  }
+  if (start === undefined) throw new ChannelIndexError({ file, line: index });
 
   let line = block * every;
 
@@ -40,6 +41,11 @@ export async function* linesFrom(params: {
     firstLine: line + 1,
   })) {
     if (line >= seen.count) return;
+
+    if (line <= index && seen.kind === 'sequence' && value.cursor !== `s${String(line)}`) {
+      throw new ChannelIndexError({ file, line });
+    }
+
     if (line >= index) yield value;
 
     line += 1;
