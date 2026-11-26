@@ -26,6 +26,7 @@ export class HeldCloses extends MemoryConversationStore {
 
         await log.append(entry);
       },
+      head: () => log.head(),
       read: (from?: ChannelFrom) => log.read(from),
     };
   }

@@ -409,14 +409,18 @@ for an agent and `closed`; the tree channel is stored beside them (`channels/tre
 from `s0`, never closed while its conversation exists, so a reopen can go on from it), and the kinds
 an extension adds are not. A stored line
 is one entry of at most 64 KiB, so a command longer than that is shortened in its `opened` entry.
-Retention is per channel: 128 MiB for a channel, 1 GiB and 5,000 channels for a conversation, and a
-channel that refuses an entry for a limit takes no more. The layout, the rules and the limits are
+Retention is per channel: 4 GiB for a channel, 32 GiB and 5,000 channels for a conversation, and a
+channel that refuses an entry for a limit takes no more. A conversation used for weeks keeps its
+story in one channel, which the store reads from a tail or a cursor without reading the rest. The layout, the rules and the limits are
 in the [storage design](../../storage/docs/design.md).
 
 What is built of subscriptions: `QUERY /conversations/{id}/subscribe` (`streamChannels`) serves the
 channels the store keeps for a conversation's nodes (an agent's, a command's and a service's) and
 for its tree, stored history and then what the channel's writer stores next, joined by each entry's
-place in its log so none is missed or sent twice. The tree channel is served like any other, and
+place in its log so none is missed or sent twice. It reads only the entries it sends: the channel's
+`head` says where it stands, and a tail or a cursor on a numbered channel begins at its place, so a
+client that reconnects to a conversation of weeks reads its last entries and not the channel. The
+tree channel is served like any other, and
 from `snapshot` it sends the tree as one frame first (`GET /conversations/{id}/tree` answers the
 same snapshot with no stream), then the entries after its cursor. A command's or a service's channel
 carries its complete output between its `opened` and `closed` entries, made from the output store
@@ -444,8 +448,8 @@ costliest first; an answer's message, with a trailing `…`. The whole command i
 conversation's stream. A cut never lands inside a surrogate pair, and a lone surrogate in a text that
 is cut is replaced; an approval request that fits is stored as asked, as the stream carries it, so
 a strict JSON reader reads its text with the same care it reads the stream's. The tree channel has
-a channel's usual 128 MiB quota, counted in bytes, and shares the conversation's 1 GiB with the node
-channels; a client that changes the queue some thousand times can fill it, and the tree then stops
+a channel's usual 4 GiB quota, counted in bytes, and shares the conversation's 32 GiB with the node
+channels; a client that changes the queue some hundred thousand times can fill it, and the tree then stops
 being written and its snapshot is refused (`507`) for the life of the conversation.
 
 ## Transport

@@ -38,16 +38,21 @@ class WrappedChannels extends MemoryConversationStore {
   }
 }
 
+/** A log that says what it holds and reads as `log` does, and appends as `append` says. */
+const appendingAs = (log: Log, append: Log['append']): Log => ({
+  head: () => log.head(),
+  read: (from) => log.read(from),
+  append,
+});
+
 /** A store whose channel writes all fail, as a full disk's would. */
 const failingChannels = () => {
   const store = new WrappedChannels();
 
-  store.wrap = ({ log }) => ({
-    read: (from) => log.read(from),
-    append: async () => {
+  store.wrap = ({ log }) =>
+    appendingAs(log, async () => {
       throw new StoreError({ reason: 'failed', message: 'disk gone' });
-    },
-  });
+    });
 
   return store;
 };
@@ -59,13 +64,11 @@ const failingChannels = () => {
 const slowChannels = () => {
   const store = new WrappedChannels();
 
-  store.wrap = ({ log }) => ({
-    read: (from) => log.read(from),
-    append: async (entry) => {
+  store.wrap = ({ log }) =>
+    appendingAs(log, async (entry) => {
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
       await log.append(entry);
-    },
-  });
+    });
 
   return store;
 };
@@ -76,6 +79,10 @@ function damageChannels(params: { store: WrappedChannels; damaged: (channel: str
     params.damaged(channel)
       ? {
           append: async () => undefined,
+          head: () =>
+            Promise.reject(
+              new StoreError({ reason: 'failed', message: 'Stored channel file is damaged' }),
+            ),
           read: () => {
             throw new StoreError({ reason: 'failed', message: 'Stored channel file is damaged' });
           },

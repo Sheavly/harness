@@ -1,15 +1,48 @@
 import { describe, expect, it } from 'vitest';
+import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CursorKind } from '@sheavly/protocol/channel/channel.types';
 import { MAX_TAIL, MAX_TAIL_BYTES } from '@sheavly/protocol/subscription/subscription.constants';
 import { HeldBytes } from '../held-bytes.service.js';
 import { checkPosition, kindOf, readSelection } from '../subscription-read.helper.js';
 
-/** A log holding `entries`, which a subscription only reads. */
-const logOf = (entries: ChannelEntry[]): ChannelLog => ({
+/**
+ * A log holding `entries`, which a subscription only reads, as a store reads one: from the start, a
+ * tail or after a cursor it holds. `reads` is given each entry the log hands out, in order, so a
+ * test can say which of them a subscription touched. `told` is what `head` says it holds, when that
+ * is less than `entries`: the entries after it were stored after it was asked.
+ */
+const logOf = (
+  entries: ChannelEntry[],
+  options: { reads?: string[]; told?: number } = {},
+): ChannelLog => ({
   append: () => Promise.resolve(),
-  async *read() {
-    yield* entries;
+  head: () => {
+    const held = entries.slice(0, options.told ?? entries.length);
+    const newest = held.at(-1);
+
+    return Promise.resolve({
+      count: held.length,
+      newest: newest && { channel: newest.channel, cursor: newest.cursor, type: newest.type },
+    });
+  },
+  async *read(from = 'start') {
+    let begin = 0;
+
+    if (from !== 'start' && 'tail' in from) begin = Math.max(0, entries.length - from.tail);
+
+    if (from !== 'start' && 'after' in from) {
+      const at = entries.findIndex((each) => each.cursor === from.after);
+
+      if (at < 0) throw new StoreError({ reason: 'cursor_out_of_range', message: 'not held' });
+
+      begin = at + 1;
+    }
+
+    for (const each of entries.slice(begin)) {
+      options.reads?.push(each.cursor);
+      yield each;
+    }
   },
 });
 
@@ -53,9 +86,12 @@ const select = (params: { from: string; budget?: number; entries?: ChannelEntry[
   });
 
 describe('what a channel’s cursors count', () => {
-  it('is read from its first entry', async () => {
-    expect(await kindOf(logOf([entry('s0')]))).toBe('sequence');
-    expect(await kindOf(logOf([entry('b0')]))).toBe('byte');
+  it('is read from what the channel holds, without reading an entry', async () => {
+    const reads: string[] = [];
+
+    expect(await kindOf(logOf([entry('s0'), entry('s1')], { reads }))).toBe('sequence');
+    expect(await kindOf(logOf([entry('b0')], { reads }))).toBe('byte');
+    expect(reads).toEqual([]);
   });
 
   it('is nothing for a channel that holds nothing', async () => {
@@ -137,6 +173,86 @@ describe('what a subscription sends first', () => {
   });
 });
 
+describe('what a read touches of a long channel', () => {
+  const LONG = Array.from({ length: 50 }, (_, n) => entry(`s${String(n)}`));
+  const touched = async (from: string) => {
+    const reads: string[] = [];
+
+    await read({ log: logOf(LONG, { reads }), from });
+
+    return reads;
+  };
+
+  it('reads only the entries it sends, for a tail and for a cursor, wherever it begins', async () => {
+    expect(await touched('tail:3')).toEqual(['s47', 's48', 's49']);
+    expect(await touched('s46')).toEqual(['s47', 's48', 's49']);
+    expect(await touched('s0')).toHaveLength(49);
+    expect(await touched('tail:99')).toHaveLength(50);
+    // What sends nothing reads nothing: where the log stands is what the store said.
+    expect(await touched('tail:0')).toEqual([]);
+    expect(await touched('now')).toEqual([]);
+    expect(await touched('s49')).toEqual([]);
+  });
+
+  it('sends what the log held when it was asked, and leaves what was stored after to the writer', async () => {
+    // The log says it holds four: two more were stored while the read went on, and the writer
+    // tells those, so a read that sent them too would send them twice.
+    const six = [...FOUR, entry('s4', 50), entry('s5', 50)];
+
+    for (const [from, expected] of [
+      ['start', ['s0', 's1', 's2', 's3']],
+      ['tail:2', ['s2', 's3']],
+      ['s1', ['s2', 's3']],
+      ['s3', []],
+    ] as const) {
+      const selection = await read({ log: logOf(six, { told: 4 }), from });
+
+      expect(cursors(selection.entries)).toEqual(expected);
+      expect(selection.count).toBe(4);
+      expect(selection.newest.cursor).toBe('s3');
+    }
+  });
+
+  it('refuses a cursor that is no entry’s place before it reads anything', async () => {
+    const reads: string[] = [];
+
+    for (const from of ['s50', 's99', 'b3']) {
+      await expect(read({ log: logOf(LONG, { reads }), from })).rejects.toMatchObject({
+        reason: 'cursor_out_of_range',
+      });
+    }
+
+    expect(reads).toEqual([]);
+  });
+
+  it('tells a cursor the store does not hold as the subscription’s refusal, and any other failure as it is', async () => {
+    const failing = (reason: 'cursor_out_of_range' | 'failed'): ChannelLog => ({
+      ...logOf(LONG),
+      read: () => {
+        throw new StoreError({ reason, message: 'stored file is damaged' });
+      },
+    });
+
+    await expect(read({ log: failing('cursor_out_of_range'), from: 's10' })).rejects.toMatchObject({
+      name: 'SubscriptionError',
+      reason: 'cursor_out_of_range',
+    });
+    await expect(read({ log: failing('failed'), from: 's10' })).rejects.toMatchObject({
+      name: 'StoreError',
+      reason: 'failed',
+    });
+  });
+
+  it('finds the cursor of a byte channel by reading its few entries', async () => {
+    const entries = [entry('b0'), entry('b50'), entry('b100')];
+    const bytes = (from: string) => read({ log: logOf(entries), from, kind: 'byte' });
+
+    expect(cursors((await bytes('b50')).entries)).toEqual(['b100']);
+    expect(cursors((await bytes('b100')).entries)).toEqual([]);
+    await expect(bytes('b7')).rejects.toMatchObject({ reason: 'cursor_out_of_range' });
+  });
+});
+
 describe('the most one request reads', () => {
   const sizes = FOUR.map(sizeOf);
   const total = sizes.reduce((sum, size) => sum + size, 0);
@@ -203,7 +319,7 @@ describe('what a read holds of the conversation’s pool while it goes on', () =
     expect(hasRoom({ pool, bytes: total - 1 })).toBe(true);
   });
 
-  it('holds only what a tail keeps, giving back the entries it moves past', async () => {
+  it('holds only what a tail sends, since it reads no more', async () => {
     const pool = new HeldBytes((sizes[2] ?? 0) + (sizes[3] ?? 0));
     const selection = await read({ log: logOf(FOUR), from: 'tail:2', pool });
 

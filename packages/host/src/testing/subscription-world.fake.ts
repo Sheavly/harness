@@ -198,6 +198,7 @@ export class PausedReads extends MemoryConversationStore {
 
     return {
       append: (entry: Parameters<ChannelLog['append']>[0]) => log.append(entry),
+      head: () => log.head(),
       read: (from?: ChannelFrom) => this.#paused({ log, from }),
     };
   }

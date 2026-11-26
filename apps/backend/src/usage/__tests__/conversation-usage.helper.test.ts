@@ -28,7 +28,11 @@ const nothing: AsyncIterable<never> = {
 const emptyLog: HistoryLog = { append: async () => undefined, read: () => nothing };
 
 /** A channel log that keeps nothing: these tests never run a node whose channel is stored. */
-const emptyChannel: ChannelLog = { append: async () => undefined, read: () => nothing };
+const emptyChannel: ChannelLog = {
+  append: async () => undefined,
+  head: async () => ({ count: 0, newest: undefined }),
+  read: () => nothing,
+};
 
 /** The storage a host hands a conversation, whose stream holds `entries` and resumes from `resume`. */
 function storageThatReads(params: {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { ChannelEntry, ChannelLog } from '@sheavly/core/store/store.types';
+import { StoreError } from '@sheavly/core/errors/store.errors';
+import type { ChannelEntry, ChannelFrom, ChannelLog } from '@sheavly/core/store/store.types';
 import type { CursorKind } from '@sheavly/protocol/channel/channel.types';
 import { cursorKind, cursorNumber } from '@sheavly/protocol/channel/channel.utils';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
@@ -40,17 +41,14 @@ export function holdEntry(params: {
   taken.bytes += size;
 }
 
-/** What a channel's cursors count, from its first entry; none for a channel with no entry. */
+/**
+ * What a channel's cursors count, from the newest entry it holds (a channel keeps one kind from its
+ * first entry, so it is the first's too); none for a channel with no entry. Nothing is read.
+ */
 export async function kindOf(log: ChannelLog): Promise<CursorKind | undefined> {
-  const entries = log.read('start')[Symbol.asyncIterator]();
+  const { newest } = await log.head();
 
-  try {
-    const first = await entries.next();
-
-    return first.done ? undefined : cursorKind(first.value.cursor);
-  } finally {
-    await entries.return?.();
-  }
+  return newest && cursorKind(newest.cursor);
 }
 
 /** What a command's or a service's `opened` entry holds of its output: the log's reference. */
@@ -116,14 +114,17 @@ export function checkPosition(params: { from: string; kind: CursorKind }): void 
 }
 
 /**
- * Reads the whole log of a channel once, and keeps what a subscription starting at `from` sends
- * first: all of it (`start`), nothing (`now`), the last `n` entries (`tail`; on a channel counted in
- * bytes, the entries within the last `n` bytes of its newest), or the entries after the one with the
- * cursor. `count` is how many entries it held, so what a writer tells afterwards can be joined to it
- * by place; `newest` is the last. What is kept is charged to `budget` (the request's whole read):
- * past it the request is refused, never cut. A cursor no entry has is `cursor_out_of_range`. An
- * aborted `signal` stops the read, which rejects with the abort's reason: a client that left does
- * not make the server read a whole log.
+ * Reads what a subscription starting at `from` sends first: all of the channel's log (`start`),
+ * nothing (`now`), the last `n` entries (`tail`; on a channel counted in bytes, the entries within
+ * the last `n` bytes of its newest), or the entries after the one with the cursor. `count` is how
+ * many entries the log held when it was asked, so what a writer tells afterwards can be joined to it
+ * by place, and `newest` is the last: they come from the store's `head`, and never from reading.
+ * Only the entries that are sent are read, however long the log is (a numbered channel's cursor is
+ * its entry's place, so a tail and a cursor say where to begin), and no more than `count` of them: an
+ * entry stored while the read goes on is the writer's to tell. What is kept is charged to `budget`
+ * (the request's whole read): past it the request is refused, never cut. A cursor no entry has is
+ * `cursor_out_of_range`. An aborted `signal` stops the read, which rejects with the abort's reason:
+ * a client that left does not make the server read on.
  *
  * What is kept is also held against `pool`, the bytes the conversation's subscriptions may hold,
  * while the read goes on: many requests reading at once cannot hold more than it. `held` is what
@@ -159,13 +160,16 @@ async function readInto(params: {
   taken: { bytes: number };
 }): Promise<Selection> {
   const { log, from, kind, budget, pool, signal, taken } = params;
-  const tail = tailCount(from);
-  const afterCursor = from !== 'start' && from !== 'now' && tail === undefined;
-  let kept: ChannelEntry[] = [];
-  let count = 0;
-  let newest: Selection['newest'] | undefined;
-  let passed = !afterCursor;
+  // Asked before anything is read: what the log held then is what the writer's places are joined to.
+  const { count, newest } = await log.head();
 
+  if (newest === undefined) {
+    throw new ConversationsError({ reason: 'not_found', message: NO_SUCH_CHANNEL });
+  }
+
+  const tail = tailCount(from);
+  const plan = planOf({ from, kind, count });
+  let kept: ChannelEntry[] = [];
   const release = (entry: ChannelEntry) => {
     const size = sizeOf(entry);
 
@@ -178,52 +182,140 @@ async function readInto(params: {
     kept.push(entry);
   };
 
-  // A tail on a numbered channel holds only its last `n` entries, so the oldest goes (and is no
-  // longer charged) before the next is taken: a tail is never refused for history it does not send.
-  const limit = kind === 'sequence' ? tail : undefined;
-  const keep = (entry: ChannelEntry) => {
-    if (limit !== undefined && kept.length >= limit) {
-      const dropped = kept.shift();
-
-      if (dropped) release(dropped);
-    }
-
-    hold(entry);
-  };
-
-  for await (const entry of log.read('start')) {
-    signal?.throwIfAborted();
-    newest = { cursor: entry.cursor, type: entry.type };
-    count += 1;
-
-    if (from === 'now') continue;
-
-    if (passed) keep(entry);
-    else passed = entry.cursor === from;
-  }
-
-  if (newest === undefined) {
-    throw new ConversationsError({ reason: 'not_found', message: NO_SUCH_CHANNEL });
-  }
-
-  if (!passed) {
-    throw new SubscriptionError({
-      reason: 'cursor_out_of_range',
-      message: `No entry of this channel has the cursor ${from}`,
-    });
-  }
+  await readPlanned({ log, plan, from, hold, signal });
 
   if (tail !== undefined && kind === 'byte') {
     const floor = cursorNumber(newest.cursor) - tail;
     const inside = (entry: ChannelEntry) => cursorNumber(entry.cursor) >= floor;
 
-    // Held while the window was not known (the newest entry is the last one read), then given back.
+    // Held while the window was not known, then given back: a byte channel's log is a few entries.
     for (const left of kept.filter((entry) => !inside(entry))) release(left);
 
     kept = kept.filter(inside);
   }
 
-  return { entries: kept, count, newest, held: taken.bytes };
+  return {
+    entries: kept,
+    count,
+    newest: { cursor: newest.cursor, type: newest.type },
+    held: taken.bytes,
+  };
+}
+
+/** What to ask the store for, to send what a position wants of a channel that held `count` entries. */
+type Plan = {
+  /** What to read; none when nothing is to be sent. */
+  read: ChannelFrom | undefined;
+  /** How many entries from the start of that read are ones the channel held: no more are taken. */
+  take: number;
+  /** A byte channel's cursor is not an entry's place: the entries through it are read and skipped. */
+  skipThrough?: string;
+};
+
+/**
+ * The read that gives what a subscription at `from` sends first. A numbered channel's cursor is its
+ * entry's place, so a tail and a cursor say which entry to begin after, and the store seeks to it. A
+ * byte channel's log holds a few entries (the output is in the output store), so it is read from its
+ * start and a cursor is found by reading. `cursor_out_of_range` for a cursor that is not an entry's
+ * place in a numbered channel.
+ */
+function planOf(params: { from: string; kind: CursorKind; count: number }): Plan {
+  const { from, kind, count } = params;
+  const tail = tailCount(from);
+
+  if (from === 'now') return { read: undefined, take: 0 };
+
+  if (kind === 'byte') {
+    const skip = from !== 'start' && tail === undefined;
+
+    return { read: 'start', take: count, ...(skip && { skipThrough: from }) };
+  }
+
+  if (from === 'start') return { read: 'start', take: count };
+
+  const first =
+    tail === undefined ? placeAfter({ cursor: from, count }) : Math.max(0, count - tail);
+  const take = count - first;
+
+  if (take === 0) return { read: undefined, take };
+
+  return { read: first === 0 ? 'start' : { after: `s${String(first - 1)}` }, take };
+}
+
+/** The place of the entry that follows the one `cursor` names, in a numbered channel of `count`. */
+function placeAfter(params: { cursor: string; count: number }): number {
+  const { cursor, count } = params;
+  const place = cursorKind(cursor) === 'sequence' ? cursorNumber(cursor) : -1;
+
+  if (place < 0 || place >= count) throw cursorOutOfRange(cursor);
+
+  return place + 1;
+}
+
+/** Reads what `plan` says, holding each entry that is sent, and refuses a cursor the store does not hold. */
+async function readPlanned(params: {
+  log: ChannelLog;
+  plan: Plan;
+  from: string;
+  hold: (entry: ChannelEntry) => void;
+  signal?: AbortSignal | undefined;
+}): Promise<void> {
+  const { plan, from } = params;
+
+  if (plan.read === undefined || plan.take === 0) return;
+
+  let passed: boolean;
+
+  try {
+    passed = await takeEntries({ ...params, read: plan.read, take: plan.take });
+  } catch (caughtError) {
+    // The store says a cursor is not its entry's; what a client is told is the subscription's.
+    if (caughtError instanceof StoreError && caughtError.reason === 'cursor_out_of_range') {
+      throw cursorOutOfRange(from);
+    }
+
+    throw caughtError;
+  }
+
+  if (!passed) throw cursorOutOfRange(from);
+}
+
+/**
+ * Holds the first `take` entries of the store's read of `read`, after the one a byte channel's
+ * cursor names (`plan.skipThrough`), and stops there: the rest is not read. Whether that entry was
+ * reached, which is true when there was none to find.
+ */
+async function takeEntries(params: {
+  log: ChannelLog;
+  plan: Plan;
+  read: ChannelFrom;
+  take: number;
+  hold: (entry: ChannelEntry) => void;
+  signal?: AbortSignal | undefined;
+}): Promise<boolean> {
+  const { log, plan, read, take, hold, signal } = params;
+  let seen = 0;
+  let passed = plan.skipThrough === undefined;
+
+  for await (const entry of log.read(read)) {
+    signal?.throwIfAborted();
+    seen += 1;
+
+    if (passed) hold(entry);
+    else passed = entry.cursor === plan.skipThrough;
+
+    if (seen >= take) break;
+  }
+
+  return passed;
+}
+
+/** The refusal for a cursor the channel does not hold. */
+function cursorOutOfRange(cursor: string): SubscriptionError {
+  return new SubscriptionError({
+    reason: 'cursor_out_of_range',
+    message: `No entry of this channel has the cursor ${cursor}`,
+  });
 }
 
 /**

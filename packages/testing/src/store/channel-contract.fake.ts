@@ -49,6 +49,58 @@ export function describeChannelLog(params: { name: string; make: () => Conversat
       expect(stored).toEqual(LIFE);
     });
 
+    it('says what a channel holds, without reading it: how many entries and the newest', async () => {
+      const store = make();
+      const log = store.channel({ id: first, channel: 'main' });
+      const newest = (entry: typeof OPENED) => ({
+        channel: entry.channel,
+        cursor: entry.cursor,
+        type: entry.type,
+      });
+
+      // A channel nothing was written to holds nothing, and asking does not make it.
+      expect(await log.head()).toEqual({ count: 0, newest: undefined });
+      expect(await store.channels(first)).toEqual([]);
+
+      for (const [index, entry] of LIFE.entries()) {
+        await log.append(entry);
+        expect(await log.head()).toEqual({ count: index + 1, newest: newest(entry) });
+      }
+
+      // A refused entry changes nothing.
+      await expect(log.append(UPDATED_AGAIN)).rejects.toMatchObject({ reason: 'out_of_order' });
+      expect(await log.head()).toEqual({ count: 4, newest: newest(CLOSED) });
+    });
+
+    it('says what each channel holds apart from the others, a byte channel counting entries, and nothing once deleted', async () => {
+      const store = make();
+
+      await appendAll({
+        store,
+        entries: [
+          entryOf({ type: 'opened', cursor: 'b0', channel: 't1' }),
+          entryOf({ type: 'closed', cursor: 'b40', channel: 't1' }),
+          OPENED,
+        ],
+      });
+      await appendAll({ store, conversation: second, entries: [OPENED, UPDATED] });
+
+      const heads = async (params: { channel: string; conversation?: typeof first }) =>
+        store
+          .channel({ id: params.conversation ?? first, channel: params.channel })
+          .head()
+          .then(({ count, newest }) => [count, newest?.cursor]);
+
+      expect(await heads({ channel: 't1' })).toEqual([2, 'b40']);
+      expect(await heads({ channel: 'main' })).toEqual([1, 's0']);
+      expect(await heads({ channel: 'main', conversation: second })).toEqual([2, 's1']);
+      expect(await heads({ channel: 'tree' })).toEqual([0, undefined]);
+
+      await store.delete(first);
+      expect(await heads({ channel: 'main' })).toEqual([0, undefined]);
+      expect(await heads({ channel: 'main', conversation: second })).toEqual([2, 's1']);
+    });
+
     it('reads a channel nothing was written to as empty, from the start or a tail', async () => {
       const store = make();
 

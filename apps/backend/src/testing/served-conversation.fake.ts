@@ -1,4 +1,5 @@
 import { createClient } from '@sheavly/client/client/client.helper';
+import type { ConversationStore } from '@sheavly/core/store/store.types';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { reply, testApi } from './api.fake.js';
@@ -12,7 +13,7 @@ import { TEST_TOKEN } from './testing.constants.js';
  */
 export async function servedConversation(params: {
   servers: ReturnType<typeof useOpenedServers>;
-  store?: MemoryConversationStore;
+  store?: ConversationStore;
 }) {
   const store = params.store ?? new MemoryConversationStore();
   const api = testApi({ go: [reply('done')] }, store);

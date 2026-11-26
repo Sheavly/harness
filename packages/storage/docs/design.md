@@ -78,27 +78,29 @@ a line holds its keys in the schema's order, not the caller's. Then it has to be
 cursor 0; a sequence goes on by one and a byte offset never goes back, in one kind of cursor;
 nothing opens twice, nothing follows `closed`, and an entry of another channel is not this one's;
 or it is `out_of_order` and not written. Which kind of cursor a node's channel uses is the
-writer's: the store keeps one kind, it does not look at the node. The last entry is read from the
-file once (after a line cut off by a crash is trimmed), then kept, and appends go one at a time
-through a queue; a channel's file is not locked, since a conversation belongs to the one process
-serving it, as the stream does. That read holds every line to the same rule, so a file edited by
-hand into a log with a gap, a repeat or another channel's line is refused when it is next appended
-to, naming the file, as the stream's and the histories' gaps are. Entries are never rewritten or
+writer's: the store keeps one kind, it does not look at the node. The file is read once in a
+process (after a line cut off by a crash is trimmed) for how many lines it holds, the last of them
+and where blocks of lines start, which are then kept and kept current by every append, and appends
+go one at a time through a queue; a channel's file is not locked, since a conversation belongs to the one process
+serving it, as the stream does. That read holds every line it reads to the same rule, so a file
+edited by hand into a log with a gap, a repeat or another channel's line is refused when it is next
+appended to or read, naming the file, as the stream's and the histories' gaps are. With an index
+(below) it reads only the lines after what the index covers. Entries are never rewritten or
 removed, and go with the conversation. A write that arrives after `delete` recreates the folder,
 as the other files' do (#241). A write that failed may have reached the file: the channel reads it
 again before the next, so a sequence cursor is refused a second time, and a byte cursor, which may
 repeat, can be stored twice if the writer sends it again.
 
 `FileConversationStore.channels(id)` lists the channels a conversation has stored: the regular
-files `channels/<channel>.jsonl` whose name is a node id or `tree`. A marker, a link, a folder, a
-stray file or a name that is not a channel's is not listed, and a conversation with no folder has
+files `channels/<channel>.jsonl` whose name is a node id or `tree`. A marker, an index, a link, a
+folder, a stray file or a name that is not a channel's is not listed, and a conversation with no folder has
 none. A reopened conversation reads it to find the channels whose node never closed.
 
 A read starts at `start`, at the last `n` entries (`{ tail }`) or after a cursor the reader kept
 (`{ after }`). A cursor the channel does not hold or that is not a cursor, or a tail that is not a
-whole number from 0 to `MAX_TAIL` (1,000), is `cursor_out_of_range`. `start` and `after` stream
-the file and never hold it whole, an `after` that the channel does not hold reads it all before it
-says so, and a tail keeps about twice its `n` as it goes. Several entries of a byte channel can
+whole number from 0 to `MAX_TAIL` (1,000), is `cursor_out_of_range`. `start` streams the file
+and never holds it whole. A tail and an `after` read the entries they give and no more than a
+block of lines besides, however long the channel is (see "What a channel holds"). Several entries of a byte channel can
 share an offset, and an `after` that offset starts after the first of them. A byte channel's bytes
 are not here: the output store serves them, by offset, and its log holds only the entries it was
 given (the `opened` and `closed` around them).
@@ -110,9 +112,62 @@ protocol's whole-log schemas (`channelLogSchema`, `channelBoundarySchema`) anywh
 read a line at a time through one definition and never as the array those schemas check. Reading
 what an entry's type holds is for the code that knows the type, after the store has handed it over.
 
-**Limits.** A channel keeps at most 128 MiB, a conversation's channels at most 1 GiB together, and
+**What a channel holds, and where to read from.** `head()` says how many entries a channel holds and
+the newest (its channel, cursor and type), without reading it: a channel nothing was written to has
+none of either, and asking does not make it. The file store counts a channel's file once in a
+process and keeps the count, the newest entry and where every 1,024th line starts
+(`CHANNEL_INDEX_EVERY`), and every append keeps them in step. A numbered channel's cursor is its
+line's number, so a tail or an `after` says which line to begin after, and a read begins at the
+block of lines that holds it, checking that each line up to the first one it gives has the cursor it
+should (a place the index got wrong shows there, and is dealt with as below). A byte channel's
+cursor is not a line's, and it is found by reading, which is cheap for a command's or a service's:
+its log holds a few lines. A kind an extension adds with byte cursors that holds many is read from
+its start for a tail or a cursor, and refused past what a request may read. A read gives what the
+channel held when it began; an entry appended while it runs is for the next. Asking for what a
+channel holds, or reading it, is the first thing a process does with its file, so it loads it: it
+trims a line a crash cut off, and may write the index. The host's subscription takes `head()` first and reads only the entries it sends
+(`readSelection`), so a client that reconnects with the cursor it last saw, or asks for a tail, does
+not make the server read the channel.
+
+**The index.** Reading the file to know all that costs a read and a check of every line, about 15
+seconds a GiB, and a conversation that runs for weeks has gigabytes. A channel of at least one block
+of lines, and numbered, therefore keeps `<channel>.idx` beside its log (`channelIndexSchema`; a byte
+channel keeps none): how many lines the
+log held, how many bytes those are, where the last of them starts and what it was, and where every
+`CHANNEL_INDEX_EVERY`th line starts; a channel of a million entries has an index of about 15 KiB. It
+is written whole or not at all, at the end of each block of lines, when the channel closes (so a
+finished channel is covered whole) and after a load that had to read a block's worth of lines. A
+process that reads the channel takes the index if the log still agrees with it: it is for blocks of
+the same size, it is of a numbered channel, it covers no more than the log holds, it is consistent
+(the last cursor is one less than its count), it is a regular file and the log has, where the index
+says it ends, the entry and the bytes it says (so another channel's index is not taken: its last
+line is not this log's). It then reads only the lines after it, which are at most a block. Anything
+else (no index, a link to what is not a file, one too big to read into memory at 8 MiB, one that is
+not valid, for another size, whose last line is not the log's) is the same as none: the log is read
+whole and the index is made again. The offsets inside are not checked at the load, and a read that
+begins at one checks the lines it passes. If a line is not the one it should be, or the place is in
+the middle of a line, the log is read whole to find out why, with what the channel knows kept as it
+is: if it is well formed the places were wrong, the ones that read made replace them, the index is
+written again and the read starts over once; if it is not, the log is damaged, the places were not
+at fault, nothing is replaced or thrown away, the read fails with that line named, and the log is not
+read whole again for the next read that meets the damage (a process that starts again asks once more;
+a read of the disk that failed is not damage, and is tried again). Reads that fail together on the
+same places share one reading of the whole log. An index that hides lines or points into the middle of
+one is found by the first read that begins there. A line's place is counted in the bytes the file has
+(`readJsonLinesAt` reads bytes, and a line of text that is not UTF-8 is one replacement character to
+the parser and still the bytes it is), so a damaged byte cannot put every later place wrong, which
+would have made each read of the channel read the whole log and fail. It is a cache and never the record, so a write of it that fails costs the next process a read
+of the log and never an append. What the index gives up is the check of every covered line at the load: a
+log edited by hand inside what an index covers is found by the read that reaches the line (each
+line a read returns is checked against its schema), not by the load, and the lines after the index
+are checked as ever. The tree channel is the one thing a reopen still reads whole (`readStored`
+rebuilds the tree from it), so it is what a very long reopen would spend its time on.
+
+**Limits.** A channel keeps at most 4 GiB, a conversation's channels at most 32 GiB together, and
 a conversation at most 5,000 channels (`DEFAULT_CHANNEL_LIMITS`; an app may pass others to the
-store). An entry counts as its line, its JSON and the line break. They are counted from the files
+store). A conversation used for weeks keeps its story in one channel and a turn that reads files and
+runs commands is tens of KiB of it, so these last months, not days; what to drop from the oldest end
+is retention (#45), not a limit. An entry counts as its line, its JSON and the line break. They are counted from the files
 once, so a conversation that is reopened carries on from what it holds, and kept by every append; an
 entry is held for before it is written, with nothing awaited between the check and the hold, so
 channels written at once cannot together pass a limit that each passes alone. An entry past a limit
@@ -212,6 +267,7 @@ replaced is decided once.
         queue.json                            # lines queued behind a running prompt
         outputs/                              # complete command output logs
         channels/<channel>.jsonl              # one channel's log: a node's, or the tree's
+        channels/<channel>.idx                # where its lines start, for a restart (a cache)
         agents/<session-id>.history.jsonl     # a sub-agent's history log
 ```
 

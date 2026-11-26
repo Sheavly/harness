@@ -4,6 +4,7 @@ import type {
   ChannelFrom,
   ChannelLimits,
   ChannelLog,
+  ChannelSummary,
 } from '@sheavly/core/store/store.types';
 import {
   assertChannelName,
@@ -51,6 +52,7 @@ export class MemoryChannels {
 
     return {
       append: async (entry) => this.#append({ id, channel, entry }),
+      head: async () => this.#head(keyOf({ id, channel })),
       read: (from = 'start') => this.#read({ key: keyOf({ id, channel }), from }),
     };
   }
@@ -118,6 +120,16 @@ export class MemoryChannels {
     return !this.#logs.has(key) && keys.length >= this.#limits.conversationChannels
       ? 'is one channel too many for its conversation'
       : undefined;
+  }
+
+  #head(key: string): ChannelSummary {
+    const stored = this.#logs.get(key) ?? [];
+    const newest = stored.at(-1);
+
+    return {
+      count: stored.length,
+      newest: newest && { channel: newest.channel, cursor: newest.cursor, type: newest.type },
+    };
   }
 
   async *#read(params: { key: string; from: ChannelFrom }): AsyncGenerator<ChannelEntry> {

@@ -420,9 +420,9 @@ stream. An output keeps its end, a message ends in `…`. A snapshot at its boun
 many approvals waiting; the oldest ended node nothing hangs from is dropped past that) is about 32
 million characters of JSON: about 32 MiB of ASCII, up to three times that in bytes for text of
 wide characters, and a held `GET /tree` response costs the server several times its size in memory
-while it is sent (about 140 MiB for the widest). The tree channel has the same 128 MiB quota as any
-channel, counted in bytes, and shares the conversation's 1 GiB with the node channels, so a client
-that changes the queue some thousand times with long lines fills it: the tree then stops being
+while it is sent (about 140 MiB for the widest). The tree channel has the same 4 GiB quota as any
+channel, counted in bytes, and shares the conversation's 32 GiB with the node channels, so a client
+that changes the queue some hundred thousand times with long lines fills it: the tree then stops being
 written and is answered `507`, as below, for as long as the conversation lives. A snapshot taken (`from: snapshot`) is held in memory
 by the server and counts against what the conversation's subscriptions may hold (128 MiB), not
 against the 8 MiB of stored history a request may read. `GET /tree` is built and sent whole and is
