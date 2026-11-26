@@ -3,21 +3,28 @@ import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import { applyTreeEntry, emptyTree } from '@sheavly/protocol/tree/tree.utils';
-import { treeChannelEntrySchema } from '@sheavly/protocol/tree/tree.validator';
+import { treeChannelEntrySchema, treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import type { createClient } from '../client/client.helper.js';
 import { subscribeChannels } from '../client/subscribe.helper.js';
 import { AnswerError, ChannelFailedError, RefusedError } from '../errors/client.errors.js';
 import type { WatchedTree } from './tree.types.js';
 
 /**
- * `tree` after `frame`: a snapshot is the tree as it stands and replaces it, an entry of the tree
- * channel is folded in by the protocol's one rule (`applyTreeEntry`, which leaves an entry that
- * changes nothing in the tree as it is), and any other frame changes nothing.
+ * `tree` after `frame`: the tree's snapshot is the tree as it stands and replaces it, an entry of
+ * the tree channel is folded in by the protocol's one rule (`applyTreeEntry`, which leaves an entry
+ * that changes nothing in the tree as it is), and any other frame, another channel's included,
+ * changes nothing.
  */
 function foldFrame(params: { tree: TreeView; frame: SubscribeFrame }): TreeView {
   const { tree, frame } = params;
 
-  if (frame.type === 'snapshot') return { nodes: frame.nodes, approvals: frame.approvals };
+  if (frame.type === 'snapshot') {
+    const snapshot = treeSnapshotSchema.safeParse(frame);
+
+    return snapshot.success
+      ? { nodes: snapshot.data.nodes, approvals: snapshot.data.approvals }
+      : tree;
+  }
 
   const entry = treeChannelEntrySchema.safeParse(frame);
 
