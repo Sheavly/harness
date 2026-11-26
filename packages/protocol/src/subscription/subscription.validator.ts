@@ -7,6 +7,7 @@ import {
 import { cursorKind, isConversationChannel } from '../channel/channel.utils.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
+import { usageChannelEntrySchema, usageSnapshotSchema } from '../usage/usage-channel.validator.js';
 import {
   CHANNEL_END_REASONS,
   END_EVENT,
@@ -21,7 +22,7 @@ import { tailCount, tailLimit } from './subscription.utils.js';
  * Where in a channel to start. `start`: the first entry. `now`: nothing that is already there,
  * only what comes. `tail:<n>`: the last `n` entries of a channel that numbers its entries, the
  * last `n` bytes of the output of a command or a service. `snapshot`, for a channel of the
- * conversation itself (the tree): its view as it stands, then what follows. Or a cursor the client
+ * conversation itself (the tree, usage): its view as it stands, then what follows. Or a cursor the client
  * was given: what follows it. The schema cannot see which kind a node's channel is, so it bounds
  * `n` by `MAX_TAIL_BYTES` for any channel and by `MAX_TAIL` on a channel of the conversation itself
  * only. The server must apply `tailLimit` of the
@@ -130,14 +131,17 @@ export const channelEndFrameSchema = z.object({
 /**
  * What one frame of a subscribe stream holds, as JSON: an entry of a channel (event `entry`; its
  * envelope carries its own channel and cursor), where a channel stood (`head`), the end of a
- * channel (`end`), or the tree as it stands (`snapshot`, the tree channel only). An entry is a
- * node's channel's, or the tree channel's. A frame has no `id`: one id cannot carry several
- * cursors, so a client keeps the last cursor of each channel and sends them again on a reconnect.
+ * channel (`end`), or a conversation channel's view as it stands (`snapshot`: the tree's or
+ * usage's). An entry is a node's channel's, or one of the conversation's own channels'. A frame has
+ * no `id`: one id cannot carry several cursors, so a client keeps the last cursor of each channel
+ * and sends them again on a reconnect.
  */
 export const subscribeFrameSchema = z.union([
   channelEntrySchema,
   treeChannelEntrySchema,
+  usageChannelEntrySchema,
   channelHeadFrameSchema,
   channelEndFrameSchema,
   treeSnapshotSchema,
+  usageSnapshotSchema,
 ]);

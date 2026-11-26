@@ -6,6 +6,7 @@ import {
   MAX_NODE_ERROR_CHARS,
   MAX_NODE_REASON_CHARS,
   TREE_CHANNEL_NAME,
+  USAGE_CHANNEL_NAME,
 } from '../node/node.constants.js';
 import { nodeIdSchema, nodeInfoSchema } from '../node/node.validator.js';
 import { outputStatusSchema } from '../output/output.validator.js';
@@ -19,6 +20,7 @@ import {
   SEQUENCE_CURSOR_PATTERN,
   TREE_ONLY_EVENT_TYPES,
 } from './channel.constants.js';
+import type { ConversationChannelName } from './channel.types.js';
 import {
   channelCursorKinds,
   cursorKind,
@@ -247,32 +249,65 @@ const nodeEventOmittedSchema = entrySchema
     path: ['cursor'],
   });
 
-/** The first entry of the tree channel: the conversation opened it. */
-export const treeOpenedSchema = entrySchema
-  .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('opened') })
-  .refine(
-    ({ cursor }) => sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) === 0,
-    { error: 'the tree channel is numbered, from 0', path: ['cursor'] },
-  );
+/** A conversation's own channel opens at position 0 of a numbered channel. */
+const startsFromZero = ({ cursor }: { cursor: string }) =>
+  sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) === 0;
 
-/** The last entry of the tree channel: the conversation closed it. */
-export const treeClosedSchema = entrySchema
-  .extend({ channel: z.literal(TREE_CHANNEL_NAME), type: z.literal('closed') })
-  .refine(({ cursor }) => sequenceCursorSchema.safeParse(cursor).success, {
-    error: 'the tree channel is numbered',
+/**
+ * The entries a channel of the conversation itself starts and ends with: the conversation opened
+ * it (numbered from 0), and closed it. One form for every channel of the family, each naming its
+ * own channel, so an entry of one never reads as another's.
+ */
+function conversationBoundary<Name extends ConversationChannelName>(name: Name) {
+  const opened = entrySchema
+    .extend({ channel: z.literal(name), type: z.literal('opened') })
+    .refine(startsFromZero, { error: `the ${name} channel is numbered, from 0`, path: ['cursor'] });
+  const closed = entrySchema
+    .extend({ channel: z.literal(name), type: z.literal('closed') })
+    .refine(({ cursor }) => sequenceCursorSchema.safeParse(cursor).success, {
+      error: `the ${name} channel is numbered`,
+      path: ['cursor'],
+    });
+
+  return { opened, closed };
+}
+
+/** The first and last entries of the tree channel. */
+export const { opened: treeOpenedSchema, closed: treeClosedSchema } =
+  conversationBoundary(TREE_CHANNEL_NAME);
+
+/** The last entry of the usage channel. */
+export const { closed: usageClosedSchema } = conversationBoundary(USAGE_CHANNEL_NAME);
+
+/**
+ * The first entry of the usage channel. It says, with `earlierUncounted`, that the conversation had
+ * already made model calls this channel did not count: it was kept before the channel existed, so
+ * every figure on it is a lower bound. Left out when the channel counted from the conversation's
+ * start.
+ */
+export const usageOpenedSchema = entrySchema
+  .extend({
+    channel: z.literal(USAGE_CHANNEL_NAME),
+    type: z.literal('opened'),
+    earlierUncounted: z.literal(true).exactOptional(),
+  })
+  .refine(startsFromZero, {
+    error: `the ${USAGE_CHANNEL_NAME} channel is numbered, from 0`,
     path: ['cursor'],
   });
 
 /**
  * The two entries every channel starts and ends with, in their form for a node's channel and for
- * the tree channel. Each says what it holds; the other entries of a channel are the types the
- * issues that serve them add.
+ * each channel of the conversation itself. Each says what it holds; the other entries of a channel
+ * are the types the issues that serve them add.
  */
 export const channelBoundarySchema = z.union([
   nodeOpenedSchema,
   nodeClosedSchema,
   treeOpenedSchema,
   treeClosedSchema,
+  usageOpenedSchema,
+  usageClosedSchema,
 ]);
 
 /**

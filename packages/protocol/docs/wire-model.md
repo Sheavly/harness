@@ -130,6 +130,38 @@ it holds together: each node once, each parent among the nodes, each approval on
 node in it. The tree channel is as sensitive as today's stream: an approval request carries the full command
 and its concerns, so a read-only subscriber sees them too.
 
+### The usage channel
+
+What the conversation's model calls have used, per node and in total, so a front end asks the
+backend and never counts. It carries one entry besides its opening and closing: `node_usage`, a
+node's usage changed (a model call reported, or a turn ended with none), holding the node's figures
+and the conversation's total **as they now are, not what was added**. A client replaces what it
+holds, an entry told twice does no harm, and nothing is summed on the client.
+
+- A node's figures are its calls, its input, output, cache read and cache write tokens, its
+  estimated cost (summed from the cost each call's usage event carries, which is the model's
+  configured rate; a call that reported tokens but had no price is `unpricedCalls`, one that
+  reported none is `missingUsageCalls`) and `incomplete` when a turn ended with no usage reported.
+  A provider's numbers are its own: tokens that are negative, not whole or more cached than sent
+  count as tokens it did not report, a cost that is not a finite amount as no price, and a sum is
+  held at the largest integer a figure may hold, so none can put a figure on the channel that its
+  schema would refuse. An agent's record also says how full its context was at its last call that counts (`context`: used,
+  cached, window); a call that wrote a summary is in the figures and not in the context.
+- A **snapshot** (`from: snapshot`) is the total and the record of each node that has made a call,
+  with the cursor to continue from. Each node is in it once, and at most `MAX_TREE_NODES` are: past
+  that the records of the oldest nodes that are not open are dropped, and their calls stay in the
+  total. An entry that drops some says so (`evicted`, the ids, left out when there are none), and a
+  client drops them too, so a snapshot and the entries after it still give what every entry does. A
+  node whose record was dropped and that calls again starts a new record, of the calls since; the
+  total is not affected.
+- Nodes are recorded as they make calls and stored, so a reopened conversation keeps what its
+  earlier nodes used and its total still covers them; each record stays under the id of the node it
+  was made for. A conversation stored before this channel existed opens a new one whose first
+  entry says so (`earlierUncounted`): it counts from then, and its total is `incomplete` from the
+  first snapshot on, a lower bound, rather than a zero that reads as complete. What a call made
+  while a write was failing, or just before a crash, would have added is not on the channel
+  either: it holds what was written, and a reopen goes on from that.
+
 ### Agent channels
 
 An agent channel carries the loop's events as **items** with an id and a lifecycle: `started`,

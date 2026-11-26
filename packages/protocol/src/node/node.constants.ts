@@ -5,12 +5,18 @@
 export const TREE_CHANNEL_NAME = 'tree';
 
 /**
+ * The name of the conversation's usage channel: what each node's model calls have used, and the
+ * total. A node's channel is named by its id, so no node may have this one.
+ */
+export const USAGE_CHANNEL_NAME = 'usage';
+
+/**
  * The channels of the conversation itself, as opposed to a node's (named by its id): each is named
  * by a fixed word that no node may have and no extension may take, numbers its entries, and has a
- * view a subscriber can start from (`snapshot`). The tree is the first; a new one is added here,
- * and the schemas, the subscription and the host take it from this list.
+ * view a subscriber can start from (`snapshot`). The tree is the first and usage the second; a new
+ * one is added here, and the schemas, the subscription and the host take it from this list.
  */
-export const CONVERSATION_CHANNEL_NAMES = [TREE_CHANNEL_NAME] as const;
+export const CONVERSATION_CHANNEL_NAMES = [TREE_CHANNEL_NAME, USAGE_CHANNEL_NAME] as const;
 
 /**
  * A node's id: lowercase letters, digits, hyphens and underscores, so it is safe in a message and
@@ -83,7 +89,7 @@ export const MAX_TREE_NODES = 1_000;
  * an extension's kind or event can never read as one of ours. A test holds it to
  * `CONVERSATION_CHANNEL_NAMES`.
  */
-export const RESERVED_EXTENSION_NAMES = ['agent', 'command', 'service', 'tree'] as const;
+export const RESERVED_EXTENSION_NAMES = ['agent', 'command', 'service', 'tree', 'usage'] as const;
 
 /** What a node is refused with when its state, end time and last outcome disagree. */
 export const INCONSISTENT_NODE_MESSAGE =

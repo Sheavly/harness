@@ -29,18 +29,22 @@ export const modelUsageSchema = z.object({
 });
 
 /**
- * Latest main-session measurement, not billing totals; seq orders snapshots against live usage.
- * `cached` is how much of `used` the last call read from the prompt cache.
+ * How full an agent's context was at its last call that counts: `used` of the `window`, of which
+ * `cached` came from the prompt cache. Each is left out when it is not known (the provider did not
+ * report tokens, or the model's window is unknown). A call that wrote a summary is not one.
  */
-export const contextUsageSchema = z.object({
-  throughSeq: z.number().int().min(-1),
+export const contextFillSchema = z.object({
   used: count.exactOptional(),
   cached: count.exactOptional(),
   window: contextWindowSchema.exactOptional(),
 });
 
-export const usageTotalsSchema = z.object({
-  throughSeq: z.number().int().min(-1),
+/**
+ * What model calls have used: how many, their tokens and estimated cost, the calls that reported no
+ * usage or had no price, and whether some call is missing from it altogether (`incomplete`: a turn
+ * that ended with no usage reported). One node's figures, or the sum of every node's.
+ */
+export const usageFiguresSchema = z.object({
   calls: count,
   inputTokens: count,
   outputTokens: count,
@@ -50,4 +54,17 @@ export const usageTotalsSchema = z.object({
   missingUsageCalls: count,
   unpricedCalls: count,
   incomplete: z.boolean(),
+});
+
+/**
+ * Latest main-session measurement, not billing totals; seq orders snapshots against live usage.
+ * `cached` is how much of `used` the last call read from the prompt cache.
+ */
+export const contextUsageSchema = contextFillSchema.extend({
+  throughSeq: z.number().int().min(-1),
+});
+
+/** The whole conversation's figures, with the stream entry they are counted through. */
+export const usageTotalsSchema = usageFiguresSchema.extend({
+  throughSeq: z.number().int().min(-1),
 });
