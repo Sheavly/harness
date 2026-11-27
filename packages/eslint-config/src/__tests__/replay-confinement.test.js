@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { ESLint, Linter } from 'eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { replayConfinement } from '../replay-confinement.js';
 import { sourceFilesUnder } from '../testing/source-files.fake.js';
 
@@ -12,6 +12,10 @@ const CONFINED_RULES = [
   'no-restricted-syntax',
 ];
 const eslint = new ESLint({ cwd: TERMINAL });
+
+// The first lint builds the terminal's typed program, with every source it imports: most of this
+// file's time, so it is built once here and counts against no test's limit.
+beforeAll(() => eslint.lintText('', { filePath: path.join(TERMINAL, 'src/chat.ts') }), 180_000);
 
 /** The ids of the rules `code` breaks, linted with `replayConfinement`'s rules. */
 function broken(code) {
@@ -143,7 +147,7 @@ describe('replay in the terminal app', () => {
     for (const file of [
       'src/replay/__tests__/replay.helper.test.ts',
       'src/replay/testing/stream.fake.ts',
-      'src/chat/start.helper.ts',
+      'src/render/render.service.ts',
       'src/demo.ts',
     ]) {
       for (const rule of CONFINED_RULES) {

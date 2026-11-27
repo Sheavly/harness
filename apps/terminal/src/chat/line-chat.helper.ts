@@ -3,6 +3,7 @@ import { stripVTControlCharacters } from 'node:util';
 import type { ConversationDetails } from '@sheavly/protocol/server/server.types';
 import { ChatSession } from './chat-session.service.js';
 import { completeChatLine } from './chat.utils.js';
+import { followTranscript } from './follow-transcript.helper.js';
 import type { RemoteConversation } from '../client/conversation.service.js';
 import { interruptOnCtrlC } from '../interrupt/interrupt.helper.js';
 import type { Renderer } from '../render/render.service.js';
@@ -55,7 +56,6 @@ export async function runLineChat(params: {
   const session: ChatSession = new ChatSession({
     conversation,
     renderer,
-    mainSession: details.session,
     // Line mode is plain text: what `/changes` prints is styled for the screen, so drop that.
     write: (text) => write(stripVTControlCharacters(text)),
     onExit: () => {
@@ -84,13 +84,8 @@ export async function runLineChat(params: {
   const following = new AbortController();
 
   try {
-    const followed = await conversation.follow({
-      onEntry: (entry) => session.hear(entry),
-      signal: following.signal,
-    });
-
     // Every run's output comes through the feed, so losing it ends what was running.
-    void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
+    await followTranscript({ conversation, session, signal: following.signal });
 
     if (firstPrompt) session.submit(firstPrompt);
 

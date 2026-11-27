@@ -4,27 +4,24 @@ import { defaultPalette } from '../theme/palette.utils.js';
 import type { Palette } from '../theme/theme.types.js';
 import { unknownPromptCommand } from './chat-prompt.helper.js';
 import type { LinkFile } from '../changes/changes.types.js';
+import type { ChatItem } from '../client/transcript.types.js';
+import { CardPlacer } from './card-placer.service.js';
 import { describeChanges, describeFailures, describeLatest } from './chat-describe.helper.js';
 import { CHAT_HELP, LINE_COLUMNS } from './chat.constants.js';
 import type { ChatConversation, ChatRun, Describer, RunState, TurnOutcome } from './chat.types.js';
-import { failedRunMessage, mainRunStart, mainRunState, parseChatInput } from './chat.utils.js';
+import { failedRunMessage, parseChatInput, runStateOf } from './chat.utils.js';
 import type { StopResult } from '../interrupt/interrupt.types.js';
 import { describeFailure, plainTerminalText } from '../render/terminal-text.utils.js';
 import { runEffortCommand, runModelCommand } from './chat-model.helper.js';
-import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
-import { runEnd } from '@sheavly/protocol/status/run-end.utils';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-
-/** The main run going, as the stream told it, and whether the user asked to stop it. */
-type HeardRun = ChatRun & { stopAsked: boolean };
+import { OwedMessages } from './owed-messages.service.js';
 
 /**
  * The chat's logic, apart from how a person types to it or sees it: lines go in (`submit`), the
  * conversation's output comes out through `write`. The backend owns whether the conversation is
  * busy: a prompt is sent at once and the backend starts it or keeps it in its own queue, and
- * everything shown (the echo, the run's output, the queue, its end) comes from the conversation's
- * stream through `hear`. A UI decides what a key does (Ctrl+C is `stop`) and what to show; this
- * only does it.
+ * everything shown (the echo, the run's output, the queue, its end) comes from the transcript
+ * feed's items through `hear`. A UI decides what a key does (Ctrl+C is `stop`) and what to show;
+ * this only does it.
  *
  * The chat's commands (`/help`, `/model`, `/exit`) and skills (`/<name>`) are read here, so every
  * UI that has a text box treats them the same.
@@ -32,7 +29,6 @@ type HeardRun = ChatRun & { stopAsked: boolean };
 export class ChatSession {
   readonly #conversation: ChatConversation;
   readonly #renderer: Renderer;
-  readonly #mainSession: string;
   readonly #write: Write;
   readonly #onQueue: (queue: readonly string[]) => void;
   readonly #onBusy: (busy: boolean) => void;
@@ -44,23 +40,17 @@ export class ChatSession {
   readonly #describer: Describer;
   readonly #onThinking: (thinking: boolean) => void;
   readonly #onRunState: (state: RunState) => void;
+  readonly #placer = new CardPlacer();
+  /** The lines the backend accepted from this chat and has not finished with. */
+  readonly #owed = new OwedMessages();
   #reportedTools: readonly RunningTool[];
   #reportedThinking = false;
   /** What the UI was last told, so `onBusy` fires on a change only. */
   #reportedBusy = false;
-  /** The newest entry shown: each entry is shown once. */
-  #shownSeq = -1;
-  /** From the main run's start on the stream to its `done`. */
-  #run: HeardRun | undefined;
-  /** The backend's queue, as its newest `queue` entry (or the read at start) said. */
+  /** From the main run's start on the feed to its `done`. */
+  #run: ChatRun | undefined;
+  /** The backend's queue, as its newest notice (or the read at start) said. */
   #queued: readonly string[] = [];
-  /** The seq of the newest line the backend started or refused from its queue. */
-  #lastQueueStep = -1;
-  /**
-   * The newest seq shown when the backend last accepted a line: that line's run is owed until a
-   * line has started after it and none waits, as the stream and the answer race each other.
-   */
-  #owedAfter: number | undefined;
   /** Lines typed and not yet handled; they are handled one at a time, in the order typed. */
   #handling = 0;
   #work: Promise<void> = Promise.resolve();
@@ -71,8 +61,6 @@ export class ChatSession {
   constructor(params: {
     conversation: ChatConversation;
     renderer: Renderer;
-    /** The id of the conversation's main session: only its events are shown. */
-    mainSession: string;
     write: Write;
     /** Told whenever the backend's queue of waiting lines changes. */
     onQueue?: (queue: readonly string[]) => void;
@@ -105,7 +93,6 @@ export class ChatSession {
     this.#conversation = params.conversation;
     this.#renderer = params.renderer;
     this.#reportedTools = params.renderer.running;
-    this.#mainSession = params.mainSession;
     this.#write = params.write;
     this.#onQueue = params.onQueue ?? (() => undefined);
     this.#onBusy = params.onBusy ?? (() => undefined);
@@ -124,7 +111,7 @@ export class ChatSession {
     };
   }
 
-  /** The lines waiting in the backend's queue, oldest first, as its stream last said. */
+  /** The lines waiting in the backend's queue, oldest first, as its notices last said. */
   get queued(): readonly string[] {
     return this.#queued;
   }
@@ -163,7 +150,7 @@ export class ChatSession {
 
   /**
    * Resolves when no line typed is still being handled, no main run goes, and every line the
-   * backend accepted from this chat has run or been refused.
+   * backend accepted from this chat has run, been refused or been taken out of the queue.
    */
   idle(): Promise<void> {
     return new Promise((resolve) => {
@@ -211,41 +198,23 @@ export class ChatSession {
   }
 
   /**
-   * Shows one entry of the conversation's stream, once by seq, and follows the main run's start
-   * and end, the backend's queue and the live state (tools, thinking, run state) from it.
+   * Shows one item of the transcript feed and follows the main run's start and end, the backend's
+   * queue, what is owed and the live state (tools, thinking, run state) from it. The feed's items
+   * come once each; a sub-agent's card is drawn where the main agent called the tool that started
+   * it, which can be a later item.
    */
-  hear(entry: StreamEntry): void {
-    if (entry.seq <= this.#shownSeq) return;
-    this.#shownSeq = entry.seq;
-
-    if (entry.kind === 'queue') this.#hearQueue({ update: entry.update, seq: entry.seq });
-
-    const start = mainRunStart({ entry, mainSession: this.#mainSession });
-
-    if (start) this.#startRun(start);
-
-    const runState = mainRunState({ entry, mainSession: this.#mainSession });
-
-    if (runState) this.#onRunState(runState);
-    this.#renderer.entry(entry, this.#mainSession);
-
-    const message = failedRunMessage({ entry, mainSession: this.#mainSession });
-
-    if (message) this.#print(`  message ${message}`);
-    this.#reportLiveState();
-
-    const outcome = runEnd(entry);
-
-    if (outcome) this.#endRun(outcome);
+  hear(item: ChatItem): void {
+    for (const placed of this.#placer.place(item)) this.#hearPlaced(placed);
     this.#settle();
   }
 
-  /** The stream is lost for good: a run still going ended without its `done`, so it failed. */
-  lostStream(caughtError: unknown): void {
-    this.#print(`✗ lost the live stream: ${describeFailure(caughtError)}`);
+  /** The feed is lost for good: a run still going ended without its `done`, so it failed. */
+  lostFeed(caughtError: unknown): void {
+    this.#print(`✗ lost the live feed: ${describeFailure(caughtError)}`);
+    this.#drawHeldCards();
     if (this.#run) this.#endRun('failed');
     // Nothing more will be heard, so nothing the backend owes can arrive.
-    this.#owedAfter = undefined;
+    this.#owed.clear();
     this.#settle();
   }
 
@@ -308,42 +277,64 @@ export class ChatSession {
   /**
    * Sends a message, which runs any skills it mentions (`/<name>` anywhere in it); one it starts
    * with that no skill has is an unknown command, reported instead of sent. What it does is heard
-   * on the stream; what is returned is printed.
+   * on the feed, and the line is owed until it does; what is returned is printed.
    */
   async #sendPrompt(text: string): Promise<string | undefined> {
     const unknown = await unknownPromptCommand({ text, conversation: this.#conversation });
 
     if (unknown) return `Unknown command /${unknown}; /help lists them.`;
 
-    const sentAfter = this.#shownSeq;
+    const { messageId } = await this.#conversation.submit(text);
 
-    await this.#conversation.submit(text);
-    this.#owedAfter = sentAfter;
+    this.#owed.owe(messageId);
 
     return undefined;
   }
 
-  /** The backend's queue changed: shown as it is now, and a line it could not start is said. */
-  #hearQueue(params: { update: QueueUpdate; seq: number }): void {
-    const { update, seq } = params;
-
-    this.#showQueue(update.queued);
-
-    if (update.type === 'queue_changed') {
-      // Only a client empties the queue this way (the backend takes lines with `prompt_started`):
-      // the lines this chat sent were taken out, so none of them is owed any more.
-      const emptied = update.queued.length === 0 && seq > (this.#owedAfter ?? seq);
-
-      if (emptied) this.#owedAfter = undefined;
-
-      return;
+  /** Shows one item the placer let through, in the order it gave them. */
+  #hearPlaced(item: ChatItem): void {
+    switch (item.type) {
+      case 'run_started':
+        this.#startRun(item);
+        break;
+      case 'queue_changed':
+        this.#showQueue(item.queued);
+        // Lines a client's edit took out of the queue neither start nor are refused.
+        for (const id of item.dropped ?? []) this.#owed.settle(id);
+        break;
+      case 'prompt_started':
+        this.#showQueue(item.queued);
+        break;
+      case 'prompt_refused':
+        this.#showQueue(item.queued);
+        this.#print(`✗ ${plainTerminalText(item.text)}: ${plainTerminalText(item.error)}`);
+        this.#owed.settle(item.messageId);
+        break;
+      case 'event':
+        this.#hearEvent(item);
+        break;
+      case 'event_omitted':
+      case 'agent':
+      case 'storage_failed':
+      case 'extension_event':
+        this.#renderer.item(item);
+        this.#reportLiveState();
+        break;
     }
+  }
 
-    this.#lastQueueStep = seq;
+  /** One loop event of the main agent: its state, its drawing, and the run's end at `done`. */
+  #hearEvent(item: Extract<ChatItem, { type: 'event' }>): void {
+    const runState = runStateOf(item.event);
 
-    if (update.type === 'prompt_refused') {
-      this.#print(`✗ ${plainTerminalText(update.text)}: ${plainTerminalText(update.error)}`);
-    }
+    if (runState) this.#onRunState(runState);
+    this.#renderer.item(item);
+
+    const message = failedRunMessage(item);
+
+    if (message) this.#print(`  message ${message}`);
+    this.#reportLiveState();
+    if (item.event.type === 'done') this.#endRun(item.event.reason);
   }
 
   #showQueue(queued: readonly string[]): void {
@@ -351,26 +342,32 @@ export class ChatSession {
     this.#onQueue(this.#queued);
   }
 
-  /** A run's start; a line's `prompt_started` after its resume makes the run going the user's. */
-  #startRun(start: ChatRun): void {
-    const going = this.#run;
-
-    if (going && (going.owner === 'user' || start.owner === 'backend')) return;
-    this.#run = { ...start, stopAsked: going?.stopAsked ?? false };
-    if (start.owner === 'user') this.#onSend(start.text);
+  /**
+   * A run's start: a prompt's is the user's line, echoed now, and a wake's the backend's own. A
+   * run still going has lost its `done`, so it ended failed before this one starts.
+   */
+  #startRun(start: Extract<ChatItem, { type: 'run_started' }>): void {
+    if (this.#run) this.#endRun('failed');
+    this.#run = { cause: start.cause, messageId: start.messageId, stopAsked: false };
+    if (start.cause === 'prompt' && start.text !== undefined) this.#onSend(start.text);
     this.#reportBusy();
   }
 
-  /** The main run's end: a user's line ends its turn, and a completed one that was not stopped is a reply. */
+  /**
+   * The main run's end: a prompt's run ends its turn, and a completed one that was not stopped is
+   * a reply. Its line is paid; a wake's `done` pays nothing, its message being an earlier prompt's.
+   */
   #endRun(outcome: TurnOutcome): void {
     const run = this.#run;
 
     this.#run = undefined;
+    this.#drawHeldCards();
     // A stopped or failed run can end without the result of a call that was running.
     this.#renderer.clearRunning();
     this.#reportLiveState();
 
-    if (run?.owner === 'user') {
+    if (run?.cause === 'prompt') {
+      this.#owed.settle(run.messageId);
       this.#write('\n');
       if (outcome === 'completed' && !run.stopAsked) this.#onReplyComplete();
       this.#onTurnEnd(outcome);
@@ -379,14 +376,14 @@ export class ChatSession {
     this.#reportBusy();
   }
 
+  /** Draws the cards still held for a call, which a run's end shows no more is coming. */
+  #drawHeldCards(): void {
+    for (const card of this.#placer.drain()) this.#renderer.item(card);
+  }
+
   /** Resolves the `idle` waiters once nothing is handled, runs, or is owed by the backend. */
   #settle(): void {
-    if (this.#handling > 0 || this.#run) return;
-
-    if (this.#owedAfter !== undefined) {
-      if (this.#lastQueueStep <= this.#owedAfter || this.#queued.length > 0) return;
-      this.#owedAfter = undefined;
-    }
+    if (this.#handling > 0 || this.#run || !this.#owed.none) return;
 
     for (const resolve of this.#idleWaiters.splice(0)) resolve();
   }

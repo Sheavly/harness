@@ -1,10 +1,27 @@
 import type { ModelConnection } from '@sheavly/protocol/connection/connection.types';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
 import type { CallId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TaskId } from '@sheavly/protocol/task/task.types';
 import type { FileEdit } from '../changes/changes.types.js';
 import type { Failure } from '../failures/failures.types.js';
+
+/** The loop events whose line depends on nothing but the event (see `noticeLine`). */
+export type NoticeEvent = Extract<
+  EntryEvent,
+  {
+    type:
+      | 'message_received'
+      | 'context_added'
+      | 'model_input_changed'
+      | 'summary_started'
+      | 'summary_done'
+      | 'summary_failed'
+      | 'hook_failed'
+      | 'turn_end';
+  }
+>;
 
 /** A tool call that has started and not yet returned: what the working indicator shows live. */
 export type RunningTool = {
@@ -35,7 +52,7 @@ export type ReplySink = { write: Write; end: () => void };
 export type Section = 'reply' | 'activity';
 
 /** The sub-agent a line is about: its title and id, and the indent for how deep it is. */
-type SubAgent = { indent: string; title: string; id: SessionId };
+type SubAgent = { indent: string; title: string; id: SessionId | NodeId };
 
 /**
  * How a conversation's events read on screen. The `Renderer` decides what to show and in what
@@ -54,6 +71,11 @@ export type Look = {
   toolStarted: (params: { description: string; command: string | undefined }) => string;
   parallel: (count: number) => string;
   toolResult: (params: { ok: boolean; label: string; detail: string; seconds: string }) => string;
+  /**
+   * An event the backend could not store for its size, so its content is not there to show: a tool
+   * call's result says which tool (`tool`), another event only its type.
+   */
+  tooLarge: (params: { tool: string | undefined; eventType: string }) => string;
   /** A file change, under its result: a line standing for its diff, which a person expands. */
   fileChange: (edit: FileEdit) => string;
   /** A failed step's message that says more than its line, under its result, as `fileChange`. */

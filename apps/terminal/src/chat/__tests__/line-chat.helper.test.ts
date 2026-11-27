@@ -28,7 +28,7 @@ function lineChat(firstPrompt?: string) {
   const input = createInterface({ input: source, output });
   const pending = Promise.withResolvers<undefined>();
   const conversation = {
-    follow: vi.fn(async () => ({ ended: new Promise<void>(() => undefined) })),
+    watchTranscript: vi.fn(async () => ({ ended: new Promise<void>(() => undefined) })),
   };
   const session = {
     submit: vi.fn<(line: string) => void>(),

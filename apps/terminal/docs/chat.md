@@ -73,8 +73,9 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   and what runs in the background (`2 tasks and 1 service running in background`: finite work
   and services counted apart, each only when some run). Without a terminal (piped input, or
   `SHEAVLY_PLAIN=1`) it reads and writes lines, as it always did.
-- **What the chat follows.** The transcript, a run's text and steps, is still read from the
-  conversation's stream; the transcript feed below is a second source the chat does not read. What runs in the background and what waits for you are read from its tree channel
+- **What the chat follows.** The transcript, a run's text and steps, is read from the transcript
+  feed below, not from the conversation's stream (which the workbook, the demo and replay read).
+  What runs in the background and what waits for you are read from its tree channel
   (`QUERY /conversations/{id}/subscribe`), through the client's `watchTree` and `watchTreeApprovals`:
   the status line counts the nodes that run under the main agent (a sub-agent, a service, any other
   node a task), from their opening to their end, so a command that starts and ends while no prompt is
@@ -83,16 +84,33 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   here or elsewhere. Each of them is a connection that resumes after a drop; one lost for good says
   so in the transcript (`✗ lost the background status`, `✗ lost the approval stream`). A tool that
   asks while the approvals connection is down is refused, not held.
-- **The transcript feed.** `RemoteConversation.watchTranscript` is a data source for the
-  transcript that is not the stream: it merges the conversation's tree channel (its
-  queue, a prompt that started or was refused, a storage failure, an extension's notice, and a card
-  for each sub-agent that starts, says what it does or ends, with its depth and top ancestor) and
-  the main agent's own channel (where each run starts, and its loop events, from the moment it is
-  followed) into `ChatItem`s. Items of one channel arrive in order; between the two no order is
-  defined, so a run's items are matched to its prompt by message id. It resolves once both
-  connections are accepted and ends when its signal aborts or when either channel ends, with the
-  other stopped. The chat does not read it yet: it still shows the transcript from the stream
-  (`follow`, `send`), which the workbook, the demo and replay read too.
+- **The transcript feed.** `RemoteConversation.watchTranscript` is what the chat shows the
+  transcript from: it merges the conversation's tree channel (its queue, a prompt that started or
+  was refused, a storage failure, an extension's notice, and a card for each sub-agent that starts,
+  says what it does or ends, with its depth, top ancestor and the tool call that started it) and the
+  main agent's own channel (where each run starts, its loop events, and a note for an event too
+  large to be stored, from the moment it is followed) into `ChatItem`s. Items of one channel arrive
+  in order; between the two no order is defined, so a run's items are matched to its prompt by
+  message id. It resolves once both connections are accepted, and the chat sends its first prompt
+  after that. It ends when its signal aborts or when either channel ends, with the other stopped; a
+  feed that fails, or ends while the chat did not ask to stop, is lost: the chat says
+  `✗ lost the live feed`, a run still going is `failed`, and nothing it was owed is waited for.
+  - A run starts at its `run_started` item: a prompt's is the line the user sent, echoed with `›`
+    from the item's text; a wake is a run the backend started itself, with no echo. A run still
+    going when another starts has lost its `done`, so it ends `failed` first. A run ends at the main
+    agent's `done`.
+  - A line sent is owed until it is finished with, by its message id: its prompt run's `done`, a
+    refusal, or a client's edit of the queue that took it out. Waiting for the chat to be idle (the
+    end of piped input) waits for those, so two identical lines are told apart and a wake run's
+    `done` pays nothing.
+  - A sub-agent's card is drawn where the main agent calls the tool that started it: a card of a
+    sub-agent of the main agent is held until the main agent shows that call, with what comes about
+    that sub-agent after it, in order. A card with no call, one of a deeper sub-agent and one whose
+    call was shown already are drawn at once. At most 50 items wait, the oldest giving way, and the
+    run's end lets all go. A message sent to a sub-agent is not drawn: no channel carries it.
+  - An event too large to be stored is one line saying it is too large to show: "the result of
+    ‹tool›" for a tool result whose call is named, and the event's type for any other event. A
+    call it names is no longer running.
 - **React and Ink draw the screen.** Completed lines are committed once with Ink's static output;
   the bounded live footer shows activity, elapsed time and `Ctrl+C to stop` while working.
   While a tool runs it also names the step and how long that step has run
@@ -169,7 +187,7 @@ you` keeps its own words.
 - **A failed model run is not a completed reply.** A failed run ends with the main session's
   `done` carrying reason `failed`, after `run_failed`, and the chat reports the message as failed.
   A stopped message is reported `interrupted`, and a run still going when the conversation's
-  stream is lost for good is `failed`. Partial text stays visible and the chat remains
+  feed is lost for good is `failed`. Partial text stays visible and the chat remains
   available; the original exception is in the backend log.
 - **A complete approval preview must fit.** If the React footer cannot show the command,
   concerns and permission hints together, confirmation is disabled. Enlarge the terminal to
@@ -305,7 +323,8 @@ you` keeps its own words.
   sent at once, and the backend decides: it starts it, or, while a run goes (a prompt, or a run
   it started itself to deliver finished background work), keeps it in the conversation's
   first-in, first-out queue, outside the history and summaries. The chat keeps no queue of its
-  own: it shows the backend's, from the conversation's stream, as `⏳ N queued`. The backend starts
+  own: it shows the backend's, from the transcript feed (the queue's changes, a line that started
+  or was refused), as `⏳ N queued`. The backend starts
   a queued line itself once the model has finished its turn, without waiting for background tasks
   or sub-agents (those keep running and their results are kept for the next prompt). While the
   agent waits on `await_tasks`, the line stays queued while the grouped tasks run (the status line

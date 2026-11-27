@@ -147,6 +147,8 @@ export function childNode(params: {
   title?: string;
   parent?: string;
   status?: string;
+  /** The id of the tool call that started it. */
+  spawnedBy?: string;
 }) {
   const {
     id,
@@ -156,12 +158,14 @@ export function childNode(params: {
     title = id,
     parent = 'main',
     status,
+    spawnedBy,
   } = params;
   const common = {
     id,
     kind,
     parent,
     ...(status !== undefined && { status }),
+    ...(spawnedBy !== undefined && { spawnedBy }),
     title,
     state,
     startedAt: 1,

@@ -16,6 +16,15 @@ Tab after / lists the skills (and these commands); type more to narrow them.
 /** The width a diff is cut to where the terminal's isn't known (the plain line chat). */
 export const LINE_COLUMNS = 80;
 
+/** How many items of sub-agents' cards wait for the call that started them; the oldest give way. */
+export const MAX_HELD_CARDS = 50;
+
+/** How many tool calls the main agent has shown are remembered, so a card that comes late is drawn at once. */
+export const MAX_SEEN_CALLS = 1000;
+
+/** How many message ids the backend has finished with are remembered, for an answer that comes after its notice. */
+export const MAX_RESOLVED_IDS = 64;
+
 /** A line that is one of these ends the chat. */
 export const EXIT_COMMANDS = ['/exit', '/quit'];
 

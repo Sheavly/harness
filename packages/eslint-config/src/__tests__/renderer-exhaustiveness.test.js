@@ -4,14 +4,21 @@ import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 const terminal = path.resolve(import.meta.dirname, '../../../../apps/terminal');
-const file = path.join(terminal, 'src/render/render.service.ts');
-const source = fs.readFileSync(file, 'utf8');
 const eslint = new ESLint({ cwd: terminal });
 const RULE = '@typescript-eslint/switch-exhaustiveness-check';
 
-/** The rule's messages for the Renderer's source after `change`. */
-async function exhaustivenessErrors(change) {
-  const [result] = await eslint.lintText(change(source), { filePath: file });
+/** The source of a file of the terminal's `render/` folder, which the Renderer draws through. */
+const sourceOf = (name) => {
+  const file = path.join(terminal, 'src/render', name);
+
+  return { file, text: fs.readFileSync(file, 'utf8') };
+};
+
+/** The rule's messages for `name` after `change`. */
+async function exhaustivenessErrors(params) {
+  const { name, change } = params;
+  const { file, text } = sourceOf(name);
+  const [result] = await eslint.lintText(change(text), { filePath: file });
 
   return result.messages.filter((message) => message.ruleId === RULE);
 }
@@ -22,21 +29,34 @@ async function exhaustivenessErrors(change) {
 // not measured. The rule needs those types, so the budget is raised, not the check weakened.
 const TYPED_LINT_TIMEOUT_MS = 60_000;
 
+// Each switch is in the file that draws it: the Renderer's events and items, the sub-agent lines
+// (a session update, a card's change) and the events that need no state.
+const SWITCHES = [
+  ['an event', 'render.service.ts', "      case 'usage':\n"],
+  ['a chat item', 'render.service.ts', "      case 'run_started':\n"],
+  ['an event that needs no state', 'notice-line.utils.ts', "    case 'turn_end':\n"],
+  ['a session update', 'sub-agent.utils.ts', "    case 'session_released':\n"],
+  ['a change of a card', 'sub-agent.utils.ts', "    case 'status':\n"],
+];
+
 describe(
-  'the Renderer handles every event and session update kind',
+  'the Renderer handles every event, item and session update kind',
   { timeout: TYPED_LINT_TIMEOUT_MS },
   () => {
-    it('passes as written', async () => {
-      expect(await exhaustivenessErrors((text) => text)).toEqual([]);
-    });
+    it.each([...new Set(SWITCHES.map(([, name]) => name))])(
+      'passes as written: %s',
+      async (name) => {
+        expect(await exhaustivenessErrors({ name, change: (text) => text })).toEqual([]);
+      },
+    );
 
-    it.each([
-      ['an event', "      case 'usage':\n"],
-      ['a session update', "      case 'session_released':\n"],
-    ])('fails when %s kind is left out of its switch', async (_name, line) => {
-      expect(source).toContain(line);
+    it.each(SWITCHES)('fails when %s kind is left out of its switch', async (_name, name, line) => {
+      expect(sourceOf(name).text).toContain(line);
 
-      const errors = await exhaustivenessErrors((text) => text.replace(line, ''));
+      const errors = await exhaustivenessErrors({
+        name,
+        change: (text) => text.replace(line, ''),
+      });
 
       expect(errors).toHaveLength(1);
     });

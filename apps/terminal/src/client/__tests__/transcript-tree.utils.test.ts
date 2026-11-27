@@ -60,7 +60,20 @@ describe('itemsOfTreeEntry: the conversation’s notices', () => {
         type: 'prompt_refused',
         fields: { text: 'rm', messageId: MESSAGE, error: 'no skill', queued: [] },
       }),
-    ).toEqual([{ type: 'prompt_refused', text: 'rm', error: 'no skill', queued: [] }]);
+    ).toEqual([
+      { type: 'prompt_refused', text: 'rm', messageId: MESSAGE, error: 'no skill', queued: [] },
+    ]);
+  });
+
+  it('keeps the ids of the lines a client’s edit of the queue dropped, and leaves the field out when none were', () => {
+    const [dropped] = shown({
+      type: 'queue_changed',
+      fields: { queued: [], dropped: [MESSAGE] },
+    });
+    const [plain] = shown({ type: 'queue_changed', fields: { queued: ['a'] } });
+
+    expect(dropped).toEqual({ type: 'queue_changed', queued: [], dropped: [MESSAGE] });
+    expect(plain).not.toHaveProperty('dropped');
   });
 
   it('shows a storage failure, and an extension’s event with what it carries', () => {
@@ -162,6 +175,18 @@ describe('itemsOfTreeEntry: sub-agent cards', () => {
 
     expect(limit).toMatchObject({ agent: { state: 'failed', outcome: 'max_turns' } });
     expect(stopped).toMatchObject({ agent: { state: 'cancelled', outcome: 'interrupted' } });
+  });
+
+  it('names the tool call that started a sub-agent, and leaves it out when the node has none', () => {
+    const [called] = agentEntry({
+      type: 'node_opened',
+      node: childNode({ id: 'worker', kind: 'agent', spawnedBy: 'call_7' }),
+    });
+    const [uncalled] = agentEntry({ type: 'node_opened', node: worker });
+
+    expect(called).toMatchObject({ agent: { spawnedBy: 'call_7' } });
+    expect(uncalled).toMatchObject({ type: 'agent' });
+    expect(uncalled).not.toHaveProperty('agent.spawnedBy');
   });
 
   it('shows no card for a command or a service, whose task the main agent’s events tell, or for the main agent', () => {

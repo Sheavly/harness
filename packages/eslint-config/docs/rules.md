@@ -626,6 +626,20 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   socket path, a path held in a variable, a template literal with expressions, a relative path
   through `node_modules`, or a file outside the folder that `src/client/` code is made to call;
   those stay with review.
+- **The chat and the TUI off the stream readers** (`transcriptFeedConfinement`, a config block the
+  terminal app spreads into its config, not a `harness/*` rule: a `no-restricted-imports` with a
+  message, as `replayConfinement` is): every file of `apps/terminal/src/chat/` and
+  `apps/terminal/src/tui/`, tests and fakes included, may not import
+  `@sheavly/client/client/follow.helper`, `@sheavly/client/prompt/prompt.helper`,
+  `@sheavly/protocol/stream/stream.types` or `@sheavly/protocol/status/run-end.utils`, a type
+  import and a re-export included. The chat reads the transcript feed
+  (`RemoteConversation.watchTranscript`); the stream is for the workbook, the demo and replay,
+  which keep importing them, as do `render/` and `client/`. `transcript-feed-confinement.test.js`
+  lints the real terminal config, warming its typed program once, and pins that each import is
+  refused in a chat and a TUI file (a test and a fake too) and allowed in `render/`, `workbook/`,
+  `replay/` and `client/`. It does not see `import('…')`, `createRequire`, a path in a variable or
+  a relative path into another package, and another module that re-exports the stream's types is
+  not listed; those stay with review.
 - **The launcher's systemd programs** (`systemdConfinement`, two config blocks the `sheavly`
   app spreads into its config, not a `harness/*` rule: `no-restricted-imports` and
   `no-restricted-syntax` selectors for `import('…')`, with a message each): `sheavly service` runs
