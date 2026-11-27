@@ -74,7 +74,7 @@ describe('promptEntries', () => {
       answer: { status: 'started', node: NODE, messageId: MESSAGE, queued: [] },
       entries: [
         said(1, 'an earlier run'),
-        queue(2, { type: 'prompt_started', text: 'hi', queued: [] }),
+        queue(2, { type: 'prompt_started', messageId: MESSAGE, text: 'hi', queued: [] }),
         said(3, 'hello'),
         done(4),
         said(5, 'a later run'),
@@ -88,11 +88,11 @@ describe('promptEntries', () => {
 
   it('waits for a queued prompt behind an identical line, and yields only its own run', async () => {
     const client = backend({
-      answer: { status: 'queued', node: NODE, queued: ['same', 'same'] },
+      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['same', 'same'] },
       entries: [
-        queue(1, { type: 'prompt_started', text: 'same', queued: ['same'] }),
+        queue(1, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: ['same'] }),
         done(2),
-        queue(3, { type: 'prompt_started', text: 'same', queued: [] }),
+        queue(3, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: [] }),
         said(4, 'mine'),
         done(5),
       ],
@@ -105,10 +105,11 @@ describe('promptEntries', () => {
 
   it('throws PromptRefusedError for a queued prompt that could not start', async () => {
     const client = backend({
-      answer: { status: 'queued', node: NODE, queued: ['/nope'] },
+      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['/nope'] },
       entries: [
         queue(1, {
           type: 'prompt_refused',
+          messageId: MESSAGE,
           text: '/nope',
           error: 'No skill is called nope',
           queued: [],

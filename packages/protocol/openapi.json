@@ -3261,6 +3261,11 @@
                 "maxItems": 100,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              },
+              "dropped": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ModelId" }
               }
             },
             "required": ["channel", "cursor", "at", "type", "queued"]
@@ -3272,15 +3277,15 @@
               "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "type": { "type": "string", "const": "prompt_started" },
-              "text": { "type": "string", "maxLength": 20000 },
               "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "text": { "type": "string", "maxLength": 20000 },
               "queued": {
                 "maxItems": 100,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
               }
             },
-            "required": ["channel", "cursor", "at", "type", "text", "messageId", "queued"]
+            "required": ["channel", "cursor", "at", "type", "messageId", "text", "queued"]
           },
           {
             "type": "object",
@@ -3289,6 +3294,7 @@
               "cursor": { "$ref": "#/components/schemas/SequenceCursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "type": { "type": "string", "const": "prompt_refused" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
               "text": { "type": "string", "maxLength": 20000 },
               "error": { "type": "string", "maxLength": 2000 },
               "queued": {
@@ -3297,7 +3303,7 @@
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
               }
             },
-            "required": ["channel", "cursor", "at", "type", "text", "error", "queued"]
+            "required": ["channel", "cursor", "at", "type", "messageId", "text", "error", "queued"]
           },
           {
             "type": "object",
@@ -3457,14 +3463,14 @@
             "properties": {
               "status": { "type": "string", "const": "queued" },
               "node": { "$ref": "#/components/schemas/NodeId" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
               "queued": {
                 "maxItems": 100,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
               }
             },
-            "required": ["status", "node", "queued"],
-            "additionalProperties": false
+            "required": ["status", "node", "messageId", "queued"]
           }
         ]
       },
@@ -3840,6 +3846,11 @@
                 "maxItems": 100,
                 "type": "array",
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
+              },
+              "dropped": {
+                "maxItems": 100,
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ModelId" }
               }
             },
             "required": ["type", "queued"]
@@ -3848,6 +3859,7 @@
             "type": "object",
             "properties": {
               "type": { "type": "string", "const": "prompt_started" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
               "text": { "type": "string" },
               "queued": {
                 "maxItems": 100,
@@ -3855,12 +3867,13 @@
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
               }
             },
-            "required": ["type", "text", "queued"]
+            "required": ["type", "messageId", "text", "queued"]
           },
           {
             "type": "object",
             "properties": {
               "type": { "type": "string", "const": "prompt_refused" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
               "text": { "type": "string" },
               "error": { "type": "string" },
               "queued": {
@@ -3869,7 +3882,7 @@
                 "items": { "type": "string", "minLength": 1, "maxLength": 20000 }
               }
             },
-            "required": ["type", "text", "error", "queued"]
+            "required": ["type", "messageId", "text", "error", "queued"]
           }
         ]
       },

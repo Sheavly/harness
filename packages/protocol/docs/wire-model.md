@@ -403,10 +403,12 @@ marks the two that are).
 
 A command returns at once; what it did arrives on a subscription, never in its own answer
 (#429, built). `POST .../prompts` answers `PromptSent`: the agent node whose channel carries the
-run (the main agent's) and, for a prompt that started, the id of the user message it became,
-which is read as the prompt starts and is the one the tree channel's `prompt_started` names. A
-prompt that waits in the queue has no message yet, so its answer has none. A command is addressed
-**by node**, and the effects arrive on the channels.
+run (the main agent's) and the id of the user message the prompt is. The conversation gives a
+prompt that message id when it accepts it: a prompt that waits in the queue has it from then on,
+and the tree channel's `prompt_started` (or `prompt_refused`), the stream's queue update and the
+run's entries all carry it. A client that replaced the queue's lines learns which lines it
+dropped by their ids (`dropped` on `queue_changed`). A command is addressed **by node**, and the
+effects arrive on the channels.
 
 - **Cancel**: `POST …/nodes/{node}/cancel`, no body, `204`. A command, a service and a sub-agent
   are killed through their task, as the agents' `cancel_task` does, and the request waits until the

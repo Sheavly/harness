@@ -137,7 +137,11 @@ describe('the tree the entries of its channel make', () => {
     const shown = [
       entry({ position: 0, type: 'opened' }),
       entry({ position: 1, type: 'queue_changed', more: { queued: ['one'] } }),
-      entry({ position: 2, type: 'prompt_refused', more: { text: 'x', error: 'no', queued: [] } }),
+      entry({
+        position: 2,
+        type: 'prompt_refused',
+        more: { text: 'x', messageId: MESSAGE_ID, error: 'no', queued: [] },
+      }),
       entry({ position: 3, type: 'storage_failed', more: { error: 'disk' } }),
       entry({
         position: 4,

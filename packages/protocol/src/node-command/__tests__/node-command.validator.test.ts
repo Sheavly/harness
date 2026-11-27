@@ -38,8 +38,8 @@ describe('the answer to a prompt sent', () => {
       { status: 'started', node: 'agent-1', messageId: MESSAGE_ID, queued: ['next'] },
     ],
     [
-      'one that waits, with no message yet',
-      { status: 'queued', node: 'agent-1', queued: ['this one'] },
+      'one that waits, with the message it will become',
+      { status: 'queued', node: 'agent-1', messageId: MESSAGE_ID, queued: ['this one'] },
     ],
   ])('is %s', (_name, value) => {
     expect(promptSentSchema.safeParse(value).success).toBe(true);
@@ -55,11 +55,18 @@ describe('the answer to a prompt sent', () => {
       { status: 'started', node: 'agent-1', messageId: 'm1', queued: [] },
     ],
     [
-      'a prompt that waits and already has a message id',
-      { status: 'queued', node: 'agent-1', messageId: MESSAGE_ID, queued: ['x'] },
+      'a prompt that waits with no message id',
+      { status: 'queued', node: 'agent-1', queued: ['x'] },
     ],
-    ['an answer with no node', { status: 'queued', queued: [] }],
-    ['an answer whose node is the tree', { status: 'queued', node: 'tree', queued: [] }],
+    [
+      'a prompt that waits with a message id that is not one',
+      { status: 'queued', node: 'agent-1', messageId: 'm1', queued: ['x'] },
+    ],
+    ['an answer with no node', { status: 'queued', messageId: MESSAGE_ID, queued: [] }],
+    [
+      'an answer whose node is the tree',
+      { status: 'queued', node: 'tree', messageId: MESSAGE_ID, queued: [] },
+    ],
     ['a status it does not have', { status: 'refused', node: 'agent-1', queued: [] }],
   ])('is not %s', (_name, value) => {
     expect(promptSentSchema.safeParse(value).success).toBe(false);

@@ -4,8 +4,8 @@ import type { LiveConversation } from './conversations.types.js';
 /**
  * Puts a change of the conversation's queue on its stream (a `queue` entry, as before) and on its
  * tree channel, where a client that follows only that learns what waits and which line started.
- * A line that starts is told with the user message it became, which the main session has by now;
- * a conversation whose tree is not kept (no store) has only the stream.
+ * The update carries the message id of the line it is about; a conversation whose tree is not
+ * kept (no store) has only the stream.
  */
 export function publishQueueUpdate(params: { live: LiveConversation; update: QueueUpdate }): void {
   const { live, update } = params;
@@ -17,7 +17,7 @@ export function publishQueueUpdate(params: { live: LiveConversation; update: Que
   if (!tree) return;
 
   if (update.type === 'queue_changed') {
-    tree.noteQueueChanged(update.queued);
+    tree.noteQueueChanged(update);
 
     return;
   }
@@ -28,7 +28,5 @@ export function publishQueueUpdate(params: { live: LiveConversation; update: Que
     return;
   }
 
-  const messageId = harness.sessions.messageOf(harness.mainSession.id);
-
-  if (messageId) tree.notePromptStarted({ ...update, messageId });
+  tree.notePromptStarted(update);
 }

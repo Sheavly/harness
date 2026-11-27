@@ -1,6 +1,4 @@
 import { now } from '@sheavly/core/clock/clock.helper';
-import { randomUUID } from 'node:crypto';
-import { messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import { SessionError } from '@sheavly/runtime/errors/sessions.errors';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
@@ -9,6 +7,7 @@ import { ConversationRunError } from '../errors/conversation.errors.js';
 import { WAKE_AFTER_YIELD_MS } from './conversation.constants.js';
 import type { Conversation, ConversationOptions } from './conversation.types.js';
 import { canMoveRun } from './conversation.utils.js';
+import { mintMessageId } from './message-id.helper.js';
 
 /** A run that is going: what ends it, what yields it, and what stops it once its loop runs. */
 type RunControls = {
@@ -316,7 +315,7 @@ export function createConversation(options: ConversationOptions): Conversation {
       }
 
       // The main session runs from its start; every later prompt resumes it from idle.
-      const messageId = messageIdSchema.parse(randomUUID());
+      const messageId = sendOptions.messageId ?? mintMessageId();
 
       sessions.setMessage({ sessionId: mainSession.id, messageId });
       wakesInRow = 0;

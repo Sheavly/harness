@@ -49,12 +49,21 @@ describe('an entry of the tree channel', () => {
     ['an approval given up', entry('approval_cancelled', { node: 'agent-1', id: 'a1' })],
     ['the queue changing', entry('queue_changed', { queued: ['one', 'two'] })],
     [
+      'the queue changing as a client replaced lines',
+      entry('queue_changed', { queued: ['one'], dropped: [MESSAGE_ID] }),
+    ],
+    [
       'a queued line starting',
       entry('prompt_started', { text: 'go', messageId: MESSAGE_ID, queued: [] }),
     ],
     [
       'a queued line refused',
-      entry('prompt_refused', { text: 'go', error: 'unknown skill', queued: [] }),
+      entry('prompt_refused', {
+        text: 'go',
+        messageId: MESSAGE_ID,
+        error: 'unknown skill',
+        queued: [],
+      }),
     ],
     ['a storage failure', entry('storage_failed', { error: 'disk full' })],
     [
@@ -99,6 +108,14 @@ describe('an entry of the tree channel', () => {
       entry('prompt_started', { text: 'go', messageId: 'm1', queued: [] }),
     ],
     [
+      'a queued line that is refused with no message id',
+      entry('prompt_refused', { text: 'go', error: 'no', queued: [] }),
+    ],
+    [
+      'a queue change that drops something that is not a message id',
+      entry('queue_changed', { queued: [], dropped: ['one'] }),
+    ],
+    [
       'a queue with a line over the cap',
       entry('queue_changed', { queued: ['x'.repeat(MAX_QUEUED_LINE_CHARS + 1)] }),
     ],
@@ -111,6 +128,7 @@ describe('an entry of the tree channel', () => {
       'a refused line with text over the cap',
       entry('prompt_refused', {
         text: 'x'.repeat(MAX_QUEUED_LINE_CHARS + 1),
+        messageId: MESSAGE_ID,
         error: 'e',
         queued: [],
       }),

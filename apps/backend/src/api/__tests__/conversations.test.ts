@@ -29,15 +29,14 @@ describe('a conversation over HTTP', () => {
     const first = await send('wait');
 
     expect(first.headers.get('content-type')).toMatch(/application\/json/);
-    // Both parse as the contract's answer: the node that carries the run, the message only for the
-    // prompt that started.
+    // Both parse as the contract's answer: the node that carries the run, and the message each
+    // prompt is, the queued one's from the moment it was accepted.
     const started = promptSentSchema.parse(await first.json());
     const queued = promptSentSchema.parse(await (await send('next')).json());
 
     expect(started).toMatchObject({ status: 'started', queued: [] });
-    expect(started).toHaveProperty('messageId');
     expect(queued).toMatchObject({ status: 'queued', node: started.node, queued: ['next'] });
-    expect(queued).not.toHaveProperty('messageId');
+    expect(queued.messageId).not.toBe(started.messageId);
     expect(await (await request(`/conversations/${id}/queue`)).json()).toEqual({
       queued: ['next'],
     });

@@ -70,7 +70,7 @@ describe('answering a prompt with ids', () => {
     );
   });
 
-  it('names the node and no message for a prompt that waits: it is a line of text until it starts', async () => {
+  it('names the node and a message of its own for a prompt that waits, apart from the one running', async () => {
     const { conversations } = scriptedConversations({ replies: blockedThenNext() });
     const id = await conversations.start();
     const first = await conversations.submit({ id, prompt: { text: 'wait' } });
@@ -78,7 +78,7 @@ describe('answering a prompt with ids', () => {
 
     expect(first).toMatchObject({ status: 'started' });
     expect(second).toMatchObject({ status: 'queued', queued: ['later'] });
-    expect(second).not.toHaveProperty('messageId');
+    expect(second.messageId).not.toBe(first.messageId);
     expect(second.node).toBe(first.node);
 
     conversations.stop(id);

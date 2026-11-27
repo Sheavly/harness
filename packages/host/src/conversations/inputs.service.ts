@@ -3,6 +3,7 @@ import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { MessageId } from '@sheavly/protocol/message/message.types';
 import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
 import type { ConversationId, SendPromptRequest } from '@sheavly/protocol/server/server.types';
+import { mintMessageId } from '../conversation/message-id.helper.js';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import type { LiveConversation, PromptFailure, SentPrompt } from './conversations.types.js';
 import { prepareForSend, refuseOverlappingSend, releaseOnAbort } from './prompt.helper.js';
@@ -22,11 +23,16 @@ type StorageChecks = {
   assertHealthy: (id: ConversationId) => void;
 };
 
-/** What a send is given; `onStarted` is told once the prompt runs, before its run's events. */
+/**
+ * What a send is given; `onStarted` is told once the prompt runs, before its run's events.
+ * `messageId` is the id the prompt was accepted with: the user message has it, and none is made
+ * when it is given.
+ */
 type SendParams = {
   id: ConversationId;
   live: LiveConversation;
   prompt: SendPromptRequest;
+  messageId?: MessageId | undefined;
   signal?: AbortSignal | undefined;
   onStarted?: (() => void) | undefined;
 };
@@ -78,8 +84,8 @@ export class ConversationInputs {
       restored,
       conversation: live.conversation,
       preparing: () => this.#preparing.get(id),
-      start: async ({ text, taken }) => {
-        await this.#startLine({ id, live, prompt: { text }, left: taken });
+      start: async ({ text, messageId, taken }) => {
+        await this.#startLine({ id, live, prompt: { text }, messageId, left: taken });
       },
       publish: (update) => publishQueueUpdate({ live, update }),
       keep: (lines) => this.#queues.replace({ id, queued: lines }),
@@ -131,9 +137,11 @@ export class ConversationInputs {
     }
 
     if (live.conversation.state === 'idle' && !this.#preparing.has(id) && !queue.busy) {
-      // Lines sent while this one prepared its skills wait behind it: the answer says so.
-      const messageId = await this.#startLine({ id, live, prompt, left: () => queue.lines });
+      const messageId = mintMessageId();
 
+      await this.#startLine({ id, live, prompt, messageId, left: () => queue.lines });
+
+      // Lines sent while this one prepared its skills wait behind it: the answer says so.
       return { status: 'started', node, messageId, queued: queue.lines };
     }
 
@@ -147,7 +155,7 @@ export class ConversationInputs {
 
     this.#storage.assertHealthy(id);
 
-    return { status: 'queued', node, queued: await queue.add(prompt.text) };
+    return { status: 'queued', node, ...(await queue.add(prompt.text)) };
   }
 
   /** The lines waiting in conversation `id`, oldest first. */
@@ -199,7 +207,7 @@ export class ConversationInputs {
   }
 
   async #prepareAndStart(params: SendParams): Promise<SentPrompt> {
-    const { id, live, prompt, signal, onStarted } = params;
+    const { id, live, prompt, messageId, signal, onStarted } = params;
     const { conversation, skills } = live;
 
     // Awaited only after a failure: an await on a healthy conversation would open a gap before
@@ -232,6 +240,7 @@ export class ConversationInputs {
         const started = conversation.send(prepared.text, {
           signal: stopSignal,
           parts: prepared.parts,
+          ...(messageId && { messageId }),
         });
 
         // Every user prompt that starts says so on its agent's channel, whoever sent it.
@@ -252,40 +261,29 @@ export class ConversationInputs {
 
   /**
    * Starts `prompt` as the next prompt, says so on the stream (`prompt_started`, with the lines
-   * `left` behind it as it starts, read then), and reads its run: nobody else does. Returns the
-   * user message the prompt became, which the main session has as the prompt starts.
+   * `left` behind it as it starts, read then), and reads its run: nobody else does. The user
+   * message the prompt becomes has `messageId`, the id it was accepted with.
    */
   async #startLine(params: {
     id: ConversationId;
     live: LiveConversation;
     prompt: SendPromptRequest;
+    messageId: MessageId;
     left: () => readonly string[];
-  }): Promise<MessageId> {
-    const { id, live, prompt, left } = params;
+  }): Promise<void> {
+    const { id, live, prompt, messageId, left } = params;
     const text = promptTextOf(prompt);
-    let messageId: MessageId | undefined;
     const { events } = await this.#send({
       ...params,
       onStarted: () => {
-        messageId = live.harness.sessions.messageOf(live.harness.mainSession.id);
         publishQueueUpdate({
           live,
-          update: { type: 'prompt_started', text, queued: [...left()] },
+          update: { type: 'prompt_started', messageId, text, queued: [...left()] },
         });
       },
     });
 
     void this.#readToEnd({ id, events });
-
-    // `send` starts the prompt, and `onStarted` runs after it: the message exists by then.
-    if (messageId === undefined) {
-      throw new ConversationsError({
-        reason: 'not_found',
-        message: `Conversation ${id} did not start the prompt: it was closed`,
-      });
-    }
-
-    return messageId;
   }
 
   /** Reads a run nobody else reads; a failed one is on the stream already, and the app logs it. */

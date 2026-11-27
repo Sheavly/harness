@@ -14,7 +14,6 @@ import {
   extensionQualifiedNameSchema,
 } from '../extension/extension.validator.js';
 import { isInNamespace } from '../extension/extension.utils.js';
-import { messageIdSchema } from '../message/message.validator.js';
 import {
   MAX_NODE_ERROR_CHARS,
   MAX_TREE_NODES,
@@ -24,7 +23,11 @@ import {
 import { isReservedExtensionName } from '../node/node.utils.js';
 import { nodeIdSchema, nodeInfoSchema } from '../node/node.validator.js';
 import { MAX_QUEUED_LINE_CHARS } from '../server/server.constants.js';
-import { queuedPromptsSchema } from '../server/server.validator.js';
+import {
+  promptRefusedSchema,
+  promptStartedSchema,
+  queueChangedSchema,
+} from '../queue/queue.validator.js';
 import { NODE_END_STATES } from '../status/status.constants.js';
 import { timestampSchema } from '../time/time.validator.js';
 import { isConsistentSnapshot } from './tree.utils.js';
@@ -88,29 +91,23 @@ const approvalCancelledEntrySchema = treeEntrySchema.extend({
   id: approvalIdSchema,
 });
 
-/** A line joined the conversation's queue, or a client replaced the lines. */
-const queueChangedEntrySchema = treeEntrySchema.extend({
-  type: z.literal('queue_changed'),
-  queued: queuedPromptsSchema.shape.queued,
-});
-
 /**
- * A queued line started as the conversation's next prompt. It names the user message it became,
- * so a follower knows which run it starts without one order across channels.
+ * The queue's updates are the combined stream's (`queueUpdateSchema`), here as entries of this
+ * channel: one definition of what each says, with the text and the error cut to what an entry holds.
+ * A line started or refused names the message id it was accepted with, so a follower knows which
+ * run it starts without one order across channels.
  */
+const queueChangedEntrySchema = treeEntrySchema.extend(queueChangedSchema.shape);
+
 const promptStartedEntrySchema = treeEntrySchema.extend({
-  type: z.literal('prompt_started'),
+  ...promptStartedSchema.shape,
   text: z.string().max(MAX_QUEUED_LINE_CHARS),
-  messageId: messageIdSchema,
-  queued: queuedPromptsSchema.shape.queued,
 });
 
-/** A line left the queue without starting, for the reason `error` gives. */
 const promptRefusedEntrySchema = treeEntrySchema.extend({
-  type: z.literal('prompt_refused'),
+  ...promptRefusedSchema.shape,
   text: z.string().max(MAX_QUEUED_LINE_CHARS),
   error: z.string().max(MAX_NODE_ERROR_CHARS),
-  queued: queuedPromptsSchema.shape.queued,
 });
 
 /** The conversation could not be stored. Said once when writes start failing; it ends no run. */

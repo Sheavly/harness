@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
-import { treeChannelEntrySchema, treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
+import { treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import { applyTreeEntry, emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { readChannel, shapeOf } from '@sheavly/runtime/testing/stored-channels.fake';
 import {
@@ -16,6 +16,7 @@ import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fak
 import { ConversationsError } from '../../errors/conversations.errors.js';
 import { say, scriptedConversations } from '../../testing/conversations.fake.js';
 import { ranOnePrompt } from '../../testing/stored-conversation.fake.js';
+import { storedTreeOf as storedTree } from '../../testing/stored-tree.fake.js';
 import {
   claimingApprovals,
   refusalOf,
@@ -56,15 +57,6 @@ async function kept() {
 }
 
 type Kept = Awaited<ReturnType<typeof kept>>;
-
-/** Every entry of the stored tree channel, once what was told is written, as the contract reads it. */
-async function storedTree(world: Pick<Kept, 'store' | 'id' | 'harness'>) {
-  await world.harness.treeChannel?.flush();
-
-  const entries = await readChannel({ store: world.store, id: world.id, channel: 'tree' });
-
-  return entries.map((entry) => treeChannelEntrySchema.parse(entry));
-}
 
 /** The tree that folding every stored entry from the start gives: what a client that replayed has. */
 const replayed = async (world: Pick<Kept, 'store' | 'id' | 'harness'>) =>

@@ -307,7 +307,12 @@ const EVERY_KIND = [
   treeEntry({
     n: 10,
     type: 'prompt_refused',
-    fields: { text: 'rm', error: 'no skill', queued: [] },
+    fields: {
+      text: 'rm',
+      messageId: '00000000-0000-4000-8000-000000000010',
+      error: 'no skill',
+      queued: [],
+    },
   }),
   treeEntry({ n: 11, type: 'storage_failed', fields: { error: 'disk full' } }),
   treeEntry({

@@ -8,7 +8,7 @@ import type { UsageView } from '@sheavly/protocol/usage/usage.types';
 import type { StoredLog } from '@sheavly/runtime/sessions/sessions.types';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
-import type { PromptPart } from '@sheavly/protocol/message/message.types';
+import type { MessageId, PromptPart } from '@sheavly/protocol/message/message.types';
 import type { ModelEffort, ModelId, ModelSelection } from '@sheavly/protocol/model/model.types';
 import type { PermissionMode } from '@sheavly/protocol/permission/permission.types';
 import type { ProfileId } from '@sheavly/protocol/profile/profile.types';
@@ -150,6 +150,12 @@ export type StorageOf = { storage?: ConversationStorage };
  * see the failure on the stream (`run_failed`); this is for the app to log with the conversation.
  */
 export type PromptFailure = { id: ConversationId; error: unknown };
+
+/**
+ * A line waiting in a conversation's queue, with the message id it was accepted with: the id the
+ * user message has when the line starts. Never stored: lines a reopen restores get new ones.
+ */
+export type QueuedLine = { text: string; messageId: MessageId };
 
 /** One prompt's events, and the text and parts it sent. */
 export type SentPrompt = {

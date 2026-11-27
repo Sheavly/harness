@@ -56,7 +56,10 @@ describe('itemsOfTreeEntry: the conversation’s notices', () => {
       shown({ type: 'prompt_started', fields: { text: 'go', messageId: MESSAGE, queued: ['b'] } }),
     ).toEqual([{ type: 'prompt_started', text: 'go', messageId: MESSAGE, queued: ['b'] }]);
     expect(
-      shown({ type: 'prompt_refused', fields: { text: 'rm', error: 'no skill', queued: [] } }),
+      shown({
+        type: 'prompt_refused',
+        fields: { text: 'rm', messageId: MESSAGE, error: 'no skill', queued: [] },
+      }),
     ).toEqual([{ type: 'prompt_refused', text: 'rm', error: 'no skill', queued: [] }]);
   });
 

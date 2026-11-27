@@ -16,14 +16,11 @@ export const messageNodeRequestSchema = z.object({
 
 /**
  * `POST /conversations/:id/prompts`, answered at once with the ids of what it made: `node`, the
- * agent whose channel carries the run, and, for a prompt that `started`, `messageId` of the user
- * message it became, which that run's entries name. A prompt that waits in the queue (`queued`)
- * has no message yet: it is a line of text until the conversation starts it, and the tree
- * channel's `prompt_started` entry names its message then. `queued` is the queue after this
- * request. What the prompt does arrives on the channels, never in this answer.
- *
- * The `queued` shape is strict on purpose: it refuses a `messageId`, which a queued prompt cannot
- * have, where an unknown field is otherwise dropped.
+ * agent whose channel carries the run, and `messageId`, the user message the prompt is. A prompt
+ * that `started` has that message now; one that waits in the queue (`queued`) has it from the
+ * moment the conversation accepts the line, and the queue's `prompt_started` (or `prompt_refused`)
+ * update and the run's entries name the same id when the line starts. `queued` is the queue after
+ * this request. What the prompt does arrives on the channels, never in this answer.
  */
 export const promptSentSchema = z.discriminatedUnion('status', [
   z.object({
@@ -32,9 +29,10 @@ export const promptSentSchema = z.discriminatedUnion('status', [
     messageId: messageIdSchema,
     queued: queuedPromptsSchema.shape.queued,
   }),
-  z.strictObject({
+  z.object({
     status: z.literal('queued'),
     node: nodeIdSchema,
+    messageId: messageIdSchema,
     queued: queuedPromptsSchema.shape.queued,
   }),
 ]);
