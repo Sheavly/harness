@@ -74,6 +74,14 @@ describe('what a conversation has used, over HTTP', () => {
     expect(await replayed(world)).toEqual({ total: snapshot.total, nodes: snapshot.nodes });
   });
 
+  it('is not in the conversation’s details: usage is read from this route and its channel only', async () => {
+    const world = await servedConversation({ servers, replies: [reports('one')] });
+    const details = await world.client.call('getConversation', { id: world.id });
+
+    expect(details).not.toHaveProperty('usage');
+    expect(details).not.toHaveProperty('contextUsage');
+  });
+
   it('counts a call that reported no tokens as missing, never as zero usage', async () => {
     const world = await servedConversation({ servers });
     const snapshot = await world.client.call('getUsage', { id: world.id });

@@ -6,7 +6,7 @@ import type {
 import type { PermissionMode } from '@sheavly/protocol/permission/permission.types';
 import type { ModelEffort } from '@sheavly/protocol/model/model.types';
 import type { RunningTool } from '../render/render.types.js';
-import type { ContextUsage, UsageTotals } from '@sheavly/protocol/usage/usage.types';
+import type { ContextFill, UsageFigures } from '@sheavly/protocol/usage/usage.types';
 
 /** One thing the user can answer an approval with, as the prompt lists it. */
 export type ApprovalChoice = { option: ApprovalOption; label: string; hint: string };
@@ -58,6 +58,8 @@ export type StatusInfo = {
   tools?: readonly RunningTool[];
   /** The model signalled reasoning; only shown while working, never claimed without a signal. */
   thinking?: boolean;
-  usage?: UsageTotals;
-  contextUsage?: ContextUsage;
+  /** The figures of every model call, as the backend counts them. */
+  usage?: UsageFigures;
+  /** How full the main agent's context is; none before its first call. */
+  context?: ContextFill | undefined;
 };

@@ -6,17 +6,13 @@ import type {
 } from './usage-channel.validator.js';
 import type {
   contextFillSchema,
-  contextUsageSchema,
   modelUsageSchema,
   tokenUsageSchema,
   usageFiguresSchema,
-  usageTotalsSchema,
 } from './usage.validator.js';
 
 export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 export type ModelUsage = z.infer<typeof modelUsageSchema>;
-export type UsageTotals = z.infer<typeof usageTotalsSchema>;
-export type ContextUsage = z.infer<typeof contextUsageSchema>;
 /** How full an agent's context was at its last counted call. */
 export type ContextFill = z.infer<typeof contextFillSchema>;
 /** What model calls have used: one node's, or the sum of every node's. */

@@ -14,7 +14,7 @@ import { createElement } from 'react';
 import { renderToString } from 'ink';
 import { ReactScreen } from '../react-screen.component.js';
 import { ReactView } from '../react-view.service.js';
-import { UsageLedger } from '@sheavly/runtime/usage/usage.service';
+import { usageFigures } from '@sheavly/client/testing/frames.fake';
 
 function open(rows = 24, interactive = false, columns = 80, reducedMotion = false) {
   const terminal = fakeTerminal(columns, rows);
@@ -120,8 +120,8 @@ describe('ReactView', () => {
         model: 'Fast',
         mode: 'ask',
         tasks: 0,
-        usage: { ...new UsageLedger().snapshot, calls: 1, inputTokens: 12300, outputTokens: 456 },
-        contextUsage: { throughSeq: 1, used: 12756, window: 300000 },
+        usage: { ...usageFigures(0), calls: 1, inputTokens: 12300, outputTokens: 456 },
+        context: { used: 12756, window: 300000 },
       });
       view.start();
 
@@ -129,7 +129,7 @@ describe('ReactView', () => {
         await new Promise((resolve) => setTimeout(resolve, 80));
         expect(stripVTControlCharacters(output)).toContain('Ctrl+C to stop');
         expect(view.snapshot.status.usage?.inputTokens).toBe(12300);
-        expect(view.snapshot.status.contextUsage?.used).toBe(12756);
+        expect(view.snapshot.status.context?.used).toBe(12756);
 
         if (columns === 120) {
           expect(stripVTControlCharacters(output)).toContain('context 12.8k / 300K (4%)');

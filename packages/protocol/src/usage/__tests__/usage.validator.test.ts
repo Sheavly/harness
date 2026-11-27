@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contextUsageSchema, modelUsageSchema, tokenUsageSchema } from '../usage.validator.js';
+import { contextFillSchema, modelUsageSchema, tokenUsageSchema } from '../usage.validator.js';
 
 describe('reported usage', () => {
   const tokens = { inputTokens: 100, outputTokens: 20, cacheReadTokens: 50, cacheWriteTokens: 0 };
@@ -32,20 +32,14 @@ describe('reported usage', () => {
   });
 
   it('keeps missing context measurements unknown and validates reported counts', () => {
-    expect(contextUsageSchema.parse({ throughSeq: -1 })).toEqual({ throughSeq: -1 });
-    expect(contextUsageSchema.parse({ throughSeq: 4, used: 0, window: 300_000 })).toEqual({
-      throughSeq: 4,
+    expect(contextFillSchema.parse({})).toEqual({});
+    expect(contextFillSchema.parse({ used: 0, window: 300_000 })).toEqual({
       used: 0,
       window: 300_000,
     });
-    expect(contextUsageSchema.parse({ throughSeq: 4, used: 10, cached: 0 })).toEqual({
-      throughSeq: 4,
-      used: 10,
-      cached: 0,
-    });
-    expect(contextUsageSchema.safeParse({ throughSeq: 0, cached: -1 }).success).toBe(false);
-    expect(contextUsageSchema.safeParse({ throughSeq: 0, used: -1 }).success).toBe(false);
-    expect(contextUsageSchema.safeParse({ throughSeq: 0, window: 0 }).success).toBe(false);
-    expect(contextUsageSchema.safeParse({ throughSeq: -2 }).success).toBe(false);
+    expect(contextFillSchema.parse({ used: 10, cached: 0 })).toEqual({ used: 10, cached: 0 });
+    expect(contextFillSchema.safeParse({ cached: -1 }).success).toBe(false);
+    expect(contextFillSchema.safeParse({ used: -1 }).success).toBe(false);
+    expect(contextFillSchema.safeParse({ window: 0 }).success).toBe(false);
   });
 });

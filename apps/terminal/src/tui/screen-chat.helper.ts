@@ -5,9 +5,6 @@ import type { ConversationDetails } from '@sheavly/protocol/server/server.types'
 import { ChatSession } from '../chat/chat-session.service.js';
 import { describeFailure } from '../render/terminal-text.utils.js';
 import { TerminalBell } from '../bell/bell.service.js';
-import { UsageLedger } from '@sheavly/runtime/usage/usage.service';
-import { ContextUsageTracker } from '../usage/context-usage.service.js';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { ScrollbackTerminal } from './scrollback-terminal.service.js';
 import type { AskedApproval } from '../client/client.types.js';
 import type { RemoteConversation } from '../client/conversation.service.js';
@@ -45,8 +42,6 @@ export async function startScreenChat(params: {
   configureHyperlinks(process.env);
 
   const watching = new AbortController();
-  const usage = new UsageLedger(details.usage);
-  const context = new ContextUsageTracker(details.session, details.contextUsage);
   const status = {
     state: 'ready' as const,
     model: details.model.name,
@@ -54,8 +49,6 @@ export async function startScreenChat(params: {
     mode: details.permissionMode,
     ...branchOf(details),
     tasks: 0,
-    usage: usage.snapshot,
-    contextUsage: context.snapshot,
   };
   const editorOptions = {
     commands: [...ChatScreen.commands, ...params.skills],
@@ -91,11 +84,6 @@ export async function startScreenChat(params: {
     onExpand: () => session.describeLatest(),
   });
   const renderer = new Renderer(screen.write, createChatLook(palette), screen.reply);
-  const keepUsage = (entry: StreamEntry) => {
-    usage.observe(entry);
-    context.observe(entry);
-    screen.setStatus({ usage: usage.snapshot, contextUsage: context.snapshot });
-  };
   let leave: () => void = () => undefined;
   const finished = new Promise<void>((resolve) => (leave = resolve));
   const session: ChatSession = new ChatSession({
@@ -125,7 +113,6 @@ export async function startScreenChat(params: {
     },
     onThinking: (thinking) => screen.setStatus({ thinking }),
     onRunState: (run) => screen.setStatus(statusOfRun(run)),
-    onUsage: keepUsage,
     onBusy: (busy) => {
       screen.setStatus({ state: busy ? 'working' : 'ready', ...(busy ? {} : { thinking: false }) });
 
@@ -133,15 +120,11 @@ export async function startScreenChat(params: {
         void conversation
           .details()
           .then((details) => {
-            if (details.usage) usage.update(details.usage);
-            if (details.contextUsage) context.update(details.contextUsage);
             screen.setStatus({
               model: details.model.name,
               modelEffort: details.model.effort ?? 'medium',
               // Cleared when the root was, so the badge never outlives it.
               workingBranch: branchOf(details).workingBranch,
-              usage: usage.snapshot,
-              contextUsage: context.snapshot,
             });
           })
           .catch((caughtError: unknown) =>
@@ -152,8 +135,7 @@ export async function startScreenChat(params: {
     onExit: () => leave(),
   });
 
-  // The approvals come from the conversation's tree. Usage no longer comes with them: the live
-  // stream below delivers every session's usage, between prompts too.
+  // The approvals come from the conversation's tree.
   const { ended } = await conversation.watchApprovals({
     onApproval: (asked) => askApproval({ asked, screen, bell }),
     onGone: (id) => forgetApproval({ id, screen, bell }),
@@ -183,6 +165,8 @@ export async function startScreenChat(params: {
   });
 
   screen.start();
+  // Not waited for: the usage is not what the chat needs, so a slow backend delays no prompt.
+  void followUsage({ conversation, screen, signal: watching.signal });
   // Lines queued before a restart are shown as waiting and not sent: reopening never runs them.
   session.restoreQueued(await conversation.queue());
   if (firstPrompt) session.submit(firstPrompt);
@@ -221,6 +205,33 @@ function branchOf(details: ConversationDetails): { workingBranch?: string } {
   if (!workingRoot) return {};
 
   return { workingBranch: workingRoot.branch ?? 'detached HEAD' };
+}
+
+/**
+ * Shows the backend's usage in the status line: the total and the main agent's context, as it
+ * counts them, replaced at each change (the figures are never added up here). The usage is not
+ * what the chat needs to run, so it is started without waiting for it, and one that cannot be
+ * followed, at the start or later, is said in a notice and the chat goes on without it.
+ */
+async function followUsage(params: {
+  conversation: RemoteConversation;
+  screen: ChatScreen;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { conversation, screen, signal } = params;
+
+  try {
+    const watch = await conversation.watchUsage({
+      onChange: ({ total, context }) => screen.setStatus({ usage: total, context }),
+      signal,
+    });
+
+    void watch.ended.catch((caughtError: unknown) => {
+      screen.notice(`✗ lost the usage: ${describeFailure(caughtError)}`);
+    });
+  } catch (caughtError) {
+    screen.notice(`✗ no usage in the status line: ${describeFailure(caughtError)}`);
+  }
 }
 
 /** An approval that was asked appears on the screen, with the sub-agent that asked it. */

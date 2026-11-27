@@ -56,9 +56,10 @@ belong to the backend app; this package defines and validates only their wire sh
 | `handshake/`         | The nonce, instance id and proof schemas, `handshakeProof` and `verifyHandshakeProof`         |
 | `discovery/`         | `DiscoveryFile`: what a running server writes for local clients, and `peekFormatVersion`      |
 
-Conversation details keep `contextUsage` separate from cumulative `usage`: the latest main-session
-measurement (`used`), active window (`window`) and snapshot position (`throughSeq`). Unknown
-measurements are omitted so clients cannot confuse missing counts with an empty context.
+Conversation details carry no usage. What a conversation has used, per node and in total, and how
+full each agent's context is (`used`, `cached`, `window`, each omitted when unknown, so a client
+cannot confuse a missing count with an empty context), comes from the usage route and the usage
+channel only.
 
 Conversation details may carry `ignoredSettings`: what a workspace's `.sheavly/settings.json` asked
 for that did not apply. Each entry is `{ layer: 'workspace', name?, file?, reason }` (type

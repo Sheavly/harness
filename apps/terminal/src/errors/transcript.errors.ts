@@ -1,11 +1,11 @@
 /**
  * The conversation's tree holds no main agent (an agent with no parent), so there is no channel to
- * read its transcript from.
+ * read its transcript from, and no context to read its usage from.
  */
 export class NoMainAgentError extends Error {
   override name = 'NoMainAgentError';
 
   constructor() {
-    super('The conversation has no main agent to read a transcript from.');
+    super('The conversation has no main agent to follow.');
   }
 }

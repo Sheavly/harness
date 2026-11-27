@@ -158,7 +158,6 @@ import {
   modelUsageSchema,
   tokenUsageSchema,
   usageFiguresSchema,
-  usageTotalsSchema,
 } from '../usage/usage.validator.js';
 import {
   harnessNoticeSchema,
@@ -182,7 +181,6 @@ function contractSchemas(): Record<string, z.ZodType> {
     AgentInfo: agentInfoSchema,
     ModelUsage: modelUsageSchema,
     ModelPricing: modelPricingSchema,
-    UsageTotals: usageTotalsSchema,
     ContextFill: contextFillSchema,
     UsageFigures: usageFiguresSchema,
     NodeUsage: nodeUsageSchema,

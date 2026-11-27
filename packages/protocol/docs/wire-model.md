@@ -136,7 +136,9 @@ What the conversation's model calls have used, per node and in total, so a front
 backend and never counts. It carries one entry besides its opening and closing: `node_usage`, a
 node's usage changed (a model call reported, or a turn ended with none), holding the node's figures
 and the conversation's total **as they now are, not what was added**. A client replaces what it
-holds, an entry told twice does no harm, and nothing is summed on the client.
+holds, an entry told twice does no harm, and nothing is summed on the client. This channel and
+`GET /conversations/{id}/usage` are the only place usage comes from: the conversation's details
+carry none, and the terminal's status line shows what they say.
 
 - A node's figures are its calls, its input, output, cache read and cache write tokens, its
   estimated cost (summed from the cost each call's usage event carries, which is the model's

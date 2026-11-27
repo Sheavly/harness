@@ -32,6 +32,17 @@ export function mainAgentOf(tree: TreeView): NodeId | undefined {
 }
 
 /**
+ * Every agent with no parent in `tree`, oldest first: the main agent and the ones a reopened
+ * conversation had before it, which are one conversation's main agent over time (each reopen makes
+ * a new node for it). The registry lists nodes in the order they were created.
+ */
+export function mainLineageOf(tree: TreeView): NodeId[] {
+  return tree.nodes
+    .filter((node) => node.kind === 'agent' && node.parent === undefined)
+    .map(({ id }) => id);
+}
+
+/**
  * The item an entry of an agent's channel shows, or none: the agent opening, changing and closing
  * are what the tree tells, and a command's output is not an agent's.
  */

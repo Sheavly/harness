@@ -7,6 +7,7 @@ import { RemoteConversation } from '../client/conversation.service.js';
 import { nodeFeeds, routeChannels } from './channels-feed.fake.js';
 import { liveFeed, promptStarted } from './live-feed.fake.js';
 import { treeFeed } from './tree-feed.fake.js';
+import { usageFeed } from './usage-feed.fake.js';
 import { startedAnswer } from '../chat/testing/prompt-answers.fake.js';
 
 export const FAKE_ID = conversationIdSchema.parse('00000000-0000-4000-8000-000000000001');
@@ -46,15 +47,19 @@ export async function openOnFake(params: {
   tree?: ReturnType<typeof treeFeed>;
   /** The agents' channels the backend serves, by the node's id; a node with none is `not_found`. */
   nodes?: ReturnType<typeof nodeFeeds>;
+  /** The usage the backend serves: none used yet unless a test says what it holds. */
+  usage?: ReturnType<typeof usageFeed>;
 }) {
   const feed = liveFeed();
   const tree = params.tree ?? treeFeed();
   const nodes = params.nodes ?? nodeFeeds();
+  const usage = params.usage ?? usageFeed();
   const runs = [...(params.runs ?? [])];
   const server = fakeServer({
     startConversation: () => ({ id: FAKE_ID }),
     streamConversation: () => feed.follow(),
-    streamChannels: (call) => routeChannels({ call, tree, nodes }),
+    streamChannels: (call) => routeChannels({ call, tree, nodes, usage }),
+    getTree: () => tree.snapshot(),
     sendPrompt: ({ body }) => {
       const run = runs.shift() ?? [];
       const text = (body as { text: string }).text;
@@ -78,7 +83,7 @@ export async function openOnFake(params: {
     },
   });
 
-  return { conversation, server, feed, tree, nodes };
+  return { conversation, server, feed, tree, nodes, usage };
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 } from '@sheavly/client/testing/frames.fake';
 import type { FakeHandlers } from '@sheavly/client/testing/testing.types';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
+import { treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import { liveFeed } from './live-feed.fake.js';
 
 /**
@@ -37,6 +38,8 @@ export function treeFeed(nodes: object[] = [], mains: object[] = [MAIN_AGENT]) {
 
   return {
     follow,
+    /** The tree as it stands now, as `getTree` answers it. */
+    snapshot: () => treeSnapshotSchema.parse(treeSnapshot({ n, nodes: [...mains, ...nodes] })),
     /** Tells subscribers a node opened. */
     opened: (node: object) => {
       n += 1;

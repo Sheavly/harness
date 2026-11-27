@@ -1,23 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { UsageLedger } from '@sheavly/runtime/usage/usage.service';
+import { usageFigures } from '@sheavly/client/testing/frames.fake';
 import { usageText } from '../usage.utils.js';
 import { statusText } from '../../tui/view.utils.js';
 
 describe('usageText', () => {
-  const empty = new UsageLedger().snapshot;
-  const context = { throughSeq: 1, used: 12_756, window: 1_000_000 };
+  const empty = usageFigures(0);
+  const context = { used: 12_756, window: 1_000_000 };
+
+  it('shows a conversation that has made no call as an empty context', () => {
+    expect(usageText({ context: undefined, usage: empty })).toBe('context 0');
+  });
+
+  it.each([
+    ['usage that has not arrived', undefined, undefined],
+    [
+      'an older conversation whose earlier calls are not counted',
+      undefined,
+      { ...empty, incomplete: true },
+    ],
+    ['a call that reported no tokens', undefined, { ...empty, calls: 1, missingUsageCalls: 1 }],
+  ])('shows unknown context instead of zero for %s', (_name, context, usage) => {
+    expect(usageText({ context, usage })).toBe('context ?');
+  });
 
   it('shows unknown context instead of zero or cumulative billing tokens', () => {
-    expect(usageText({ context: undefined, usage: empty })).toBe('context ?');
-    expect(usageText({ context: { throughSeq: 1, window: 300_000 }, usage: undefined })).toBe(
-      'context ? / 300K',
-    );
-    expect(usageText({ context: { throughSeq: 1, window: 1_000_000 }, usage: undefined })).toBe(
-      'context ? / 1M',
-    );
-    expect(usageText({ context: { throughSeq: 1, used: 42 }, usage: undefined })).toBe(
-      'context 42',
-    );
+    expect(usageText({ context: { window: 300_000 }, usage: undefined })).toBe('context ? / 300K');
+    expect(usageText({ context: { window: 1_000_000 }, usage: undefined })).toBe('context ? / 1M');
+    expect(usageText({ context: { used: 42 }, usage: undefined })).toBe('context 42');
   });
 
   it('formats the latest context against its window and keeps cumulative cost separate', () => {
@@ -49,7 +58,7 @@ describe('usageText', () => {
           model: 'Fast',
           mode: 'ask',
           tasks: 0,
-          contextUsage: context,
+          context,
           usage: { ...empty, calls: 1 },
         },
       }),

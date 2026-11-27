@@ -17,9 +17,10 @@ import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import { emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { backgroundOf, sameBackground } from './background.utils.js';
-import type { AskedApproval, Backend, Background } from './client.types.js';
+import type { AskedApproval, Backend, Background, MainUsage } from './client.types.js';
 import { watchTranscript } from './transcript-feed.helper.js';
 import type { ChatItem } from './transcript.types.js';
+import { watchMainUsage } from './usage-feed.helper.js';
 import { BackendError } from '../errors/backend.errors.js';
 
 type Client = ReturnType<typeof createClient>;
@@ -137,6 +138,21 @@ export class RemoteConversation {
     });
 
     return { ended: watch.ended };
+  }
+
+  /**
+   * Follows the usage the backend counts (`watchMainUsage`) and tells `onChange` the whole
+   * conversation's figures and how full the main agent's context is, from the usage as it stands
+   * and at each change: each call replaces the last, and nothing is summed here. Resolves once the
+   * backend accepted the connection; `ended` resolves when `signal` aborts and rejects when the usage
+   * can no longer be followed (a conversation that was closed, a refusal, a stream that was lost).
+   * Rejects with `NoMainAgentError` when the conversation has no main agent.
+   */
+  watchUsage(params: {
+    onChange: (usage: MainUsage) => void;
+    signal: AbortSignal;
+  }): Promise<{ ended: Promise<void> }> {
+    return watchMainUsage({ client: this.#client, id: this.id, ...params });
   }
 
   details(): Promise<ConversationDetails> {

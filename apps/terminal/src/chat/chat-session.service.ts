@@ -40,7 +40,6 @@ export class ChatSession {
   readonly #onTurnEnd: (outcome: TurnOutcome) => void;
   readonly #onReplyComplete: () => void;
   readonly #onTools: (tools: readonly RunningTool[]) => void;
-  readonly #onUsage: (entry: StreamEntry) => void;
   readonly #onExit: () => void;
   readonly #describer: Describer;
   readonly #onThinking: (thinking: boolean) => void;
@@ -96,8 +95,6 @@ export class ChatSession {
      * (0 when only ungrouped tasks or services remain).
      */
     onRunState?: (state: RunState) => void;
-    /** Usage entries from every session, including sub-agents; seq allows replay deduplication. */
-    onUsage?: (entry: StreamEntry) => void;
     /** Told once, when the user asked to leave. */
     onExit: () => void;
     /** The terminal's width now, which a diff is cut to; a plain line terminal has none. */
@@ -118,7 +115,6 @@ export class ChatSession {
     this.#onTools = params.onTools ?? (() => undefined);
     this.#onThinking = params.onThinking ?? (() => undefined);
     this.#onRunState = params.onRunState ?? (() => undefined);
-    this.#onUsage = params.onUsage ?? (() => undefined);
     this.#onExit = params.onExit;
     this.#describer = {
       renderer: params.renderer,
@@ -227,7 +223,6 @@ export class ChatSession {
     const start = mainRunStart({ entry, mainSession: this.#mainSession });
 
     if (start) this.#startRun(start);
-    if (entry.kind === 'event' && entry.event.type === 'usage') this.#onUsage(entry);
 
     const runState = mainRunState({ entry, mainSession: this.#mainSession });
 

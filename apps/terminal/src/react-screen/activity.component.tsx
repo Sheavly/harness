@@ -53,10 +53,7 @@ export function Activity(props: ActivityProps) {
       <Text color={secondary}>
         {backgroundText({ tasks, agents: props.agents ?? 0, services: props.services ?? 0 })}
       </Text>
-      <Text color={secondary}>
-        {' '}
-        · {usageText({ context: props.contextUsage, usage: props.usage })}
-      </Text>
+      <Text color={secondary}> · {usageText({ context: props.context, usage: props.usage })}</Text>
     </Text>
   );
 }

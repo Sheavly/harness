@@ -143,13 +143,21 @@ you` keeps its own words.
   reduced motion and `NO_COLOR`; plain mode, piped output, the demo and workbook stay silent.
   Whether BEL makes a sound, flashes or is ignored depends on your terminal's own bell settings.
 - **Context usage and estimated cost stay in the status line.** React and classic screens show
-  `context 142.5k / 300K (48%)`: the main session's latest reported input plus output, against
+  `context 142.5k / 300K (48%)`: the main agent's latest reported input plus output, against
   its configured context window. This is a last-call measurement, not a live count of streamed
   output or newly added tool results. Cache tokens are already included in input; output includes
-  reported reasoning. Sub-agent calls never add to the main context count. Resuming restores the
-  last measurement, and switching models updates the window. Missing usage clears the count to
-  `?` instead of keeping a stale value. Cost remains cumulative across all sessions, including
-  costs recorded with the rates used then. Unknown or incomplete cost is omitted. Known costs have
+  reported reasoning. Sub-agent calls never add to the main context count. The line shows the
+  usage the backend counts (the conversation's usage channel, followed from when the chat opens),
+  replaced at each change and never added up by the terminal. A resumed conversation shows the
+  last measurement of its earlier main agent until the new one makes a call, and a conversation
+  that has made no call shows `context 0` (without a window: the model's is known from its first
+  call). The window is the one the last call reported, so after switching models it is the old
+  model's until the next call. Missing usage clears the count to `?` instead of keeping a stale
+  value, and so does usage that has not arrived, a call that reported none and an older
+  conversation whose earlier calls the backend did not count. Cost remains cumulative across all sessions, including
+  costs recorded with the rates used then. A conversation kept before the backend counted usage
+  per node shows no cost, since what it used before is not counted (its total says so).
+  Unknown or incomplete cost is omitted. Known costs have
   a `~` estimate marker and are in USD. The backend accepts optional model `pricing` with `input`,
   `output`, `cacheRead` and `cacheWrite` rates per million tokens, through the model API or its JSON
   file. Rates are not fetched automatically and the setup form preserves, but does not edit them.

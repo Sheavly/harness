@@ -8,11 +8,12 @@ import {
   headAt,
 } from '@sheavly/client/testing/frames.fake';
 import type { FakeCall, FakeRefusal } from '@sheavly/client/testing/testing.types';
-import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
+import { TREE_CHANNEL_NAME, USAGE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { subscribeRequestSchema } from '@sheavly/protocol/subscription/subscription.validator';
 import { liveFeed } from './live-feed.fake.js';
 import type { treeFeed } from './tree-feed.fake.js';
+import type { usageFeed } from './usage-feed.fake.js';
 
 /**
  * Test-only: an agent's channel as a backend sends it to a subscriber: from `now`, where the
@@ -97,18 +98,21 @@ export function nodeFeeds() {
 
 /**
  * Test-only: what a fake backend's `streamChannels` answers a subscription: the tree channel's
- * frames, or the frames of the agent's channel it names from where it asks (`from`), or `not_found`
- * for a node the backend has no channel for.
+ * frames, the usage channel's (when the backend has one), or the frames of the agent's channel it
+ * names from where it asks (`from`), or `not_found` for a node the backend has no channel for.
  */
 export function routeChannels(params: {
   call: FakeCall;
   tree: ReturnType<typeof treeFeed>;
   nodes: ReturnType<typeof nodeFeeds>;
+  usage?: ReturnType<typeof usageFeed>;
 }): AsyncGenerator<SubscribeFrame> | FakeRefusal {
-  const { call, tree, nodes } = params;
+  const { call, tree, nodes, usage } = params;
   const [subscription] = subscribeRequestSchema.parse(call.body).subscriptions;
 
   if (!subscription || subscription.channel === TREE_CHANNEL_NAME) return tree.follow();
+
+  if (subscription.channel === USAGE_CHANNEL_NAME && usage) return usage.follow();
 
   const feed = nodes.find(subscription.channel);
 
