@@ -1,3 +1,5 @@
+import type { RunStartCause } from '@sheavly/protocol/channel/channel.types';
+import type { MessageId } from '@sheavly/protocol/message/message.types';
 import type { RunOutcome } from '@sheavly/protocol/session/session.types';
 import type { RemoteConversation } from '../client/conversation.service.js';
 import type { LinkFile } from '../changes/changes.types.js';
@@ -38,17 +40,18 @@ export type ChatConversation = Pick<
 >;
 
 /**
- * How a message ended: the main run's outcome from its `done`, or `failed` when the stream was
+ * How a message ended: the main run's outcome from its `done`, or `failed` when the feed was
  * lost before one arrived. A stopped prompt is `interrupted`, never `completed`. The same
  * vocabulary as a run's, so a UI maps it once.
  */
 export type TurnOutcome = RunOutcome;
 
 /**
- * A run of the main session, as the stream says it started: a line the user sent (its
- * `prompt_started`), or one the backend started itself (a resume with no line, a wake).
+ * The main run going, as the transcript feed says it started: `prompt` for a line the user sent,
+ * `wake` for one the backend started itself, with the message the run answers (a wake's is the
+ * earlier prompt's), and whether the user asked to stop it.
  */
-export type ChatRun = { owner: 'user'; text: string } | { owner: 'backend' };
+export type ChatRun = { cause: RunStartCause; messageId: MessageId; stopAsked: boolean };
 
 /** The main run's `run_state` event, as the chat tells a UI. */
 export type RunState = { state: 'working' | 'waiting'; groupedTasks: number };

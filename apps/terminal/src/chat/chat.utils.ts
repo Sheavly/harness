@@ -3,62 +3,23 @@ import { CHAT_COMMANDS, EXIT_COMMANDS } from './chat.constants.js';
 import type { ModelChoice } from '@sheavly/protocol/server/server.types';
 import type { ModelId } from '@sheavly/protocol/model/model.types';
 import type { SkillInfo } from '@sheavly/protocol/skill/skill.types';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
-import type { ChatInput, ChatRun, RunState } from './chat.types.js';
-
-/**
- * The main run an entry says starts: the user's line when the backend starts it from its queue
- * or at once (`prompt_started`), a run of the backend's own when the main session resumes or
- * starts (a wake; a line's `prompt_started` follows its resume and makes it the user's).
- * Undefined for any other entry.
- */
-export function mainRunStart(params: {
-  entry: StreamEntry;
-  mainSession: string;
-}): ChatRun | undefined {
-  const { entry, mainSession } = params;
-
-  if (entry.sessionId !== mainSession) return undefined;
-
-  if (entry.kind === 'queue' && entry.update.type === 'prompt_started') {
-    return { owner: 'user', text: entry.update.text };
-  }
-
-  if (entry.kind !== 'update') return undefined;
-
-  const { type } = entry.update;
-
-  return type === 'session_resumed' || type === 'session_started'
-    ? { owner: 'backend' }
-    : undefined;
-}
+import type { EntryEvent } from '@sheavly/protocol/event/event.types';
+import type { ChatItem } from '../client/transcript.types.js';
+import type { ChatInput, RunState } from './chat.types.js';
 
 /**
  * The originating message of a main run that failed, for the user to look up in the
- * conversation's `log.jsonl`; undefined for any other entry or a failure without one.
+ * conversation's `log.jsonl`; undefined for any other event or a failure without one.
  */
-export function failedRunMessage(params: {
-  entry: StreamEntry;
-  mainSession: string;
-}): string | undefined {
-  const { entry, mainSession } = params;
-
-  if (entry.kind !== 'event' || entry.sessionId !== mainSession) return undefined;
-
-  return entry.event.type === 'run_failed' ? entry.messageId : undefined;
+export function failedRunMessage(item: Extract<ChatItem, { type: 'event' }>): string | undefined {
+  return item.event.type === 'run_failed' ? item.messageId : undefined;
 }
 
-/** The main session's `run_state` an entry carries, or undefined for any other entry. */
-export function mainRunState(params: {
-  entry: StreamEntry;
-  mainSession: string;
-}): RunState | undefined {
-  const { entry, mainSession } = params;
+/** The `run_state` a main agent's event carries, or undefined for any other event. */
+export function runStateOf(event: EntryEvent): RunState | undefined {
+  if (event.type !== 'run_state') return undefined;
 
-  if (entry.kind !== 'event' || entry.sessionId !== mainSession) return undefined;
-  if (entry.event.type !== 'run_state') return undefined;
-
-  return { state: entry.event.state, groupedTasks: entry.event.groupedTasks };
+  return { state: event.state, groupedTasks: event.groupedTasks };
 }
 
 /**

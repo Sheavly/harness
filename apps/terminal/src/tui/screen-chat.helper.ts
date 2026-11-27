@@ -3,6 +3,7 @@ import { answerWhileWaiting } from '@sheavly/client/approvals/approvals.helper';
 import type { ApprovalId } from '@sheavly/protocol/approval/approval.types';
 import type { ConversationDetails } from '@sheavly/protocol/server/server.types';
 import { ChatSession } from '../chat/chat-session.service.js';
+import { followTranscript } from '../chat/follow-transcript.helper.js';
 import { describeFailure } from '../render/terminal-text.utils.js';
 import { TerminalBell } from '../bell/bell.service.js';
 import { ScrollbackTerminal } from './scrollback-terminal.service.js';
@@ -89,7 +90,6 @@ export async function startScreenChat(params: {
   const session: ChatSession = new ChatSession({
     conversation,
     renderer,
-    mainSession: details.session,
     write: screen.write,
     columns: () => view.columns,
     palette,
@@ -147,12 +147,7 @@ export async function startScreenChat(params: {
   });
 
   // Every run's output comes here: the user's lines, and the runs the backend starts itself.
-  const followed = await conversation.follow({
-    onEntry: (entry) => session.hear(entry),
-    signal: watching.signal,
-  });
-
-  void followed.ended.catch((caughtError: unknown) => session.lostStream(caughtError));
+  await followTranscript({ conversation, session, signal: watching.signal });
 
   // The status line's counts of background work come from the conversation's tree.
   const background = await conversation.watchBackground({

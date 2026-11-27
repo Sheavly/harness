@@ -225,8 +225,9 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   refused. It replaces `watchApprovals`, which reads the whole stream and goes with it.
 - The old whole-stream readers (`followConversation`, `promptEntries`, `watchApprovals`) stay while
   the stream route does. The terminal has moved its approvals and its background counts to the tree
-  (`watchTreeApprovals`, `watchTree`) and has a transcript feed on the tree channel and the main
-  agent's channel; its chat still reads the stream, and the readers go with the stream route.
+  (`watchTreeApprovals`, `watchTree`) and reads its chat's transcript from a feed on the tree
+  channel and the main agent's channel; only its workbook, demo and replay still read the stream,
+  and the readers go with the stream route.
 
 ## Testing a UI
 

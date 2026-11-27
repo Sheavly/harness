@@ -8,7 +8,6 @@ import { ChatSession } from '../chat-session.service.js';
 import {
   DEEP,
   FAST,
-  MAIN_SESSION as MAIN,
   fakeChatConversation,
   recordingChat,
   settle,
@@ -52,7 +51,6 @@ describe('ChatSession: file changes', () => {
     const session = new ChatSession({
       conversation: fakeChatConversation().conversation,
       renderer,
-      mainSession: MAIN,
       write: () => undefined,
       onExit: () => undefined,
       palette: createPalette(THEMES.colorblind),
