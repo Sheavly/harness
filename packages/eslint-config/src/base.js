@@ -23,6 +23,8 @@ import { TYPESCRIPT_RULES } from './typescript.js';
 export { replayConfinement } from './replay-confinement.js';
 // The terminal app's rule that the code starting its own backend never reads the discovery file.
 export { connectBackendConfinement } from './connect-backend-confinement.js';
+// The terminal app's rule that the chat and the TUI read the transcript feed, not the stream.
+export { transcriptFeedConfinement } from './transcript-feed-confinement.js';
 // The launcher's rule that systemd's programs are run only behind `SystemTools`, created in cli.ts.
 export { systemdConfinement } from './systemd-confinement.js';
 // The launcher's rule that only src/cli.ts imports the module that starts a server in the process.

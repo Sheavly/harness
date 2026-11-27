@@ -1,16 +1,24 @@
 import path from 'node:path';
 import { ESLint } from 'eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { connectBackendConfinement } from '../connect-backend-confinement.js';
 
 const TERMINAL = path.resolve(import.meta.dirname, '../../../../apps/terminal');
 const IMPORTS = 'no-restricted-imports';
 const SYNTAX = 'no-restricted-syntax';
 const eslint = new ESLint({ cwd: TERMINAL });
+
+// The first lint builds the terminal's typed program, with every source it imports: most of this
+// file's time, so it is built once here and counts against no test's limit.
+beforeAll(() => eslint.lintText('', { filePath: path.join(TERMINAL, 'src/chat.ts') }), 180_000);
 const READ_FILE =
   "import { readDiscoveryFile } from '@sheavly/storage/discovery-file/read-discovery-file.helper';\nvoid readDiscoveryFile;\n";
 const CLIENT_FILES = ['src/client/backend.helper.ts', 'src/client/with-backend.helper.ts'];
-const OTHER_FILES = ['src/chat/start.helper.ts', 'src/workbook/store.service.ts', 'src/chat.ts'];
+const OTHER_FILES = [
+  'src/render/render.service.ts',
+  'src/workbook/store.service.ts',
+  'src/chat.ts',
+];
 
 /** The messages of `rule` the terminal app's real config reports for `code` as `file`. */
 async function reported(params) {

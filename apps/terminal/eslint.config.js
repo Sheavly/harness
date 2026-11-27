@@ -1,5 +1,10 @@
 import { defineConfig } from 'eslint/config';
-import { baseConfig, connectBackendConfinement, replayConfinement } from '@sheavly/eslint-config';
+import {
+  baseConfig,
+  connectBackendConfinement,
+  replayConfinement,
+  transcriptFeedConfinement,
+} from '@sheavly/eslint-config';
 
 export default defineConfig([
   // An app: baseConfig lets its source read env, print and use the terminal (it is in apps/).
@@ -35,6 +40,9 @@ export default defineConfig([
   // The code that starts the terminal's own backend never reads the discovery file or takes the
   // lock, so a development terminal cannot attach to a stable server.
   connectBackendConfinement,
+  // The chat and the TUI read the transcript feed, never the stream: the stream readers are for the
+  // workbook, the demo and replay.
+  transcriptFeedConfinement,
   // Replay reads a stored stream and nothing else: no network, process, backend or model. Last,
   // so no block above or after can weaken it.
   replayConfinement,
