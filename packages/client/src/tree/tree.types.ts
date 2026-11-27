@@ -1,4 +1,14 @@
-import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+import type { TreeChannelEntry, TreeView } from '@sheavly/protocol/tree/tree.types';
+
+/**
+ * Told of one entry of the tree channel with the tree before it and after it: the same object when
+ * the entry changes nothing in the tree (a queue change, a prompt, a notice).
+ */
+export type TreeEntryListener = (params: {
+  entry: TreeChannelEntry;
+  before: TreeView;
+  after: TreeView;
+}) => void;
 
 /**
  * A conversation's tree as it is followed: `tree()` is what it is now, and `ended` settles when

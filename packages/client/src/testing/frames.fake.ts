@@ -48,7 +48,13 @@ export const agentUpdated = (params: { name: string; n: number; status?: string 
  * (its own `seq`, which is not the channel's cursor), and, for a text delta that merged the ones
  * after it, `lastSeq`.
  */
-export const agentEvent = (params: { name: string; n: number; event: object; lastSeq?: number }) =>
+export const agentEvent = (params: {
+  name: string;
+  n: number;
+  event: object;
+  lastSeq?: number;
+  messageId?: string;
+}) =>
   frame({
     channel: params.name,
     cursor: `s${String(params.n)}`,
@@ -56,6 +62,25 @@ export const agentEvent = (params: { name: string; n: number; event: object; las
     type: 'event',
     event: params.event,
     ...(params.lastSeq !== undefined && { lastSeq: params.lastSeq }),
+    ...(params.messageId !== undefined && { messageId: params.messageId }),
+  });
+
+/** Where an agent's run starts, as entry `n`: why, the message it answers and, for a prompt, its text. */
+export const agentRunStarted = (params: {
+  name: string;
+  n: number;
+  cause: 'prompt' | 'wake';
+  messageId: string;
+  text?: string;
+}) =>
+  frame({
+    channel: params.name,
+    cursor: `s${String(params.n)}`,
+    at: params.n,
+    type: 'run_started',
+    cause: params.cause,
+    messageId: params.messageId,
+    ...(params.text !== undefined && { text: params.text }),
   });
 
 /** An agent's channel after an event too large to store, as entry `n`: which it was, and how large. */

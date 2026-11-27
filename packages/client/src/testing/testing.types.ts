@@ -65,5 +65,7 @@ export type FakeHandlers = Partial<{
 }> &
   Partial<Record<EmptyRoute, (call: FakeCall) => Answer<undefined>>> &
   Partial<{
-    [N in StreamRoute]: (call: FakeCall) => AsyncIterable<ItemOf<N>> | FakeRefusal;
+    [N in StreamRoute]: (
+      call: FakeCall,
+    ) => AsyncIterable<ItemOf<N>> | FakeRefusal | Promise<AsyncIterable<ItemOf<N>> | FakeRefusal>;
   }>;
