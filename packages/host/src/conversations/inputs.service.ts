@@ -5,11 +5,11 @@ import type { PromptSent } from '@sheavly/protocol/node-command/node-command.typ
 import type { ConversationId, SendPromptRequest } from '@sheavly/protocol/server/server.types';
 import { ConversationsError } from '../errors/conversations.errors.js';
 import type { LiveConversation, PromptFailure, SentPrompt } from './conversations.types.js';
-import { partsText } from '@sheavly/protocol/message/message.utils';
 import { prepareForSend, refuseOverlappingSend, releaseOnAbort } from './prompt.helper.js';
 import { PromptQueue } from './prompt-queue.service.js';
 import { publishQueueUpdate } from './queue-notices.helper.js';
 import { ConversationQueues } from './queues.service.js';
+import { noteRunStartedByPrompt, promptTextOf } from './run-start.helper.js';
 import { announceStorageFailure } from './storage.helper.js';
 
 /** How a conversation's storage is checked before a prompt: `Conversations` owns the keepers. */
@@ -234,6 +234,8 @@ export class ConversationInputs {
           parts: prepared.parts,
         });
 
+        // Every user prompt that starts says so on its agent's channel, whoever sent it.
+        noteRunStartedByPrompt({ live, prompt });
         onStarted?.();
 
         return started;
@@ -260,7 +262,7 @@ export class ConversationInputs {
     left: () => readonly string[];
   }): Promise<MessageId> {
     const { id, live, prompt, left } = params;
-    const text = 'text' in prompt ? prompt.text : partsText(prompt.parts);
+    const text = promptTextOf(prompt);
     let messageId: MessageId | undefined;
     const { events } = await this.#send({
       ...params,
