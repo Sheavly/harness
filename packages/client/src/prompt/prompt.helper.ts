@@ -1,5 +1,4 @@
-import { partsText } from '@sheavly/protocol/message/message.utils';
-import type { PromptSent } from '@sheavly/protocol/node-command/node-command.types';
+import type { MessageId } from '@sheavly/protocol/message/message.types';
 import type { ConversationId, SendPromptRequest } from '@sheavly/protocol/server/server.types';
 import { runEnd } from '@sheavly/protocol/status/run-end.utils';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
@@ -15,8 +14,9 @@ import { PromptRefusedError } from '../errors/client.errors.js';
  * stops following, not the prompt.
  *
  * Throws the send's refusal (`RefusedError`), `PromptRefusedError` when the prompt waited and could
- * not start, and `StreamLostError` when the stream is lost. A waiting prompt is known by its text:
- * of two identical lines queued at once, the first to start is taken for the earlier one.
+ * not start or was removed from the queue by an edit, and `StreamLostError` when the stream is
+ * lost. The prompt is known by the `messageId` the send answered with, which the queue's updates
+ * and its run carry: two identical lines queued at once are told apart.
  */
 export async function* promptEntries(params: {
   client: ReturnType<typeof createClient>;
@@ -32,46 +32,27 @@ export async function* promptEntries(params: {
 
   try {
     const entries = await followConversation({ client, id, body: {}, signal });
-    const answer = await client.call('sendPrompt', { id, body: prompt, signal });
-    const text = 'text' in prompt ? prompt.text : partsText(prompt.parts);
+    const { messageId } = await client.call('sendPrompt', { id, body: prompt, signal });
 
-    yield* entriesOfRun({ entries, text, ahead: identicalAhead({ answer, text }) });
+    yield* entriesOfRun({ entries, messageId });
   } finally {
     following.abort();
   }
 }
 
-/** How many lines like `text` wait ahead of it: each starts before it, under the same text. */
-function identicalAhead(params: { answer: PromptSent; text: string }): number {
-  const { answer, text } = params;
-
-  if (answer.status === 'started') return 0;
-
-  // The queue after the send ends with this line itself.
-  return answer.queued.slice(0, -1).filter((line) => line === text).length;
-}
-
-/** The entries from the start of the run of `text` (after `ahead` others like it) to its end. */
+/** The entries from the start of the run of the line with `messageId` to its end. */
 async function* entriesOfRun(params: {
   entries: AsyncIterable<StreamEntry>;
-  text: string;
-  ahead: number;
+  messageId: MessageId;
 }): AsyncGenerator<StreamEntry> {
-  const { entries, text } = params;
-  let ahead = params.ahead;
+  const { entries, messageId } = params;
   let started = false;
 
   for await (const entry of entries) {
     if (!started) {
-      const start = startOf({ entry, text });
+      const start = startOf({ entry, messageId });
 
       if (start === 'other') continue;
-
-      if (ahead > 0) {
-        ahead -= 1;
-        continue;
-      }
-
       if (start !== 'started') throw new PromptRefusedError({ message: start.refused });
       started = true;
     }
@@ -81,15 +62,27 @@ async function* entriesOfRun(params: {
   }
 }
 
-/** Whether `entry` says a line of `text` started, or could not start (why), or is another entry. */
+/**
+ * Whether `entry` says the line with `messageId` started, or could not start or was removed from
+ * the queue (why), or is another entry.
+ */
 function startOf(params: {
   entry: StreamEntry;
-  text: string;
+  messageId: MessageId;
 }): 'other' | 'started' | { refused: string } {
-  const { entry, text } = params;
+  const { entry, messageId } = params;
 
-  if (entry.kind !== 'queue' || entry.update.type === 'queue_changed') return 'other';
-  if (entry.update.text !== text) return 'other';
+  if (entry.kind !== 'queue') return 'other';
 
-  return entry.update.type === 'prompt_started' ? 'started' : { refused: entry.update.error };
+  const { update } = entry;
+
+  if (update.type === 'queue_changed') {
+    return update.dropped?.includes(messageId)
+      ? { refused: 'The line was removed from the queue before it started' }
+      : 'other';
+  }
+
+  if (update.messageId !== messageId) return 'other';
+
+  return update.type === 'prompt_started' ? 'started' : { refused: update.error };
 }

@@ -20,7 +20,8 @@ export class RefusedError extends Error {
 
 /**
  * A prompt waited in the conversation's queue and could not start when its turn came (its skill
- * is gone, the conversation can no longer be stored): the backend's reason is the message.
+ * is gone, the conversation can no longer be stored), or a client's edit of the queue removed it
+ * before: the reason is the message.
  */
 export class PromptRefusedError extends Error {
   override name = 'PromptRefusedError';

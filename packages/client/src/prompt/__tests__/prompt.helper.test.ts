@@ -17,6 +17,7 @@ const MAIN = sessionIdSchema.parse('main');
 /** What a prompt's answer names: the agent that carries the run, and the message it became. */
 const NODE = nodeIdSchema.parse('agent-1');
 const MESSAGE = messageIdSchema.parse('00000000-0000-4000-8000-0000000000cd');
+const SECOND = messageIdSchema.parse('00000000-0000-4000-8000-0000000000ce');
 const at = { at: 1, sessionId: MAIN };
 
 const queue = (seq: number, update: QueueUpdate): StreamEntry => ({
@@ -86,28 +87,70 @@ describe('promptEntries', () => {
     ]);
   });
 
-  it('waits for a queued prompt behind an identical line, and yields only its own run', async () => {
+  it('waits for a queued prompt behind a run, and yields from the start that names its id', async () => {
     const client = backend({
-      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['same', 'same'] },
+      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['next'] },
       entries: [
-        queue(1, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: ['same'] }),
+        said(1, 'the run before'),
         done(2),
-        queue(3, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: [] }),
+        queue(3, { type: 'prompt_started', messageId: MESSAGE, text: 'next', queued: [] }),
         said(4, 'mine'),
         done(5),
       ],
     });
 
-    expect(await seqsOf(promptEntries({ client, id: ID, prompt: { text: 'same' } }))).toEqual([
+    expect(await seqsOf(promptEntries({ client, id: ID, prompt: { text: 'next' } }))).toEqual([
       3, 4, 5,
     ]);
   });
 
-  it('throws PromptRefusedError for a queued prompt that could not start', async () => {
+  it('tells two identical lines apart by id: the later one yields its own run, not the earlier one’s', async () => {
+    const client = backend({
+      answer: { status: 'queued', node: NODE, messageId: SECOND, queued: ['same', 'same'] },
+      entries: [
+        queue(1, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: ['same'] }),
+        said(2, 'the earlier line'),
+        done(3),
+        queue(4, { type: 'prompt_started', messageId: SECOND, text: 'same', queued: [] }),
+        said(5, 'mine'),
+        done(6),
+      ],
+    });
+
+    expect(await seqsOf(promptEntries({ client, id: ID, prompt: { text: 'same' } }))).toEqual([
+      4, 5, 6,
+    ]);
+  });
+
+  it('yields the first of two identical lines when it is the one answered, and stops at its end', async () => {
+    const client = backend({
+      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['same'] },
+      entries: [
+        queue(1, { type: 'prompt_started', messageId: MESSAGE, text: 'same', queued: ['same'] }),
+        said(2, 'mine'),
+        done(3),
+        queue(4, { type: 'prompt_started', messageId: SECOND, text: 'same', queued: [] }),
+        done(5),
+      ],
+    });
+
+    expect(await seqsOf(promptEntries({ client, id: ID, prompt: { text: 'same' } }))).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it('throws PromptRefusedError for a queued prompt that could not start, and ignores another line’s refusal', async () => {
     const client = backend({
       answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['/nope'] },
       entries: [
         queue(1, {
+          type: 'prompt_refused',
+          messageId: SECOND,
+          text: '/nope',
+          error: 'Another line’s error',
+          queued: [],
+        }),
+        queue(2, {
           type: 'prompt_refused',
           messageId: MESSAGE,
           text: '/nope',
@@ -120,6 +163,22 @@ describe('promptEntries', () => {
     await expect(
       seqsOf(promptEntries({ client, id: ID, prompt: { text: '/nope' } })),
     ).rejects.toEqual(new PromptRefusedError({ message: 'No skill is called nope' }));
+  });
+
+  it('throws PromptRefusedError for a queued prompt an edit removed from the queue', async () => {
+    const client = backend({
+      answer: { status: 'queued', node: NODE, messageId: MESSAGE, queued: ['gone'] },
+      entries: [
+        queue(1, { type: 'queue_changed', queued: ['other'], dropped: [SECOND] }),
+        queue(2, { type: 'queue_changed', queued: [], dropped: [MESSAGE] }),
+      ],
+    });
+
+    await expect(
+      seqsOf(promptEntries({ client, id: ID, prompt: { text: 'gone' } })),
+    ).rejects.toEqual(
+      new PromptRefusedError({ message: 'The line was removed from the queue before it started' }),
+    );
   });
 
   it("throws the send's refusal, with the backend's code", async () => {
