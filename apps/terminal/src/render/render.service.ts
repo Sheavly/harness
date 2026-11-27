@@ -1,17 +1,13 @@
 import { now } from '@sheavly/core/clock/clock.helper';
 import { plainTerminalText } from './terminal-text.utils.js';
 import { ChangeLog } from '../changes/change-log.service.js';
+import type { ChatItem } from '../client/transcript.types.js';
 import { FailureLog } from '../failures/failure-log.service.js';
 import { logLook } from './log-look.utils.js';
 import type { Expandable, Look, ReplySink, RunningTool, Section, Write } from './render.types.js';
-import {
-  commandOf,
-  firstLine,
-  oneLine,
-  seconds,
-  shortId,
-  terminalConnection,
-} from './render.utils.js';
+import { noticeLine } from './notice-line.utils.js';
+import { commandOf, firstLine, oneLine, seconds, terminalConnection } from './render.utils.js';
+import { cardLine, sessionLine } from './sub-agent.utils.js';
 import { drawToolResult } from './tool-result.helper.js';
 import { MAX_EXTENSION_TEXT_CHARS } from '@sheavly/protocol/extension/extension.constants';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
@@ -94,6 +90,37 @@ export class Renderer {
     if (entry.kind === 'update') this.session(entry.update);
   }
 
+  /**
+   * One item of the transcript feed: the main agent's events, an event too large to store, the
+   * conversation's notices, and a sub-agent's card. It draws what `entry` draws for the same run.
+   */
+  item(item: ChatItem): void {
+    switch (item.type) {
+      case 'event':
+        this.event(item.event);
+        break;
+      case 'event_omitted':
+        this.#omitted(item);
+        break;
+      case 'agent':
+        this.#activity(cardLine({ look: this.look, item }));
+        break;
+      case 'storage_failed':
+        this.#storageFailed(item.error);
+        break;
+      case 'extension_event':
+        this.#extensionEvent(item);
+        break;
+      case 'run_started':
+      case 'queue_changed':
+      case 'prompt_started':
+      case 'prompt_refused':
+        // Drawn by nothing here: the chat's session reads them (a run's start and echo, the
+        // queue, a refused line) and shows them itself.
+        break;
+    }
+  }
+
   /** One loop event of the main session. */
   event(event: EntryEvent): void {
     switch (event.type) {
@@ -157,44 +184,14 @@ export class Renderer {
         this.#taskCompleted(event);
         break;
       case 'message_received':
-        this.#activity(this.look.steer(firstLine(event.message.content)));
-        break;
       case 'context_added':
-        this.#activity(
-          this.look.contextAdded({
-            hook: plainTerminalText(event.hook),
-            chars: event.content.length,
-          }),
-        );
-        break;
       case 'model_input_changed':
-        this.#activity(
-          this.look.modelInputChanged({
-            hook: plainTerminalText(event.hook),
-            added: event.added,
-            removed: event.removed,
-            edited: event.edited,
-          }),
-        );
-        break;
       case 'summary_started':
-        this.#activity(this.look.summaryStarted());
-        break;
       case 'summary_done':
-        this.#activity(
-          this.look.summaryDone({
-            tokensBefore: event.tokensBefore,
-            tokensAfter: event.tokensAfter,
-          }),
-        );
-        break;
       case 'summary_failed':
-        this.#activity(
-          this.look.summaryFailed({
-            error: firstLine(event.error),
-            cancelled: event.kind === 'cancellation',
-          }),
-        );
+      case 'hook_failed':
+      case 'turn_end':
+        this.#activity(noticeLine({ look: this.look, event }));
         break;
       case 'run_failed':
         this.clearRunning();
@@ -203,31 +200,11 @@ export class Renderer {
         this.reply.end();
         this.#endPrompt();
         break;
-      case 'hook_failed':
-        this.#activity(
-          this.look.hookFailed({
-            hook: plainTerminalText(event.hook),
-            handler: event.handler,
-            error: plainTerminalText(event.error),
-          }),
-        );
-        break;
       case 'storage_failed':
-        // Not the end of a run: the prompt carries on, and only the next one is refused.
-        this.#activity(this.look.storageFailed(plainTerminalText(event.error)));
+        this.#storageFailed(event.error);
         break;
       case 'extension_event':
-        // The fallback only, never `data`, and never a switch on `kind`: a kind this terminal
-        // does not know still shows its text. One line, so it cannot imitate other output.
-        this.#activity(
-          this.look.extensionEvent({
-            extension: plainTerminalText(event.extension),
-            text: plainTerminalText(oneLine({ text: event.text, max: MAX_EXTENSION_TEXT_CHARS })),
-          }),
-        );
-        break;
-      case 'turn_end':
-        this.#activity(this.look.turnEnd({ stopReason: event.stopReason }));
+        this.#extensionEvent(event);
         break;
       case 'done':
         this.#done(event);
@@ -237,53 +214,51 @@ export class Renderer {
 
   /** One session update: sub-agents starting, reporting status, getting messages, ending. */
   session(update: SessionUpdate): void {
-    const { session } = update;
+    this.#activity(sessionLine({ look: this.look, update }));
+  }
 
-    // The main session is not a card: only a sub-agent, which has a parent, is drawn.
-    if (!('parentId' in session)) return;
-    const agent = {
-      indent: '  '.repeat(session.depth - 1),
-      title: plainTerminalText(session.title),
-      id: session.id,
-    };
+  /** An event the backend could not store: the tool step it was the result of is over. */
+  #omitted(item: Extract<ChatItem, { type: 'event_omitted' }>): void {
+    const { call, eventType } = item;
 
-    // Every update kind is chosen here, so a new one fails lint until it is drawn or ignored.
-    switch (update.type) {
-      case 'session_started':
-        this.#activity(
-          this.look.subAgentStarted({
-            ...agent,
-            depth: session.depth,
-            parent: session.parentId,
-            root: session.rootId,
-          }),
-        );
-        break;
-      case 'session_status':
-        this.#activity(
-          this.look.subAgentStatus({ ...agent, status: plainTerminalText(session.status ?? '') }),
-        );
-        break;
-
-      case 'session_message': {
-        const from = update.message.from === 'user' ? 'the user' : shortId(update.message.from);
-        const content = firstLine(update.message.content);
-
-        this.#activity(this.look.subAgentMessage({ ...agent, from, content }));
-        break;
-      }
-
-      case 'session_ended':
-        this.#activity(this.look.subAgentEnded({ ...agent, state: session.state }));
-        break;
-      case 'session_idle':
-      case 'session_resumed':
-      case 'session_model':
-      case 'session_released':
-        // Drawn by nothing: idle, resume and model changes are not transcript output, and the
-        // ended card is already in the scrollback when a session is released.
-        break;
+    if (call) {
+      this.#endRunningTool(call.id);
+      this.#showHeldSteps(call.id);
     }
+
+    // Only a result is "the result of" a tool: a call that started or became a task is an event
+    // of its own type, whose name the stub names too.
+    this.#activity(
+      this.look.tooLarge({
+        tool: call && eventType === 'tool_result' ? plainTerminalText(call.name) : undefined,
+        eventType: plainTerminalText(eventType),
+      }),
+    );
+  }
+
+  /** Drops the running tool `id`, if it runs, keeping the same list when it does not. */
+  #endRunningTool(id: CallId): void {
+    if (this.#running.some((tool) => tool.id === id)) {
+      this.#running = this.#running.filter((tool) => tool.id !== id);
+    }
+  }
+
+  /** Not the end of a run: the prompt carries on, and only the next one is refused. */
+  #storageFailed(error: string): void {
+    this.#activity(this.look.storageFailed(plainTerminalText(error)));
+  }
+
+  /**
+   * The fallback only, never `data`, and never a switch on `kind`: a kind this terminal does not
+   * know still shows its text. One line, so it cannot imitate other output.
+   */
+  #extensionEvent(params: { extension: string; text: string }): void {
+    this.#activity(
+      this.look.extensionEvent({
+        extension: plainTerminalText(params.extension),
+        text: plainTerminalText(oneLine({ text: params.text, max: MAX_EXTENSION_TEXT_CHARS })),
+      }),
+    );
   }
 
   /** The model's reply, as it streams: a section of its own, apart from what the run did. */

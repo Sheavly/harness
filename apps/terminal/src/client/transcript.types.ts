@@ -14,6 +14,8 @@ type TreeEntryOf<Type extends TreeChannelEntry['type']> = Extract<TreeChannelEnt
  * is doing and where it is in its life. `state` is the node's (an agent that hit its turn limit or
  * was interrupted has ended `failed` or `cancelled`); `outcome` is how its last run ended, which
  * keeps what `state` folds together (`max_turns`, `interrupted`, …), as the stream's session did.
+ * `spawnedBy` is the tool call, in its parent's history, that started it: a chat draws the card
+ * where the main agent calls that tool.
  */
 export type SubAgentCard = {
   id: NodeId;
@@ -24,6 +26,7 @@ export type SubAgentCard = {
   status?: string;
   state: TreeView['nodes'][number]['state'];
   outcome?: RunOutcome;
+  spawnedBy?: CallId;
 };
 
 /**
@@ -55,12 +58,16 @@ export type ChatItem =
     }
   /** Where a run starts: why, the user message it answers and, for a prompt, its text. */
   | { type: 'run_started'; cause: RunStartCause; messageId: MessageId; text?: string }
-  | ({ type: 'queue_changed' } & Pick<TreeEntryOf<'queue_changed'>, 'queued'>)
+  /** The queue after a change; `dropped` holds the ids of the lines a client's edit took out. */
+  | ({ type: 'queue_changed' } & Pick<TreeEntryOf<'queue_changed'>, 'queued' | 'dropped'>)
   | ({ type: 'prompt_started' } & Pick<
       TreeEntryOf<'prompt_started'>,
       'text' | 'messageId' | 'queued'
     >)
-  | ({ type: 'prompt_refused' } & Pick<TreeEntryOf<'prompt_refused'>, 'text' | 'error' | 'queued'>)
+  | ({ type: 'prompt_refused' } & Pick<
+      TreeEntryOf<'prompt_refused'>,
+      'text' | 'messageId' | 'error' | 'queued'
+    >)
   | ({ type: 'storage_failed' } & Pick<TreeEntryOf<'storage_failed'>, 'error'>)
   | ({ type: 'extension_event' } & Pick<
       TreeEntryOf<'extension_event'>,

@@ -111,6 +111,7 @@ function cardOf(params: { node: AgentNode; parent: NodeId; tree: TreeView }): Su
     ...(node.status !== undefined && { status: node.status }),
     state: node.state,
     ...(node.lastOutcome !== undefined && { outcome: node.lastOutcome }),
+    ...(node.spawnedBy !== undefined && { spawnedBy: node.spawnedBy }),
   };
 }
 
@@ -163,7 +164,13 @@ export function itemsOfTreeEntry(params: {
 
   switch (entry.type) {
     case 'queue_changed':
-      return [{ type: 'queue_changed', queued: entry.queued }];
+      return [
+        {
+          type: 'queue_changed',
+          queued: entry.queued,
+          ...(entry.dropped !== undefined && { dropped: entry.dropped }),
+        },
+      ];
     case 'prompt_started':
       return [
         {
@@ -175,7 +182,13 @@ export function itemsOfTreeEntry(params: {
       ];
     case 'prompt_refused':
       return [
-        { type: 'prompt_refused', text: entry.text, error: entry.error, queued: entry.queued },
+        {
+          type: 'prompt_refused',
+          text: entry.text,
+          messageId: entry.messageId,
+          error: entry.error,
+          queued: entry.queued,
+        },
       ];
     case 'storage_failed':
       return [{ type: 'storage_failed', error: entry.error }];

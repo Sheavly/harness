@@ -27,6 +27,8 @@ function stepsOf(palette: Palette): Omit<Look, 'fileChange' | 'failure'> {
 
       return `  ${paint.text.secondary('⎿')} ${paint.status.success('✓')} ${label}${detail} ${paint.text.secondary(`· ${seconds}`)}\n`;
     },
+    tooLarge: ({ tool, eventType }) =>
+      `  ${paint.text.secondary('⎿')} ${paint.status.warning(`⚠ ${tool === undefined ? `a ${eventType} event` : `the result of ${tool}`} was too large to show`)}\n`,
     taskRunning: ({ label, id }) =>
       `  ${paint.text.secondary('↻')} ${label}running in background as ${id}\n`,
     taskCompleted: ({ ok, id, status, exit, elapsed, command, output }) => {

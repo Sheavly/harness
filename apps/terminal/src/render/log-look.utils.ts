@@ -1,8 +1,9 @@
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { Look } from './render.types.js';
 import { shortId } from './render.utils.js';
 
-const who = (params: { title: string; id: SessionId }) =>
+const who = (params: { title: string; id: SessionId | NodeId }) =>
   `"${params.title}" [${shortId(params.id)}]`;
 
 /**
@@ -18,6 +19,8 @@ export const logLook: Look = {
   parallel: (count) => `  ⎿ ${count} tools in parallel\n`,
   toolResult: ({ ok, label, detail, seconds }) =>
     `    ${ok ? '✓' : '✗'} ${label}${detail} · ${seconds}\n`,
+  tooLarge: ({ tool, eventType }) =>
+    `    ⚠ ${tool === undefined ? `a ${eventType} event` : `the result of ${tool}`} was too large to store, so it is not shown\n`,
   // The saved runs and checks read this log, so a file change stays out of it.
   fileChange: () => '',
   failure: () => '',
