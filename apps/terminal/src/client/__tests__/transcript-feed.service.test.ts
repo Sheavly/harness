@@ -33,7 +33,12 @@ describe('RemoteConversation: the transcript feed', () => {
     channel.runStarted({ cause: 'prompt', messageId: MESSAGE, text: 'go' });
     channel.event({ event: delta(1, 'Hel'), messageId: MESSAGE });
     channel.event({ event: delta(2, 'lo, world'), messageId: MESSAGE, lastSeq: 4 });
-    channel.omitted({ eventType: 'tool_result', seq: 5, size: 90_000 });
+    channel.omitted({
+      eventType: 'tool_result',
+      seq: 5,
+      size: 90_000,
+      call: { id: 'call_1', name: 'read_file' },
+    });
     await until(() => items.length === 5);
 
     // Between the two channels no order is defined: each is checked on its own.
@@ -44,7 +49,13 @@ describe('RemoteConversation: the transcript feed', () => {
       { type: 'run_started', cause: 'prompt', messageId: MESSAGE, text: 'go' },
       { type: 'event', event: delta(1, 'Hel'), messageId: MESSAGE },
       { type: 'event', event: delta(2, 'lo, world'), messageId: MESSAGE, lastSeq: 4 },
-      { type: 'event_omitted', eventType: 'tool_result', seq: 5, size: 90_000 },
+      {
+        type: 'event_omitted',
+        eventType: 'tool_result',
+        seq: 5,
+        size: 90_000,
+        call: { id: 'call_1', name: 'read_file' },
+      },
     ]);
   });
 

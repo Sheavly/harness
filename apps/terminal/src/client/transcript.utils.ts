@@ -62,6 +62,7 @@ export function itemOfAgentEntry(entry: NodeChannelEntry): ChatItem | undefined 
         seq: entry.seq,
         size: entry.size,
         ...(entry.messageId !== undefined && { messageId: entry.messageId }),
+        ...(entry.call !== undefined && { call: entry.call }),
       };
     case 'run_started':
       return {

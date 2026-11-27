@@ -1,6 +1,6 @@
 import type { RunStartCause } from '@sheavly/protocol/channel/channel.types';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
-import type { MessageId } from '@sheavly/protocol/message/message.types';
+import type { CallId, MessageId } from '@sheavly/protocol/message/message.types';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { RunOutcome } from '@sheavly/protocol/session/session.types';
 import type { TreeChannelEntry, TreeView } from '@sheavly/protocol/tree/tree.types';
@@ -42,9 +42,17 @@ export type ChatItem =
   | { type: 'event'; event: EntryEvent; messageId?: MessageId; lastSeq?: number }
   /**
    * An event too large to be stored: which it was, its `seq` and how large (its JSON, in
-   * characters). Its content is not on the channel, so a chat can say there was one and no more.
+   * characters). Its content is not on the channel, so a chat can say there was one and no more,
+   * and, for an event of one tool call, which call it was (`call`: its id and tool name).
    */
-  | { type: 'event_omitted'; eventType: string; seq: number; size: number; messageId?: MessageId }
+  | {
+      type: 'event_omitted';
+      eventType: string;
+      seq: number;
+      size: number;
+      messageId?: MessageId;
+      call?: { id: CallId; name: string };
+    }
   /** Where a run starts: why, the user message it answers and, for a prompt, its text. */
   | { type: 'run_started'; cause: RunStartCause; messageId: MessageId; text?: string }
   | ({ type: 'queue_changed' } & Pick<TreeEntryOf<'queue_changed'>, 'queued'>)

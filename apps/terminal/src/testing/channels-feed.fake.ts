@@ -60,8 +60,12 @@ export function nodeFeed(name: string) {
     event: (params: { event: object; messageId?: string; lastSeq?: number }) =>
       publish((number) => agentEvent({ name, n: number, ...params })),
     /** Tells subscribers of an event too large to store. */
-    omitted: (params: { eventType: string; seq: number; size: number }) =>
-      publish((number) => agentEventOmitted({ name, n: number, ...params })),
+    omitted: (params: {
+      eventType: string;
+      seq: number;
+      size: number;
+      call?: { id: string; name: string };
+    }) => publish((number) => agentEventOmitted({ name, n: number, ...params })),
     /** Tells subscribers where a run starts. */
     runStarted: (params: { cause: 'prompt' | 'wake'; messageId: string; text?: string }) =>
       publish((number) => agentRunStarted({ name, n: number, ...params })),
