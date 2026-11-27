@@ -77,7 +77,14 @@ describe('followNode', () => {
           n: 2,
           event: { seq: 7, type: 'turn_end', turn: 0, stopReason: 'end_turn' },
         }),
-        agentEventOmitted({ name: 'main', n: 3, eventType: 'tool_result', seq: 8, size: 90_000 }),
+        agentEventOmitted({
+          name: 'main',
+          n: 3,
+          eventType: 'tool_result',
+          seq: 8,
+          size: 90_000,
+          call: { id: 'call_1', name: 'read_file' },
+        }),
         agentClosed({ name: 'main', n: 4 }),
         endedAs({ name: 'main', reason: 'completed' }),
       ],
@@ -95,7 +102,12 @@ describe('followNode', () => {
       event: { seq: 4, type: 'text_delta', text: 'Hello, world' },
       lastSeq: 6,
     });
-    expect(seen[3]).toMatchObject({ eventType: 'tool_result', seq: 8, size: 90_000 });
+    expect(seen[3]).toMatchObject({
+      eventType: 'tool_result',
+      seq: 8,
+      size: 90_000,
+      call: { id: 'call_1', name: 'read_file' },
+    });
   });
 
   it('resumes an agent’s events after the last one it had when the connection drops, with no gap and no repeat', async () => {
