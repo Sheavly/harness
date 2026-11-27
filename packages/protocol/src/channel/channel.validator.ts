@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { entryEventSchema } from '../event/event.validator.js';
-import { messageIdSchema } from '../message/message.validator.js';
+import { callIdSchema, messageIdSchema } from '../message/message.validator.js';
 import {
   CONVERSATION_CHANNEL_NAMES,
   MAX_NODE_ERROR_CHARS,
@@ -17,6 +17,7 @@ import { timestampSchema } from '../time/time.validator.js';
 import {
   BYTE_CURSOR_PATTERN,
   MAX_ENTRY_TYPE_CHARS,
+  MAX_OMITTED_CALL_CHARS,
   MAX_OUTPUT_CHUNK_BYTES,
   RUN_START_CAUSES,
   SEQUENCE_CURSOR_PATTERN,
@@ -231,8 +232,10 @@ const nodeEventSchema = entrySchema
 /**
  * What an agent's channel holds in place of an event that is too large to store (a store keeps an
  * entry of `MAX_CHANNEL_ENTRY_CHARS` at most and refuses a longer one): that there was one, which,
- * where it stood in the session's stream, and how large it was, as its JSON in characters. Its
- * content is not kept here; the combined stream still holds the whole event.
+ * where it stood in the session's stream, how large it was, as its JSON in characters, and, for an
+ * event of one tool call (`tool_call_started`, `tool_result`, `task_running`), which call: its id and
+ * tool name, so a reader that follows only this channel can still end that call's step. Its content
+ * is not kept here; the combined stream still holds the whole event.
  */
 const nodeEventOmittedSchema = entrySchema
   .extend({
@@ -245,6 +248,17 @@ const nodeEventOmittedSchema = entrySchema
     /** How large the event was: its JSON, in characters. */
     size: z.number().int().positive(),
     messageId: messageIdSchema.exactOptional(),
+    /**
+     * The omitted event's own call: the id of the tool call and its tool name, each at most
+     * `MAX_OMITTED_CALL_CHARS`. Present when the event carried one call; an event of several
+     * (`tool_batch`), of none, or whose call id was too long to name exactly has none.
+     */
+    call: z
+      .object({
+        id: callIdSchema.min(1).max(MAX_OMITTED_CALL_CHARS),
+        name: z.string().max(MAX_OMITTED_CALL_CHARS),
+      })
+      .exactOptional(),
   })
   .refine(({ cursor }) => isAfterOpened(cursor), {
     error: 'an event_omitted entry is numbered after the opened entry',

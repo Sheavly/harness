@@ -35,6 +35,14 @@ export const RUN_START_CAUSES = ['prompt', 'wake'] as const;
 export const MAX_ENTRY_TYPE_CHARS = 128;
 
 /**
+ * The most characters of the call an `event_omitted` entry names may be, for its id and for its
+ * tool name each. A tool call's id is the model backend's and its name the tool's, neither bounded
+ * by the wire, so this keeps the entry far under `MAX_CHANNEL_ENTRY_CHARS`; an id longer than it is
+ * not named at all, since a cut id would match another call.
+ */
+export const MAX_OMITTED_CALL_CHARS = 200;
+
+/**
  * The most bytes of a command's or a service's output one `output` entry carries: 16 KiB of UTF-8.
  * Small enough that a client shows output as it comes and a slow one holds little for each frame,
  * and one read (`MAX_TAIL_BYTES`, the output store's read bound) is several of them. An entry is

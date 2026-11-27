@@ -83,13 +83,17 @@ export const agentRunStarted = (params: {
     ...(params.text !== undefined && { text: params.text }),
   });
 
-/** An agent's channel after an event too large to store, as entry `n`: which it was, and how large. */
+/**
+ * An agent's channel after an event too large to store, as entry `n`: which it was, how large, and,
+ * for an event of one tool call, that call's id and tool name.
+ */
 export const agentEventOmitted = (params: {
   name: string;
   n: number;
   eventType: string;
   seq: number;
   size: number;
+  call?: { id: string; name: string };
 }) =>
   frame({
     channel: params.name,
@@ -99,6 +103,7 @@ export const agentEventOmitted = (params: {
     eventType: params.eventType,
     seq: params.seq,
     size: params.size,
+    ...(params.call !== undefined && { call: params.call }),
   });
 
 /** A command's output: `text`, which starts at byte `offset` of it. */

@@ -50,6 +50,28 @@ describe('itemOfAgentEntry', () => {
     ).toEqual({ type: 'event_omitted', eventType: 'tool_result', seq: 8, size: 90_000 });
   });
 
+  it('keeps the call of an event that was too large to store, so the step it ended can be told', () => {
+    const call = { id: 'call_1', name: 'read_file' };
+    const item = itemOf(
+      agentEventOmitted({
+        name: 'main',
+        n: 2,
+        eventType: 'tool_result',
+        seq: 8,
+        size: 90_000,
+        call,
+      }),
+    );
+
+    expect(item).toEqual({
+      type: 'event_omitted',
+      eventType: 'tool_result',
+      seq: 8,
+      size: 90_000,
+      call,
+    });
+  });
+
   it('shows where a prompt’s run starts with the prompt’s text, and a wake’s without one', () => {
     const prompt = itemOf(
       agentRunStarted({ name: 'main', n: 1, cause: 'prompt', messageId: MESSAGE, text: 'go' }),

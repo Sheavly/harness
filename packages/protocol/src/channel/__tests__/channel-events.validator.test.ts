@@ -127,6 +127,22 @@ describe('what stands in an agent’s channel for an event too large to store', 
     expect(served(omitted({ eventType: 'a_later_event' }))).toBe(true);
   });
 
+  it('may name the call of an event of one tool call: its id and its tool name', () => {
+    expect(served(omitted({ call: { id: 'call-1', name: 'read_file' } }))).toBe(true);
+    expect(served(omitted({ call: { id: 'i'.repeat(200), name: 'n'.repeat(200) } }))).toBe(true);
+  });
+
+  it.each([
+    ['an empty call id', omitted({ call: { id: '', name: 'read_file' } })],
+    ['a call id over its cap', omitted({ call: { id: 'i'.repeat(201), name: 'read_file' } })],
+    ['a tool name over its cap', omitted({ call: { id: 'call-1', name: 'n'.repeat(201) } })],
+    ['a call with no name', omitted({ call: { id: 'call-1' } })],
+    ['a call with no id', omitted({ call: { name: 'read_file' } })],
+    ['a call that is not an object', omitted({ call: 'call-1' })],
+  ])('refuses %s', (_name, value) => {
+    expect(served(value)).toBe(false);
+  });
+
   it.each([
     ['no event type', omitted({ eventType: '' })],
     ['an event type over its cap', omitted({ eventType: 'x'.repeat(129) })],

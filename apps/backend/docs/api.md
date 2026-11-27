@@ -331,8 +331,11 @@ curl -N -X QUERY "$URL/conversations/$ID/subscribe" \
   client that follows a session by `seq` knows what it has. A merged entry holds at most 8,192
   characters of text.
 - **An event too large to store** (an entry is at most 64 KiB of JSON) is an `event_omitted` entry
-  in its place: its type, its `seq` and its size, never its content. The conversation's stream still
-  has it whole.
+  in its place: its type, its `seq` and its size, never its content. An event of one tool call
+  (`tool_call_started`, `tool_result`, `task_running`) also keeps `call`, the call's `id` and tool
+  `name` (each at most 200 characters; an id that is empty, longer or not well formed leaves `call`
+  out, since an id is never cut), so a client that reads only this channel can still end that
+  call's step. The conversation's stream still has it whole.
 - **The conversation's own notices are not here**: a storage failure and an extension's own event
   are on the tree channel, and an approval, a queue change and a node's lifecycle too.
 - **A run costs about what it costs on the stream**: about the same bytes (the merged text is
