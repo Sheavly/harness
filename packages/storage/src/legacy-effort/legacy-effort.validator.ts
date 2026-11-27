@@ -17,5 +17,8 @@ export const storedConversationIndexSchema = z.preprocess(
   storedConversationSchema,
 );
 
-/** A line of a conversation's `stream.jsonl`, including the lines written before "mode" became "effort". */
+/**
+ * A line of a conversation's `stream.jsonl`, including the lines written before "mode" became
+ * "effort" and the queue lines written before a queued line had a message id.
+ */
 export const storedStreamEntrySchema = z.preprocess(readLegacyStreamEntry, streamEntrySchema);
