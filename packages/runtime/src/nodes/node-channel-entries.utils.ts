@@ -1,6 +1,7 @@
 import type { ChannelEntry } from '@sheavly/core/store/store.types';
 import {
   MAX_CHANNEL_ENTRY_CHARS,
+  MAX_OMITTED_CALL_CHARS,
   TREE_ONLY_EVENT_TYPES,
 } from '@sheavly/protocol/channel/channel.constants';
 import type { RunStartCause } from '@sheavly/protocol/channel/channel.types';
@@ -190,12 +191,38 @@ export const isTreeOnlyEvent = (type: string): boolean =>
   (TREE_ONLY_EVENT_TYPES as readonly string[]).includes(type);
 
 /**
+ * The header of the one tool call an event carries (`tool_call_started`, `tool_result`,
+ * `task_running`), for an `event_omitted` entry: its id and its tool name cut to
+ * `MAX_OMITTED_CALL_CHARS`. None for an event of no call or of several (`tool_batch`), and for an id
+ * that is empty, over that length or not well formed: a cut id would end the wrong call's step, so
+ * it is never cut.
+ */
+function omittedCallOf(event: EntryEvent) {
+  if (
+    event.type !== 'tool_call_started' &&
+    event.type !== 'tool_result' &&
+    event.type !== 'task_running'
+  ) {
+    return undefined;
+  }
+
+  const { id, name } = event.call;
+
+  if (id.length === 0 || id.length > MAX_OMITTED_CALL_CHARS || !id.isWellFormed()) {
+    return undefined;
+  }
+
+  return { id, name: head({ text: name, length: MAX_OMITTED_CALL_CHARS }) };
+}
+
+/**
  * The entry that stores a loop event on its agent's channel: the event as the stream carried it,
  * with the originating `messageId` where there was one, and, for a text delta that merges the ones
  * after it, the `seq` of the last (`lastSeq`). A store keeps an entry of at most
  * `MAX_CHANNEL_ENTRY_CHARS` and refuses a longer one, which would leave the channel closed to every
  * entry after it, so an event that does not fit is stored as what says there was one (`event_omitted`:
- * its type, its `seq` and its size, never its content). The combined stream still holds it whole.
+ * its type, its `seq`, its size and the header of its call (`omittedCallOf`), never its content).
+ * The combined stream still holds it whole.
  */
 export function eventEntry(params: {
   channel: string;
@@ -218,6 +245,8 @@ export function eventEntry(params: {
 
   if (JSON.stringify(entry).length <= MAX_CHANNEL_ENTRY_CHARS) return entry;
 
+  const call = omittedCallOf(event);
+
   return {
     channel,
     cursor,
@@ -227,6 +256,7 @@ export function eventEntry(params: {
     seq: event.seq,
     size: JSON.stringify(event).length,
     ...(messageId !== undefined && { messageId }),
+    ...(call && { call }),
   };
 }
 

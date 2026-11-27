@@ -221,7 +221,12 @@ describe('an event too large to store', () => {
     // What the protocol serves, read back from the store: the marker, and not the event.
     const marker = channelEntrySchema.parse(entries[1]);
 
-    expect(marker).toMatchObject({ type: 'event_omitted', eventType: 'tool_result', seq: 4 });
+    expect(marker).toMatchObject({
+      type: 'event_omitted',
+      eventType: 'tool_result',
+      seq: 4,
+      call: { id: 'call_1', name: 'read_file' },
+    });
     expect('size' in marker && marker.size).toBeGreaterThan(100_000);
     expect(entries[1]).not.toHaveProperty('event');
     expect(entries[1]).not.toHaveProperty('content');
