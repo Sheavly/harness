@@ -202,7 +202,13 @@ loop event is added without deciding which it is.
   conversation's own channels have no such entry.
 - **An event too large to store** (a store keeps an entry of `MAX_CHANNEL_ENTRY_CHARS`, 64 KiB of
   JSON, and refuses a longer one) is stored as `event_omitted`: the event's `eventType`, its `seq`
-  and its `size` in characters, never its content. The combined stream still holds the whole event.
+  and its `size` in characters, never its content. An event of one tool call (`tool_call_started`,
+  `tool_result`, `task_running`) also keeps that call's header, `call`: its `id` and tool `name`, each
+  at most `MAX_OMITTED_CALL_CHARS` (200) characters, so a reader that follows only the channel can
+  still end the call's step. A name over the bound is cut; an id is never cut (a cut id would match
+  another call), so an id that is empty, over the bound or not well formed leaves the entry with no
+  `call`, and an event of several calls (`tool_batch`) or of none has none either. The combined
+  stream still holds the whole event.
 - **Streamed text is merged.** Stored one delta at a time, text costs about 16 times its size in
   entries (a line's envelope outweighs a few words), so adjacent `text_delta` events of one session
   are stored as one `event` entry: the first delta's, with the text of all of them in order and

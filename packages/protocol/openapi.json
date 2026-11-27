@@ -3126,7 +3126,20 @@
               "eventType": { "type": "string", "minLength": 1, "maxLength": 128 },
               "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "size": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-              "messageId": { "$ref": "#/components/schemas/ModelId" }
+              "messageId": { "$ref": "#/components/schemas/ModelId" },
+              "call": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "$ref": "#/components/schemas/CallId"
+                  },
+                  "name": { "type": "string", "maxLength": 200 }
+                },
+                "required": ["id", "name"]
+              }
             },
             "required": ["cursor", "at", "channel", "type", "eventType", "seq", "size"]
           },
