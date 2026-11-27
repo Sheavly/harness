@@ -206,7 +206,9 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   and has nothing to dedupe: an entry told twice gives the same usage. It follows as `watchTree`
   does (both are `followChannelView`, in `client/`: the same reconnect, the same asking again from
   `snapshot`, the same `ended`), and refuses usage off the contract (more than 1,000 nodes,
-  `AnswerError`). A one-off look is the typed call `client.call('getUsage', { id })`.
+  `AnswerError`). A one-off look is the typed call `client.call('getUsage', { id })`. The
+  conversation's details carry no usage: this and that call are where a UI reads it, as the
+  terminal's status line does.
 - `followNode({ client, id, node, from?, signal })` (`nodes/`) reads one node's channel to its
   `closed` entry: an agent's `updated` entries, a command's or a service's output in pieces at byte
   offsets. It throws `ChannelFailedError` when the channel ended `failed`, since what was read is not
