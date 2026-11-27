@@ -17,9 +17,9 @@ const eslint = new ESLint({ cwd: TERMINAL });
 // file's time, so it is built once here and counts against no test's limit.
 beforeAll(() => eslint.lintText('', { filePath: path.join(TERMINAL, 'src/chat.ts') }), 180_000);
 
-/** The ids of the rules `code` breaks, linted with `replayConfinement`'s rules. */
-function broken(code) {
-  const messages = new Linter().verify(
+/** The messages `replayConfinement`'s rules report for `code`. */
+function reports(code) {
+  return new Linter().verify(
     code,
     [
       {
@@ -35,9 +35,10 @@ function broken(code) {
     ],
     'replay.js',
   );
-
-  return messages.map((message) => message.ruleId);
 }
+
+/** The ids of the rules `code` breaks, linted with `replayConfinement`'s rules. */
+const broken = (code) => reports(code).map((message) => message.ruleId);
 
 /** Whether `rule` is an error for `file` of the terminal app. */
 async function isErrorFor(params) {
@@ -94,6 +95,15 @@ describe('replay in the terminal app', () => {
     ["import { createProvider } from '@sheavly/providers/registry/registry.service';", IMPORTS],
     ["import { runLoop } from '@sheavly/loop/stream-agent/stream-agent.helper';", IMPORTS],
     ["import { serve } from '@sheavly/host/host/host.helper';", IMPORTS],
+    ["import { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';", IMPORTS],
+    [
+      "import { streamEntrySchema as wire } from '@sheavly/protocol/stream/stream.validator';",
+      IMPORTS,
+    ],
+    ["export { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';", IMPORTS],
+    ["import * as wire from '@sheavly/protocol/stream/stream.validator';", IMPORTS],
+    ["export * from '@sheavly/protocol/stream/stream.validator';", IMPORTS],
+    ["const wire = await import('@sheavly/protocol/stream/stream.validator');", SYNTAX],
     ["const net = await import('node:net');", SYNTAX],
     ["const http = require('http');", SYNTAX],
     ["const load = require; load('net');", SYNTAX],
@@ -118,10 +128,21 @@ describe('replay in the terminal app', () => {
     "import { Writable } from 'node:stream';",
     "import { Renderer } from '../render/render.service.js';",
     "import { WorkbookStore } from '../workbook/store.service.js';",
+    "import { streamEntryTypes } from '@sheavly/protocol/stream/stream.types';",
+    "import { parseStoredStreamEntry } from '@sheavly/storage/conversation-store/stored-stream.utils';",
     "process.stderr.write('x'); process.exitCode = 1; process.argv.slice(2);",
     'const options = { require: true }; options.require;',
   ])('lets replay do %s', (code) => {
     expect(broken(code)).toEqual([]);
+  });
+
+  it('names the stored reader when it refuses the wire’s stream schema, and not for its other exports', () => {
+    const wire = "import { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';";
+    const other = "import { streamEntrySchema } from '@sheavly/protocol/stream/other.validator';";
+    const [refused] = reports(wire);
+
+    expect(refused.message).toContain('parseStoredStreamEntry');
+    expect(reports(other)).toEqual([]);
   });
 
   it('applies to every replay source file, in every subfolder, and to the entry point', async () => {
@@ -141,6 +162,21 @@ describe('replay in the terminal app', () => {
     const groups = config.rules[IMPORTS][1].patterns.flatMap((pattern) => pattern.group);
 
     expect(groups).toEqual(expect.arrayContaining(['**/client/**', 'node:net', 'undici']));
+  });
+
+  it('keeps the refusal of the wire’s stream schema in what the terminal app resolves for replay, and not for other files', async () => {
+    const refused = async (file) => {
+      const config = await eslint.calculateConfigForFile(path.join(TERMINAL, file));
+
+      return (config.rules[IMPORTS]?.[1]?.paths ?? []).map(({ name }) => name);
+    };
+    const wire = '@sheavly/protocol/stream/stream.validator';
+
+    for (const file of ['src/replay/stream-text.utils.ts', 'src/replay.ts']) {
+      expect(await refused(file), file).toContain(wire);
+    }
+
+    expect(await refused('src/render/render.service.ts')).not.toContain(wire);
   });
 
   it('leaves its tests free to stub fetch, and the rest of the app alone', async () => {

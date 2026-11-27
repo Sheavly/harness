@@ -1,4 +1,6 @@
-// Replay reads a stored stream and nothing else: no network, no process, no backend, no model.
+// Replay reads a stored stream and nothing else: no network, no process, no backend, no model. It
+// reads each stored line through the storage package's reader, which takes the forms older
+// versions wrote, never through the wire's `streamEntrySchema`, which refuses them.
 // An app spreads `replayConfinement` into its config; its files are relative to that app.
 
 /** Node built-ins that reach the network or start a process or thread; replay uses none. */
@@ -46,6 +48,14 @@ export const replayConfinement = {
     'no-restricted-imports': [
       'error',
       {
+        paths: [
+          {
+            name: '@sheavly/protocol/stream/stream.validator',
+            importNames: ['streamEntrySchema'],
+            message:
+              "Replay reads a stored stream, which older versions wrote in forms the wire's schema refuses: read each line or frame with `parseStoredStreamEntry` (`@sheavly/storage/conversation-store/stored-stream.utils`).",
+          },
+        ],
         patterns: [
           {
             group: [
