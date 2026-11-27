@@ -25,6 +25,12 @@ export const TREE_ONLY_EVENT_TYPES = [
   'extension_event',
 ] as const satisfies readonly EntryEvent['type'][];
 
+/**
+ * Why a run started, on an agent's channel: a user's `prompt` (sent directly or started from the
+ * queue), or a `wake`, the run the host starts itself to deliver finished background work.
+ */
+export const RUN_START_CAUSES = ['prompt', 'wake'] as const;
+
 /** The longest an entry's `type` may be: a name, as an extension's `<extension>.<name>` is. */
 export const MAX_ENTRY_TYPE_CHARS = 128;
 

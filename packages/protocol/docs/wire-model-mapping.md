@@ -22,7 +22,7 @@ phase 2 (#434) changes how some are shaped, and is not repeated here.
 | `kind`: `update`       | The tree channel (a node's lifecycle) and the node's own `opened` and `closed`                                                                                               |
 | `kind`: `approval`     | The tree channel                                                                                                                                                             |
 | `kind`: `task`         | The tree channel, and the command or service channel's `opened` and `closed`                                                                                                 |
-| `kind`: `queue`        | The tree channel, as the conversation's own notices                                                                                                                          |
+| `kind`: `queue`        | The tree channel, as the conversation's own notices. A prompt that starts is also the main agent channel's `run_started`                                                     |
 | `session` filter       | A subscription to that node's channel                                                                                                                                        |
 | `subtree` filter       | A subscription to each channel of the subtree, found from the tree channel                                                                                                   |
 | `approvals` filter     | The request's `approvals` flag, kept: it says this client answers approvals. A subscription to the tree channel alone does not, as a read-only sidebar also subscribes to it |
@@ -73,7 +73,7 @@ node's own channel opens and closes with.
 | `session_status`   | Tree channel: the node's status text (`report_status`) changed                                                 |
 | `session_message`  | Agent channel of the receiving session: a message queued in its inbox. `message_received` is its delivery      |
 | `session_idle`     | Tree channel: state `idle`                                                                                     |
-| `session_resumed`  | Tree channel: state `running`                                                                                  |
+| `session_resumed`  | Tree channel: state `running`. The run it starts is the agent channel's `run_started`                          |
 | `session_model`    | Tree channel: the node's model and effort changed. A sidebar reads the model there                             |
 | `session_ended`    | Tree channel: a terminal state, with how the last run ended. The channel's `closed`                            |
 | `session_released` | No wire entry, and extensions are told of it through the host's scope: see "Decisions this leaves" below       |
@@ -104,11 +104,11 @@ subscription tells a front end that anything waits for the user.
 The queue belongs to the conversation, not to a node, so all three are conversation notices on the
 tree channel.
 
-| Update           | Where and how                                                                                 |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `queue_changed`  | Tree channel                                                                                  |
-| `prompt_started` | Tree channel. See "Decisions this leaves": its ordering before the run's entries needs a link |
-| `prompt_refused` | Tree channel                                                                                  |
+| Update           | Where and how                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `queue_changed`  | Tree channel                                                                                           |
+| `prompt_started` | Tree channel, and the main agent channel's `run_started` (cause `prompt`). See "Decisions this leaves" |
+| `prompt_refused` | Tree channel                                                                                           |
 
 ## Decisions this leaves
 
@@ -132,7 +132,12 @@ first is for #423, the second for #422, the third for the release of the protoco
    order across channels. The link that carries it is the message id: `prompt_started` names the
    user message, and the run's agent-channel entries already carry `messageId`. `prompt_started`
    held only the line's `text`, so the tree channel's entry of that type carries the message id
-   too (`TreeChannelEntry`), and a prompt that started returns it in its answer.
+   too (`TreeChannelEntry`), and a prompt that started returns it in its answer. The agent's own
+   channel says where each run starts as well: a `run_started` entry (`cause` `prompt`, with the
+   prompt's `text`, or `wake`, with none, for the run the conversation starts itself to deliver
+   finished work, which the stream marks nowhere), naming the user message the run answers. A
+   client that follows only the main agent's channel reads `run_started`, the run's events and
+   `done` in one order, with no need of the tree channel to tell where a run begins.
 3. **A stream that still parses.** A stored stream written in the old layout does not parse
    under the new schemas. Conversations are migrated when first opened (#437), and the protocol
    change is wire-breaking, as the contract's "Version" says.

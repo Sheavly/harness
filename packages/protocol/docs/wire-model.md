@@ -176,7 +176,7 @@ its own issue, #511. The item model comes later (#434). `text_delta`, `reasoning
 before it they are stored with the rest.
 
 **The first phase's entries.** An agent's channel holds its lifecycle (`opened`, `updated`,
-`closed`) and one entry that wraps a loop event, `event`: the event as the stream carries it (its
+`closed`), where each run starts (`run_started`) and one entry that wraps a loop event, `event`: the event as the stream carries it (its
 own `seq`, which counts the session's events and is not the channel's cursor, and `done` without its
 `messages`), with the originating `messageId` where the stream's entry had one, under the channel's
 own cursor and `at`. It is one entry type, not one for each of the 24 loop events: the event keeps
@@ -184,6 +184,20 @@ its own `type`. Every loop event but `storage_failed` and `extension_event` is o
 (`TREE_ONLY_EVENT_TYPES`, which stay on the tree channel); a test over the event union fails when a
 loop event is added without deciding which it is.
 
+- **A run's start is on the main agent's channel.** Each run of the main agent starts with a
+  `run_started` entry, before the run's events and its `done`, so a client that follows only that
+  channel reads `run_started`, the run's events, `done`, and again for the next run, in one order (a
+  cursor of another channel orders nothing against this one). A sub-agent's channel holds its one
+  run and has no such entry. Its `cause` is `prompt` (a user's prompt, sent directly or started from
+  the queue) or `wake` (the run the conversation starts itself to deliver finished background
+  work); its `messageId` is the user message the run answers, which for a wake is the one it goes
+  on from. A wake with no such message yet (a reopened conversation's first run, before any prompt
+  in this process) writes none. A prompt's entry holds the prompt's `text` as the user wrote it, at
+  most `MAX_QUEUED_LINE_CHARS` and shorter when its JSON would not fit a stored entry (so it can be
+  a shorter prefix than the tree channel's `prompt_started` holds); a wake's has none. The text is
+  the user's and is untrusted like any text a channel carries. The schema allows the entry on any
+  agent's channel, numbered after `opened`: a command's or a service's channel counts bytes, and the
+  conversation's own channels have no such entry.
 - **An event too large to store** (a store keeps an entry of `MAX_CHANNEL_ENTRY_CHARS`, 64 KiB of
   JSON, and refuses a longer one) is stored as `event_omitted`: the event's `eventType`, its `seq`
   and its `size` in characters, never its content. The combined stream still holds the whole event.

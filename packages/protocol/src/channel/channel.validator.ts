@@ -11,12 +11,14 @@ import {
 import { nodeIdSchema, nodeInfoSchema } from '../node/node.validator.js';
 import { outputStatusSchema } from '../output/output.validator.js';
 import { runOutcomeSchema } from '../session/session.validator.js';
+import { MAX_QUEUED_LINE_CHARS } from '../server/server.constants.js';
 import { NODE_END_STATES, NODE_STATE_OF_OUTCOME } from '../status/status.constants.js';
 import { timestampSchema } from '../time/time.validator.js';
 import {
   BYTE_CURSOR_PATTERN,
   MAX_ENTRY_TYPE_CHARS,
   MAX_OUTPUT_CHUNK_BYTES,
+  RUN_START_CAUSES,
   SEQUENCE_CURSOR_PATTERN,
   TREE_ONLY_EVENT_TYPES,
 } from './channel.constants.js';
@@ -249,6 +251,32 @@ const nodeEventOmittedSchema = entrySchema
     path: ['cursor'],
   });
 
+/**
+ * Where a run of an agent starts on its channel (the host writes it for the main agent's, which has
+ * many runs): `run_started`, then the run's loop events, then its `done`, so a client that follows
+ * only this channel knows where a run begins (a cursor of another channel orders nothing against
+ * this one). `cause` says why it started, and `messageId` is the user
+ * message the run answers; for a `wake`, the message of the prompt the run goes on from. `text` is
+ * the user's prompt for a `prompt` (cut to a queued line's length, as the tree channel's
+ * `prompt_started` is) and is absent for a `wake`, which has no prompt of its own.
+ */
+const runStartedSchema = entrySchema
+  .extend({
+    channel: nodeIdSchema,
+    type: z.literal('run_started'),
+    cause: z.enum(RUN_START_CAUSES),
+    messageId: messageIdSchema,
+    text: z.string().max(MAX_QUEUED_LINE_CHARS).exactOptional(),
+  })
+  .refine(({ cursor }) => isAfterOpened(cursor), {
+    error: 'a run_started entry is numbered after the opened entry',
+    path: ['cursor'],
+  })
+  .refine(({ cause, text }) => (cause === 'prompt') === (text !== undefined), {
+    error: 'a prompt’s run says the prompt’s text, and a wake’s has none',
+    path: ['text'],
+  });
+
 /** A conversation's own channel opens at position 0 of a numbered channel. */
 const startsFromZero = ({ cursor }: { cursor: string }) =>
   sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) === 0;
@@ -312,7 +340,8 @@ export const channelBoundarySchema = z.union([
 
 /**
  * Every entry of a node's channel a subscription serves: the two boundary entries, an agent's
- * `updated`, its loop events (`event`, or `event_omitted` for one too large to store) and a
+ * `updated`, where each of its runs starts (`run_started`), its loop events (`event`, or
+ * `event_omitted` for one too large to store) and a
  * command's or a service's `output`. The output is not stored in the channel (the complete output
  * is the output store's): a subscription makes its entries between the stored `opened` and
  * `closed`. The tree channel's other entries are the tree's (`treeChannelEntrySchema`).
@@ -320,6 +349,7 @@ export const channelBoundarySchema = z.union([
 export const channelEntrySchema = z.union([
   channelBoundarySchema,
   nodeUpdatedSchema,
+  runStartedSchema,
   nodeEventSchema,
   nodeEventOmittedSchema,
   nodeOutputSchema,

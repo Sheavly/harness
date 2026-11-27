@@ -1904,6 +1904,19 @@
             "cursor": { "$ref": "#/$defs/Cursor" },
             "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
             "channel": { "$ref": "#/$defs/NodeId" },
+            "type": { "type": "string", "const": "run_started" },
+            "cause": { "type": "string", "enum": ["prompt", "wake"] },
+            "messageId": { "$ref": "#/$defs/ModelId" },
+            "text": { "type": "string", "maxLength": 20000 }
+          },
+          "required": ["cursor", "at", "channel", "type", "cause", "messageId"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cursor": { "$ref": "#/$defs/Cursor" },
+            "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "channel": { "$ref": "#/$defs/NodeId" },
             "type": { "type": "string", "const": "event" },
             "event": { "$ref": "#/$defs/EntryEvent" },
             "messageId": { "$ref": "#/$defs/ModelId" },
