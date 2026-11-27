@@ -8,7 +8,9 @@ import { summarizeStream } from './summary.utils.js';
 
 /**
  * Writes what a stored stream holds: the rendered log, the way the live run printed it, or with
- * `json` one entry per line, or with `summary` what the stream says about itself. `from` and
+ * `json` one entry per line (each in today's form: a line an older version wrote is read as the
+ * entry it is now, so `mode` is `effort` and a queue line with no message id has a placeholder one,
+ * which the file does not hold), or with `summary` what the stream says about itself. `from` and
  * `session` narrow the entries; the summary always covers the whole stream, so a gap before
  * `from` is still found. Reads nothing but the stream and makes no network or model call.
  */

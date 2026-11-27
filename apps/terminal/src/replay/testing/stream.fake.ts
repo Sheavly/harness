@@ -112,13 +112,50 @@ export function fixtureEntries(): StreamEntry[] {
   return bare.map((entry, seq) => ({ ...entry, seq, at: 10 + seq }));
 }
 
+/**
+ * Test-only: the lines an older version wrote after the fixture's entries, as raw objects (today's
+ * types refuse both): a session snapshot with `mode` for `effort`, and a queue line that started
+ * before a queued line had a message id.
+ */
+export function oldFormEntries(): { seq: number; [key: string]: unknown }[] {
+  const next = fixtureEntries().length;
+
+  return [
+    {
+      seq: next,
+      at: 90,
+      sessionId: MAIN,
+      kind: 'update',
+      update: {
+        type: 'session_idle',
+        session: {
+          ...mainRef,
+          title: 'Fixture',
+          state: 'idle',
+          lastOutcome: 'completed',
+          startedAt: 1,
+          modelId: '4b1f9a52-3c5e-4a77-9d64-0e2b7f1c8a30',
+          mode: 'high',
+        },
+      },
+    },
+    {
+      seq: next + 1,
+      at: 91,
+      sessionId: MAIN,
+      kind: 'queue',
+      update: { type: 'prompt_started', text: 'go on', queued: [] },
+    },
+  ];
+}
+
 /** Test-only: entries as a conversation's `stream.jsonl`, every line ended by a newline. */
-export function asJsonl(entries: readonly StreamEntry[]): string {
+export function asJsonl(entries: readonly { seq: number }[]): string {
   return entries.map((entry) => `${JSON.stringify(entry)}\n`).join('');
 }
 
 /** Test-only: entries as the backend's server-sent events, with a head frame and a heartbeat. */
-export function asSse(entries: readonly StreamEntry[]): string {
+export function asSse(entries: readonly { seq: number }[]): string {
   const frames = entries.map(
     (entry) => `event: entry\nid: ${String(entry.seq)}\ndata: ${JSON.stringify(entry)}\n\n`,
   );

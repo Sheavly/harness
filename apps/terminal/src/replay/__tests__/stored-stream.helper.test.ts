@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ReplayNotFoundError } from '../../errors/replay.errors.js';
 import { useTempFolders } from '../../testing/temp-folders.fake.js';
 import { readStoredStream } from '../stored-stream.helper.js';
-import { asJsonl, asSse, fixtureEntries } from '../testing/stream.fake.js';
+import { asJsonl, asSse, fixtureEntries, oldFormEntries } from '../testing/stream.fake.js';
 
 const temp = useTempFolders();
 
@@ -31,6 +31,26 @@ describe('readStoredStream', () => {
     expect(stream.entries).toEqual(fixtureEntries());
     expect(stream.invalidLines).toEqual([]);
   });
+
+  it.each([
+    ['stream.jsonl', asJsonl],
+    ['sessions.sse', asSse],
+  ])(
+    'reads what an older version wrote into %s: nothing is dropped as not an entry',
+    async (name, write) => {
+      const folder = await temp.make('replay');
+
+      await writeFile(path.join(folder, name), write([...fixtureEntries(), ...oldFormEntries()]));
+
+      const stream = await readStoredStream(folder);
+      const [idle, queued] = stream.entries.slice(-2);
+
+      expect(stream.invalidLines).toEqual([]);
+      expect(stream.entries).toHaveLength(fixtureEntries().length + 2);
+      expect(idle).toMatchObject({ update: { type: 'session_idle', session: { effort: 'high' } } });
+      expect(queued).toMatchObject({ kind: 'queue', update: { type: 'prompt_started' } });
+    },
+  );
 
   it('does not read the last line when a crash cut it off, and says so', async () => {
     const folder = await temp.make('replay');

@@ -6,7 +6,14 @@ import { Renderer } from '../../render/render.service.js';
 import { useTempFolders } from '../../testing/temp-folders.fake.js';
 import { replayStored } from '../replay.helper.js';
 import type { ReplayOptions } from '../replay.types.js';
-import { asJsonl, asSse, fixtureEntries, HELPER, MAIN } from '../testing/stream.fake.js';
+import {
+  asJsonl,
+  asSse,
+  fixtureEntries,
+  HELPER,
+  MAIN,
+  oldFormEntries,
+} from '../testing/stream.fake.js';
 
 const temp = useTempFolders();
 /** The fixture as the log look prints it, written out so a change of the look is seen here. */
@@ -58,6 +65,16 @@ describe('replayStored', () => {
 
     expect(out).toBe(live());
     expect(out).toBe(GOLDEN);
+  });
+
+  it('replays a conversation an older version stored as it replays today’s, with no finding', async () => {
+    const files = { 'stream.jsonl': asJsonl([...fixtureEntries(), ...oldFormEntries()]) };
+    const out = await replayed({ files });
+    const summary = await replayed({ files, options: { summary: true } });
+
+    expect(out).toContain(GOLDEN.trimEnd());
+    expect(summary).toContain('Findings:\n  none');
+    expect(summary).not.toContain('not an entry');
   });
 
   it('renders a workbook run from its sessions.sse the same way', async () => {
