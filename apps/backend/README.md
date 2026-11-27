@@ -18,9 +18,9 @@ It calls the real model API, so it costs money. The models and keys it uses are 
 `~/.sheavly` (see [models and keys](docs/harness.md#models-and-keys)), not in the environment or a
 `.env`. A UI that starts its own backend (the terminal does) passes its settings in the environment and reads the
 `→ listening on <url>` line it prints once ready.
-Conversation details include cumulative reported token usage and recorded cost estimates, across
-main and sub-agent sessions, plus `contextUsage`: the main session's last input plus output and the
-active provider's context window. Missing usage leaves the context count unknown. Optional model
+What a conversation has used (reported tokens and recorded cost estimates, per node and in total,
+and how full each agent's context is) comes from `GET /conversations/{id}/usage` and the `usage`
+channel; the conversation's details carry none. Missing usage leaves the context count unknown. Optional model
 `pricing` supplies USD per million token rates for
 ordinary input, output, cache reads and cache writes; missing rates remain unknown. Optional model
 `contextWindow` is the window the agent is told, any positive size: 300,000 tokens when unset,

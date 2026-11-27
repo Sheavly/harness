@@ -104,9 +104,10 @@ family? }` alongside `name`, `adapter`, `definition` and `pricing`. It is kept o
   fields on disk and on reads. Known catalogue models reject incompatible adapters and mismatched
   native model IDs; Azure deployment names remain configurable. This is chosen identity, not a
   verified cloud inventory. A model's identity is optional.
-- **Usage is reported, and cost is estimated.** `GET /conversations/:id` includes cumulative
-  `usage` across all sessions, restored from the full saved stream on reopen. Each model call
-  produces a `usage` event. Null token counts and unpriced calls are explicit.
+- **Usage is reported, and cost is estimated.** What a conversation has used, per node and in
+  total, is read from `GET /conversations/:id/usage` or the `usage` channel ([usage](#usage)); the
+  conversation's details carry none. Each model call produces a `usage` event. Null token counts
+  and unpriced calls are explicit.
   The model API also accepts optional `pricing` metadata: `input`, `output`, `cacheRead` and
   `cacheWrite`, all in USD per million tokens. It is not sent to the adapter. A conversation
   captures configured prices when its providers are built; saved cost estimates are never
@@ -125,11 +126,10 @@ family? }` alongside `name`, `adapter`, `definition` and `pricing`. It is kept o
   conversation's providers are built, follows the model switch, and goes on each `usage` event as
   `usage.contextWindow`, for a UI to show against the tokens. The agent's own line is never in the
   stream or the history: see the loop's [context usage](../../../packages/loop/docs/run.md#context-usage).
-  Conversation details also include `contextUsage` (`used`, `window`, `throughSeq`): the latest
-  main-session input plus output, the active provider's configured window and the snapshot's
-  stream position. Unknown counts or windows are omitted, not zero. Resuming restores the count;
-  switching models changes the window without summing earlier calls or sub-agents. `usage`
-  remains the separate cumulative billing record.
+  Each node's record in the usage has a `context` (`used`, `cached`, `window`): its latest
+  call's input plus output, how much of it the cache served, and that call's window. Unknown counts
+  or windows are omitted, not zero. Switching models changes the window without summing earlier
+  calls or sub-agents.
 - **Deleting a profile deletes its conversations.** There is no undo, so a UI should ask first.
 - **Terminal preferences are global to the user.** `GET /setup` returns `terminal` when stored
   in `config.json`. `PUT /terminal-settings`, `{ reducedMotion?, bell? }`, replaces those preferences

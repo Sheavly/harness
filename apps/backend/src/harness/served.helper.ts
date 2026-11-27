@@ -29,8 +29,6 @@ import type { Profiles } from '../profiles/profiles.service.js';
 import type { WorkspaceModels } from '../profiles/profiles.types.js';
 import { parseRequestEnv } from './settings.validator.js';
 import { selectedProvider } from './selected-provider.helper.js';
-import { trackConversationUsage } from '../usage/conversation-usage.helper.js';
-import { conversationContextUsage } from '../usage/context-usage.helper.js';
 
 /**
  * One conversation as the backend serves it: placed in a folder on a profile (what the start asked
@@ -166,46 +164,34 @@ export async function servedConversation(params: {
 
   for (const line of ignoredLines) log(`${line}\n`);
 
-  const usage = await trackConversationUsage({ sessions: harness.sessions, storage });
-
-  return {
-    ...harnessConversation({
-      harness,
-      messages,
-      storage,
-      logger,
-      ...(settings.maxTurns !== undefined && { maxTurns: settings.maxTurns }),
-      summary,
-      run: {
-        details: () => ({
-          workspace: harness.workspace.root,
-          profile: placement.profile,
-          ...modelsIn(workspace),
-          usage: usage.ledger.snapshot,
-          contextUsage: conversationContextUsage({
-            harness,
-            throughSeq: usage.ledger.snapshot.throughSeq,
-          }),
-          projectTrust: harness.projectTrust,
-          ...(harness.ignoredSettings.length > 0 && { ignoredSettings: harness.ignoredSettings }),
-          ...(harness.ignoredSettingsMore > 0 && {
-            ignoredSettingsMore: harness.ignoredSettingsMore,
-          }),
+  return harnessConversation({
+    harness,
+    messages,
+    storage,
+    logger,
+    ...(settings.maxTurns !== undefined && { maxTurns: settings.maxTurns }),
+    summary,
+    run: {
+      details: () => ({
+        workspace: harness.workspace.root,
+        profile: placement.profile,
+        ...modelsIn(workspace),
+        projectTrust: harness.projectTrust,
+        ...(harness.ignoredSettings.length > 0 && { ignoredSettings: harness.ignoredSettings }),
+        ...(harness.ignoredSettingsMore > 0 && {
+          ignoredSettingsMore: harness.ignoredSettingsMore,
         }),
-        permissionMode: async () => (await permissions.read()).mode,
-        workingRoot: () =>
-          reportedWorkingRoot({
-            workingRoots: harness.workingRoots,
-            onFailure: (caughtError) =>
-              logger.error(LOG_EVENT.WORKING_ROOT_FAILED, { error: caughtError }),
-          }),
-        useModel: (id, effort) => useModel({ workspace, id, ...(effort && { effort }) }),
-      },
-    }),
-    dispose: async () => {
-      usage.stop();
+      }),
+      permissionMode: async () => (await permissions.read()).mode,
+      workingRoot: () =>
+        reportedWorkingRoot({
+          workingRoots: harness.workingRoots,
+          onFailure: (caughtError) =>
+            logger.error(LOG_EVENT.WORKING_ROOT_FAILED, { error: caughtError }),
+        }),
+      useModel: (id, effort) => useModel({ workspace, id, ...(effort && { effort }) }),
     },
-  };
+  });
 }
 
 /** The model in use and the ones to switch to, all the profile's usable ones. */
