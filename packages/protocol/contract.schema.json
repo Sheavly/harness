@@ -276,33 +276,6 @@
       },
       "required": ["input", "output", "cacheRead", "cacheWrite"]
     },
-    "UsageTotals": {
-      "type": "object",
-      "properties": {
-        "calls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "inputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "outputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "cacheReadTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "cacheWriteTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "estimatedCostUsd": { "type": "number", "minimum": 0 },
-        "missingUsageCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "unpricedCalls": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "incomplete": { "type": "boolean" },
-        "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 }
-      },
-      "required": [
-        "calls",
-        "inputTokens",
-        "outputTokens",
-        "cacheReadTokens",
-        "cacheWriteTokens",
-        "estimatedCostUsd",
-        "missingUsageCalls",
-        "unpricedCalls",
-        "incomplete",
-        "throughSeq"
-      ]
-    },
     "ContextFill": {
       "type": "object",
       "properties": {
@@ -2497,17 +2470,6 @@
         "session": { "$ref": "#/$defs/SessionId" },
         "running": { "type": "boolean" },
         "startedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "usage": { "$ref": "#/$defs/UsageTotals" },
-        "contextUsage": {
-          "type": "object",
-          "properties": {
-            "used": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-            "cached": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-            "window": { "type": "integer", "exclusiveMinimum": 0, "maximum": 10000000 },
-            "throughSeq": { "type": "integer", "minimum": -1, "maximum": 9007199254740991 }
-          },
-          "required": ["throughSeq"]
-        },
         "workspace": { "type": "string" },
         "profile": { "$ref": "#/$defs/ModelId" },
         "model": { "$ref": "#/$defs/ModelChoice" },

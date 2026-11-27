@@ -55,16 +55,3 @@ export const usageFiguresSchema = z.object({
   unpricedCalls: count,
   incomplete: z.boolean(),
 });
-
-/**
- * Latest main-session measurement, not billing totals; seq orders snapshots against live usage.
- * `cached` is how much of `used` the last call read from the prompt cache.
- */
-export const contextUsageSchema = contextFillSchema.extend({
-  throughSeq: z.number().int().min(-1),
-});
-
-/** The whole conversation's figures, with the stream entry they are counted through. */
-export const usageTotalsSchema = usageFiguresSchema.extend({
-  throughSeq: z.number().int().min(-1),
-});

@@ -10,7 +10,6 @@ import { profileIdSchema } from '../profile/profile.validator.js';
 import { sessionIdSchema } from '../session/session.validator.js';
 import { skillInfoSchema } from '../skill/skill.validator.js';
 import { timestampSchema } from '../time/time.validator.js';
-import { contextUsageSchema, usageTotalsSchema } from '../usage/usage.validator.js';
 import {
   MAX_IGNORED_SETTING_FILE_CHARS,
   MAX_IGNORED_SETTINGS,
@@ -136,8 +135,6 @@ export const ignoredSettingSchema = z.strictObject({
  * while the conversation runs, and applies to every conversation in the workspace).
  */
 export const conversationDetailsSchema = conversationSummarySchema.extend({
-  usage: usageTotalsSchema.exactOptional(),
-  contextUsage: contextUsageSchema.exactOptional(),
   workspace: z.string(),
   /** The profile whose models and keys it runs on: fixed for the conversation's life. */
   profile: profileIdSchema,
