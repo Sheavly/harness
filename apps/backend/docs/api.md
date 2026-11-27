@@ -299,9 +299,18 @@ it).
 An agent's channel holds its run: each loop event its session sends is an `event` entry (the event
 as the conversation's stream carries it, with its own `seq` and the `messageId` of the prompt it
 answers), in the order they happened and numbered with the node's own `updated` entries, so one
-subscription to the node's id is enough to show what it did. The main agent's channel holds each run
-it ran, the runs its sub-agents' reports woke included; a sub-agent's is its own run only, and ends
-with the run's `done` and then its `closed`. A `task_running` event names the node a tool started
+subscription to the node's id is enough to show what it did. The main agent's channel also says
+where each run began and holds every run it ran, the runs its sub-agents' reports woke included: it
+reads `run_started`, the run's events, `done`, and again for the next run. A sub-agent's channel is
+its own run only, with no `run_started`, and ends with the run's `done` and then its `closed`.
+`run_started` says why the run started (`cause`: `prompt`, a user's prompt sent directly or started
+from the queue, or `wake`, the run the conversation starts itself to deliver finished background
+work) and the user message it answers (`messageId`; for a wake, the prompt's it goes on from). A
+`prompt`'s entry also holds the prompt's `text` as the user wrote it: at most 20,000 characters, and
+shorter when its JSON would not fit a stored entry, so it can be a shorter prefix than the tree's
+`prompt_started` holds; a `wake` has none. The text is the user's and is untrusted like any text on
+a channel. A conversation that keeps no channels writes none, and a wake with no message to name yet
+(a reopened conversation's first run before any prompt) writes none. A `task_running` event names the node a tool started
 (`nodeId`), so a client joins a tool call to the channel of the sub-agent or command it launched.
 
 ```bash

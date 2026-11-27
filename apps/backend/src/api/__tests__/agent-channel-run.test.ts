@@ -19,6 +19,14 @@ const runs = useSubAgentRuns();
 const dones = (entries: NodeChannelEntry[]) =>
   entries.filter((entry) => entry.type === 'event' && entry.event.type === 'done');
 
+/** Where each run starts (`run_started <cause>`) and ends (`done`) among `entries`, in order. */
+const runMarks = (entries: NodeChannelEntry[]) =>
+  entries.flatMap((entry) => {
+    if (entry.type === 'run_started') return [`run_started ${entry.cause}`];
+
+    return entry.type === 'event' && entry.event.type === 'done' ? ['done'] : [];
+  });
+
 /** The text of the `text_delta` entries among `entries`, in order. */
 const textOf = (entries: NodeChannelEntry[]) =>
   entries.flatMap((entry) =>
@@ -90,6 +98,33 @@ describe('the main agent’s channel, read from its start over the routes', () =
       expect.objectContaining({ type: 'done', reason: 'completed' }),
       expect.objectContaining({ type: 'done', reason: 'completed' }),
     ]);
+  });
+
+  it('reads each run from its start: run_started, the run’s events and done, and again for the run the report woke', async () => {
+    const { backend, id, main } = await runs.ranFirst();
+    const seen = await followed({ client: backend.client, id, node: main, stopAfter: 2 });
+    const starts = seen.filter((entry) => entry.type === 'run_started');
+    const firstStart = seen.findIndex((entry) => entry.type === 'run_started');
+    const woken = seen.findIndex((entry) => entry.type === 'run_started' && entry.cause === 'wake');
+    const firstDone = seen.findIndex(
+      (entry) => entry.type === 'event' && entry.event.type === 'done',
+    );
+    const isEvent = (entry: NodeChannelEntry) => entry.type === 'event';
+
+    expect(runMarks(seen)).toEqual(['run_started prompt', 'done', 'run_started wake', 'done']);
+    // The prompt's start says what the user sent; the wake's has no prompt of its own.
+    expect(starts[0]).toMatchObject({ cause: 'prompt', text: 'Inspect the project' });
+    expect(starts[1]).toMatchObject({ cause: 'wake' });
+    expect(starts[1]).not.toHaveProperty('text');
+    // Every event of a run comes after its start, and none between one run's end and the next's start.
+    expect(seen.slice(0, firstStart).some(isEvent)).toBe(false);
+    expect(woken).toBeGreaterThan(firstDone);
+    expect(seen.slice(firstDone + 1, woken).some(isEvent)).toBe(false);
+    // Both starts name the message the events of both runs answer, and the cursors have no gap.
+    expect(new Set(starts.map((entry) => entry.messageId))).toEqual(
+      new Set(seen.flatMap((entry) => (entry.type === 'event' ? [entry.messageId] : []))),
+    );
+    expect(seen.map((entry) => entry.cursor)).toEqual(seen.map((_entry, at) => `s${String(at)}`));
   });
 
   it('stores the three deltas of a few words as one entry, with the seq of the last one', async () => {

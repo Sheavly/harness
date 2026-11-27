@@ -213,6 +213,8 @@ export function createConversation(options: ConversationOptions): Conversation {
         ended: Promise.withResolvers<undefined>(),
       };
 
+      // Before the run moves, so nothing here can leave the conversation in a wake that never ends.
+      noteWakeStarted();
       moveRun(woken);
       void drain(prompt({ user: undefined, resumed: true, current: woken }));
     } catch (caughtError) {
@@ -221,6 +223,21 @@ export function createConversation(options: ConversationOptions): Conversation {
       // reject the settle loop and end every later wake. Each throws before the run moves.
       options.onWakeFailure?.(caughtError);
     }
+  }
+
+  /**
+   * Says on the main agent's channel that a wake started a run, so the channel reads the run from
+   * its start. Called before the run is drained: its events come only once the generator is
+   * iterated, so none can reach the channel ahead of this entry. The wake goes on from the last
+   * prompt, so it names that prompt's message and has no text.
+   */
+  function noteWakeStarted(): void {
+    const node = sessions.nodeIdOf(mainSession.id);
+    const messageId = sessions.messageOf(mainSession.id);
+
+    if (node === undefined || messageId === undefined) return;
+
+    harness.nodeChannels?.noteRunStarted({ node, cause: 'wake', messageId });
   }
 
   /**

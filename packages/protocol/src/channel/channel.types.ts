@@ -1,4 +1,8 @@
 import type { CONVERSATION_CHANNEL_NAMES } from '../node/node.constants.js';
+import type { RUN_START_CAUSES } from './channel.constants.js';
+
+/** Why a run started: a user's prompt, or a wake that delivers finished background work. */
+export type RunStartCause = (typeof RUN_START_CAUSES)[number];
 
 /** What a cursor counts: the entries of a channel (`sequence`) or the bytes of its output (`byte`). */
 export type CursorKind = 'sequence' | 'byte';

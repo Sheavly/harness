@@ -20,7 +20,7 @@ import type { NodeId } from '@sheavly/protocol/node/node.types';
 import { MAX_QUEUED_LINE_CHARS } from '@sheavly/protocol/server/server.constants';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
-import { agentNodeOf, sequenceCursor, workNodeOf } from './node-channel-entries.utils.js';
+import { agentNodeOf, head, sequenceCursor, workNodeOf } from './node-channel-entries.utils.js';
 import {
   CUT_APPROVAL_OPTIONS,
   MAX_CUT_TOOL_CHARS,
@@ -86,20 +86,6 @@ export function lostNodeEntry(
         ...(node.error !== undefined && { error }),
       }),
   });
-}
-
-/**
- * The first `length` characters of `text`, never ending inside a surrogate pair, and well formed
- * whatever `text` held (a lone surrogate in it is replaced): a lone surrogate is not text, and a
- * strict JSON reader refuses the escape it is written as.
- */
-function head(params: { text: string; length: number }): string {
-  const { text, length } = params;
-  const cut = text.slice(0, length);
-
-  return (
-    /[\uD800-\uDBFF]$/u.test(cut) && cut.length < text.length ? cut.slice(0, -1) : cut
-  ).toWellFormed();
 }
 
 /** The last characters of `text` from `from` on, never starting inside a surrogate pair, well formed. */
