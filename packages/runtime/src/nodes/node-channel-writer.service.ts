@@ -2,8 +2,10 @@ import { now } from '@sheavly/core/clock/clock.helper';
 import { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelEntry, ConversationStore } from '@sheavly/core/store/store.types';
 import { toStoreError } from '@sheavly/core/store/store.utils';
+import type { RunStartCause } from '@sheavly/protocol/channel/channel.types';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
 import type { MessageId } from '@sheavly/protocol/message/message.types';
+import type { NodeId } from '@sheavly/protocol/node/node.types';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
@@ -18,13 +20,13 @@ import {
   isTreeOnlyEvent,
   openedAgentEntry,
   openedWorkEntry,
+  runStartedEntry,
   sequenceCursor,
   updatedEntry,
 } from './node-channel-entries.utils.js';
 import type { NodeRegistry } from './node-registry.service.js';
 import type {
   ChannelEvent,
-  ChannelPosition,
   EventSource,
   LostChannels,
   NodeChannelStorage,
@@ -33,6 +35,7 @@ import type {
   PendingText,
 } from './nodes.types.js';
 import { isOpenState } from './nodes.utils.js';
+import { spawnedAtOf } from './spawned-at.helper.js';
 import { TextDeltaWindow } from './text-delta-window.service.js';
 
 /** What the writer knows of a channel it has begun: where it stands, and whether it still writes. */
@@ -46,7 +49,8 @@ type Begun = ({ kind: 'sequence'; next: number } | { kind: 'bytes'; offset: numb
 
 /**
  * Stores each node's channel as its own log: `opened`, then, for an agent, an `updated` for each
- * change while it lives and an `event` for each loop event its session sends (`hearEvent`), then
+ * change while it lives, a `run_started` where a run of it begins (`noteRunStarted`, told by the
+ * host for the main agent) and an `event` for each loop event its session sends (`hearEvent`), then
  * `closed`. It is told what the registry does (`startAgent`, `followAgent`), what a task does
  * (`openWork`, `closeWork`) and what the loop publishes, numbers each entry as it is told, and
  * writes them one after another, in the order they happened.
@@ -223,6 +227,37 @@ export class NodeChannelWriter {
     this.#writeEvent({ channel, state, event, at, messageId });
 
     if (event.type === 'done') this.#writeClose(channel);
+  }
+
+  /**
+   * A run of agent `node` starts: its channel gets a `run_started` entry, in order with the
+   * entries before it. Streamed text of the run before waits in its window and is stored first, so
+   * the entry never comes ahead of text that came before it. Call it before any event of the run
+   * reaches `hearEvent`. A node with no channel this writer writes, or whose channel has ended or
+   * failed, takes nothing.
+   */
+  noteRunStarted(params: {
+    node: NodeId;
+    cause: RunStartCause;
+    messageId: MessageId;
+    text?: string | undefined;
+  }): void {
+    const { node, ...start } = params;
+    const state = this.#begun.get(node);
+
+    if (state?.kind !== 'sequence' || state.broken) return;
+
+    this.#text.flush(node);
+    this.#write({
+      state,
+      entry: runStartedEntry({
+        ...start,
+        channel: node,
+        cursor: sequenceCursor(state.next),
+        at: now(),
+      }),
+    });
+    state.next += 1;
   }
 
   /** The state of an agent's channel that still takes entries: one that is open, or has just ended. */
@@ -426,7 +461,7 @@ export class NodeChannelWriter {
     const { state, entry, parent } = params;
 
     try {
-      const stored = { ...entry, ...this.#spawnedAt(parent) };
+      const stored = { ...entry, ...spawnedAtOf(parent) };
 
       await this.#storage.log(entry.channel).append(stored);
       state.stored = entry.cursor;
@@ -447,24 +482,6 @@ export class NodeChannelWriter {
     state.broken = true;
     this.#followers.tell({ channel, event: { type: 'failed' } });
     this.#fail(error);
-  }
-
-  /** The `spawnedAt` of a child of `parent`: none for a node with no parent; throws if unlinkable. */
-  #spawnedAt(parent: { channel?: string; state?: Begun } | undefined): {
-    spawnedAt?: ChannelPosition;
-  } {
-    if (!parent?.channel) return {};
-
-    const cursor = parent.state?.stored;
-
-    if (cursor === undefined) {
-      throw new StoreError({
-        reason: 'invalid',
-        message: `The channel of node ${parent.channel} holds nothing to link a child to`,
-      });
-    }
-
-    return { spawnedAt: { channel: parent.channel, cursor } };
   }
 
   #fail(caughtError: unknown): void {

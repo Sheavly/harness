@@ -3,6 +3,7 @@ import {
   MAX_CHANNEL_ENTRY_CHARS,
   TREE_ONLY_EVENT_TYPES,
 } from '@sheavly/protocol/channel/channel.constants';
+import type { RunStartCause } from '@sheavly/protocol/channel/channel.types';
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
 import type { MessageId } from '@sheavly/protocol/message/message.types';
 import {
@@ -11,6 +12,7 @@ import {
   MAX_NODE_ERROR_CHARS,
   MAX_NODE_REASON_CHARS,
 } from '@sheavly/protocol/node/node.constants';
+import { MAX_QUEUED_LINE_CHARS } from '@sheavly/protocol/server/server.constants';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
 import { MAX_BYTE_OFFSET } from './nodes.constants.js';
 import type { NodeRecord } from './nodes.types.js';
@@ -226,6 +228,59 @@ export function eventEntry(params: {
     size: JSON.stringify(event).length,
     ...(messageId !== undefined && { messageId }),
   };
+}
+
+/**
+ * The first `length` characters of `text`, never ending inside a surrogate pair, and well formed
+ * whatever `text` held (a lone surrogate in it is replaced): a lone surrogate is not text, and a
+ * strict JSON reader refuses the escape it is written as.
+ */
+export function head(params: { text: string; length: number }): string {
+  const { text, length } = params;
+  const cut = text.slice(0, length);
+
+  return (
+    /[\uD800-\uDBFF]$/u.test(cut) && cut.length < text.length ? cut.slice(0, -1) : cut
+  ).toWellFormed();
+}
+
+/**
+ * The entry that says a run of an agent started: why (`cause`), and the user message it answers.
+ * A prompt's entry also holds the prompt's `text`, cut as the tree channel's `prompt_started` cuts
+ * it (to `MAX_QUEUED_LINE_CHARS`) and then halved until the entry is at most
+ * `MAX_CHANNEL_ENTRY_CHARS` of JSON, as a store requires: control characters cost six characters
+ * each as JSON, so a line of them does not fit. A wake has no text.
+ */
+export function runStartedEntry(params: {
+  channel: string;
+  cursor: string;
+  at: number;
+  cause: RunStartCause;
+  messageId: MessageId;
+  text?: string | undefined;
+}): ChannelEntry {
+  const { channel, cursor, at, cause, messageId } = params;
+  const build = (text: string | undefined): ChannelEntry => ({
+    channel,
+    cursor,
+    at,
+    type: 'run_started',
+    cause,
+    messageId,
+    ...(text !== undefined && { text }),
+  });
+
+  if (params.text === undefined) return build(undefined);
+
+  let text = head({ text: params.text, length: MAX_QUEUED_LINE_CHARS });
+  let entry = build(text);
+
+  while (JSON.stringify(entry).length > MAX_CHANNEL_ENTRY_CHARS && text) {
+    text = head({ text, length: Math.floor(text.length / 2) });
+    entry = build(text);
+  }
+
+  return entry;
 }
 
 /**
