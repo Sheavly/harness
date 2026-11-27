@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LEGACY_QUEUE_MESSAGE_ID } from '../legacy-effort.constants.js';
 import { readLegacyStreamEntry } from '../legacy-effort.utils.js';
 import {
   storedConversationIndexSchema,
@@ -182,5 +183,45 @@ describe('a stream entry written before "mode" became "effort"', () => {
     const approval = { ...entry({ mode: 'ask' }), kind: 'approval' };
 
     expect(readLegacyStreamEntry(approval)).toBe(approval);
+  });
+});
+
+describe('a queue entry written before a queued line had a message id', () => {
+  const SESSION = '7c3e1a90-2b4d-4e6f-8a1c-3d5e7f9b0a12';
+  const MESSAGE = '5a1f3c82-9d4e-4b17-8c60-2e7a9b1d4f33';
+  const entry = (update: Record<string, unknown>) => ({
+    seq: 7,
+    sessionId: SESSION,
+    kind: 'queue',
+    update,
+    at: 2,
+  });
+
+  it.each([
+    ['a line that started', { type: 'prompt_started', text: 'go', queued: ['next'] }],
+    [
+      'a line that was refused',
+      { type: 'prompt_refused', text: 'go', error: 'It cannot run', queued: [] },
+    ],
+  ])('is read with the placeholder id for %s, so a stored conversation still replays', (_, old) => {
+    expect(storedStreamEntrySchema.parse(entry(old))).toEqual(
+      entry({ messageId: LEGACY_QUEUE_MESSAGE_ID, ...old }),
+    );
+  });
+
+  it('reads one that has an id as it is, and an update that never had one as it is', () => {
+    const current = entry({ type: 'prompt_started', messageId: MESSAGE, text: 'go', queued: [] });
+    const changed = entry({ type: 'queue_changed', queued: ['a'] });
+
+    expect(storedStreamEntrySchema.parse(current)).toEqual(current);
+    expect(storedStreamEntrySchema.parse(changed)).toEqual(changed);
+  });
+
+  it('still refuses an id that is not one, instead of replacing it with the placeholder', () => {
+    expect(
+      storedStreamEntrySchema.safeParse(
+        entry({ type: 'prompt_started', messageId: 'm1', text: 'go', queued: [] }),
+      ).success,
+    ).toBe(false);
   });
 });

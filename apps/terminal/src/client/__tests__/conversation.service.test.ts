@@ -14,7 +14,11 @@ import {
   textAt,
 } from '../../testing/remote-conversation.fake.js';
 import { promptStarted } from '../../testing/live-feed.fake.js';
-import { queuedAnswer, startedAnswer } from '../../chat/testing/prompt-answers.fake.js';
+import {
+  PROMPT_MESSAGE,
+  queuedAnswer,
+  startedAnswer,
+} from '../../chat/testing/prompt-answers.fake.js';
 
 /** Two models' ids: the backend has `DEEP` and not `OTHER`. */
 const DEEP = '9d2c7e10-6a4b-4f38-b1e5-5c0a8d3f2b71';
@@ -93,7 +97,13 @@ describe('RemoteConversation', () => {
               at: 0,
               sessionId: MAIN,
               kind: 'queue',
-              update: { type: 'prompt_refused', text: 'hi', error: 'No skill /nope', queued: [] },
+              update: {
+                type: 'prompt_refused',
+                messageId: PROMPT_MESSAGE,
+                text: 'hi',
+                error: 'No skill /nope',
+                queued: [],
+              },
             }),
           );
 

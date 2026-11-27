@@ -132,7 +132,8 @@ first is for #423, the second for #422, the third for the release of the protoco
    order across channels. The link that carries it is the message id: `prompt_started` names the
    user message, and the run's agent-channel entries already carry `messageId`. `prompt_started`
    held only the line's `text`, so the tree channel's entry of that type carries the message id
-   too (`TreeChannelEntry`), and a prompt that started returns it in its answer. The agent's own
+   too (`TreeChannelEntry`), and every prompt, queued or started, returns it in its answer: the
+   conversation gives it when it accepts the line, not when the line starts. The agent's own
    channel says where each run starts as well: a `run_started` entry (`cause` `prompt`, with the
    prompt's `text`, or `wake`, with none, for the run the conversation starts itself to deliver
    finished work, which the stream marks nowhere), naming the user message the run answers. A

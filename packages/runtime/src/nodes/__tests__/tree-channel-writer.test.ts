@@ -182,10 +182,15 @@ describe('the notices of the conversation', () => {
     const world = treeConversation();
     const queued = Array.from({ length: 5 }, () => 'x'.repeat(19_000));
 
-    world.tree.noteQueueChanged(['one', 'two']);
+    world.tree.noteQueueChanged({ queued: ['one', 'two'], dropped: [MESSAGE_ID] });
     world.tree.notePromptStarted({ text: 'go', messageId: MESSAGE_ID, queued: ['two'] });
-    world.tree.notePromptRefused({ text: 'bad', error: 'unknown skill', queued: [] });
-    world.tree.noteQueueChanged(queued);
+    world.tree.notePromptRefused({
+      text: 'bad',
+      messageId: MESSAGE_ID,
+      error: 'unknown skill',
+      queued: [],
+    });
+    world.tree.noteQueueChanged({ queued });
     world.tree.noteStorageFailed('disk full');
 
     const entries = (await treeEntriesOf(world)).slice(2);
@@ -197,7 +202,10 @@ describe('the notices of the conversation', () => {
       'queue_changed s5',
       'storage_failed s6',
     ]);
-    expect(entries[0]).toMatchObject({ queued: ['one', 'two'] });
+    expect(entries[0]).toMatchObject({ queued: ['one', 'two'], dropped: [MESSAGE_ID] });
+    expect(entries[1]).toMatchObject({ messageId: MESSAGE_ID });
+    expect(entries[2]).toMatchObject({ messageId: MESSAGE_ID });
+    expect(entries[3]).not.toHaveProperty('dropped');
     expect(entries[3]?.queued).toHaveLength(5);
     expect(JSON.stringify(entries[3]).length).toBeLessThanOrEqual(MAX_TREE_ENTRY_CHARS);
     expect(entries.every((each) => treeChannelEntrySchema.safeParse(each).success)).toBe(true);

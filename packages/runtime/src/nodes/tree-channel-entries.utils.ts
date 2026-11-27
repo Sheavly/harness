@@ -5,7 +5,6 @@ import type {
   ApprovalRequest,
   ApprovalResponse,
 } from '@sheavly/protocol/approval/approval.types';
-import type { MessageId } from '@sheavly/protocol/message/message.types';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
 import {
   MAX_NODE_CALL_ID_CHARS,
@@ -17,6 +16,11 @@ import {
   TREE_CHANNEL_NAME,
 } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
+import type {
+  PromptRefused,
+  PromptStarted,
+  QueueChanged,
+} from '@sheavly/protocol/queue/queue.types';
 import { MAX_QUEUED_LINE_CHARS } from '@sheavly/protocol/server/server.constants';
 import type { TaskInfo } from '@sheavly/protocol/task/task.types';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
@@ -355,34 +359,32 @@ const cutLines = (params: { queued: readonly string[]; limit: number }) =>
   });
 
 /** The conversation's queue changed: a line joined it, or a client replaced the lines. */
-export function queueChangedEntry(params: TreeStamp & { queued: readonly string[] }): ChannelEntry {
+export function queueChangedEntry(params: TreeStamp & Omit<QueueChanged, 'type'>): ChannelEntry {
   return fittedLines((limit) => ({
     ...stamped(params),
     type: 'queue_changed',
     queued: cutLines({ queued: params.queued, limit }),
+    ...(params.dropped && { dropped: params.dropped }),
   }));
 }
 
 /** A queued line started as the conversation's next prompt, as the user message it became. */
-export function promptStartedEntry(
-  params: TreeStamp & { text: string; messageId: MessageId; queued: readonly string[] },
-): ChannelEntry {
+export function promptStartedEntry(params: TreeStamp & Omit<PromptStarted, 'type'>): ChannelEntry {
   return fittedLines((limit) => ({
     ...stamped(params),
     type: 'prompt_started',
-    text: head({ text: params.text, length: limit }),
     messageId: params.messageId,
+    text: head({ text: params.text, length: limit }),
     queued: cutLines({ queued: params.queued, limit }),
   }));
 }
 
 /** A queued line left the queue without starting, for the reason `error` gives. */
-export function promptRefusedEntry(
-  params: TreeStamp & { text: string; error: string; queued: readonly string[] },
-): ChannelEntry {
+export function promptRefusedEntry(params: TreeStamp & Omit<PromptRefused, 'type'>): ChannelEntry {
   return fittedLines((limit) => ({
     ...stamped(params),
     type: 'prompt_refused',
+    messageId: params.messageId,
     text: head({ text: params.text, length: limit }),
     error: head({ text: params.error, length: MAX_NODE_ERROR_CHARS }),
     queued: cutLines({ queued: params.queued, limit }),

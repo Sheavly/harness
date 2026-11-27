@@ -5,8 +5,10 @@ import { STARTED_BY, startDeepestSession } from '../../testing/sessions.fake.js'
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import { approvalIdSchema } from '@sheavly/protocol/approval/approval.validator';
-import { callIdSchema } from '@sheavly/protocol/message/message.validator';
+import { callIdSchema, messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+
+const MESSAGE_ID = messageIdSchema.parse('0f8fad5b-d9cb-469f-a165-70867728950e');
 
 /** One line per entry: `seq session kind:type`. */
 const describeEntry = (entry: StreamEntry, names: Record<string, string>) =>
@@ -183,7 +185,7 @@ describe("SessionRegistry's combined stream", () => {
 
     sessions.publishQueue({
       sessionId: id,
-      update: { type: 'prompt_started', text: 'next', queued: [] },
+      update: { type: 'prompt_started', messageId: MESSAGE_ID, text: 'next', queued: [] },
     });
     sessions.idle({ id, outcome: 'completed' });
 

@@ -7,7 +7,7 @@ import type { TaskRegistry } from '@sheavly/runtime/tasks/tasks.service';
 import type { ApprovalRegistry } from '@sheavly/runtime/approvals/approvals.service';
 import type { AgentEvent } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
-import type { PromptPart } from '@sheavly/protocol/message/message.types';
+import type { MessageId, PromptPart } from '@sheavly/protocol/message/message.types';
 import type { Harness } from '../host/host.types.js';
 
 /**
@@ -102,10 +102,16 @@ export type Conversation = {
    * end (or abort `signal`, or stop iterating, to stop the prompt). Throws a `SessionError`
    * (`session_running`) while another prompt runs, and (`session_ended`) once closed. `parts`
    * is what the user typed, when skills ran: it goes on the history's user message for a UI.
+   * `messageId` is the id the user message gets, for a caller that gave the prompt one when it
+   * accepted it (a queued line); left out, the conversation makes one.
    */
   send: (
     prompt: string,
-    options?: { signal?: AbortSignal; parts?: PromptPart[] | undefined },
+    options?: {
+      signal?: AbortSignal;
+      parts?: PromptPart[] | undefined;
+      messageId?: MessageId | undefined;
+    },
   ) => AsyncIterable<AgentEvent>;
   /**
    * Asks the running prompt to end as completed at its next completion point, without waiting

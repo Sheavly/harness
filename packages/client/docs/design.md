@@ -19,10 +19,11 @@ for await (const entry of promptEntries({ client, id, prompt: { text: 'hi' } }))
 
 - `promptEntries` (`prompt/`): `POST /conversations/:id/prompts` is answered at once, the prompt
   started or queued, and its run's entries arrive on the conversation's stream. This follows that
-  stream from before the send (`followConversation`) and yields from the prompt's
-  `prompt_started` to its run's end, or throws `PromptRefusedError` for a queued prompt that could
-  not start. A UI that shows every run, its own and the conversation's, follows the stream itself
-  and sends with `call('sendPrompt')`.
+  stream from before the send (`followConversation`) and yields from the `prompt_started` that
+  names the `messageId` the answer gave to its run's end, or throws `PromptRefusedError` for a
+  queued prompt that could not start or that an edit of the queue removed. The prompt is known by
+  that id, never by its text, so two identical lines are told apart. A UI that shows every run, its
+  own and the conversation's, follows the stream itself and sends with `call('sendPrompt')`.
 - `call`: a route that answers JSON. The answer is parsed with the route's schema, so ids keep
   their brands, and one off the contract throws `AnswerError`.
 - `send`: a route that answers nothing (`204`).
@@ -125,8 +126,11 @@ never is (it has its `session_started`).
 
 A prompt's run is read from the conversation's stream too (`promptEntries`), so a cut stream is
 reopened after the last entry heard and the run's `done` still arrives. A line a client takes out
-of the queue (`PUT /queue`) gets no `prompt_refused`: `promptEntries` for it waits until its signal
-aborts.
+of the queue (`PUT /queue`) gets no `prompt_refused`; its id is in the `dropped` of the
+`queue_changed` that follows, and `promptEntries` for it throws `PromptRefusedError`. A line the
+edit leaves out in the moment it is already starting is not in that `dropped`: it still starts,
+unless a stop reaches it first (then a later `queue_changed` drops it) or it cannot start (then
+`prompt_refused`).
 
 `answerWhileWaiting` (`approvals/`) wraps a call to `answerApproval` and treats `unknown_approval`
 (answered elsewhere, or its call was interrupted) as done: the one place that rule lives.

@@ -1,9 +1,13 @@
 import type { StoreError } from '@sheavly/core/errors/store.errors';
 import type { ChannelLog, ConversationStore } from '@sheavly/core/store/store.types';
 import type { ApprovalId, ApprovalUpdate } from '@sheavly/protocol/approval/approval.types';
-import type { MessageId } from '@sheavly/protocol/message/message.types';
 import { TREE_CHANNEL_NAME } from '@sheavly/protocol/node/node.constants';
 import type { NodeId } from '@sheavly/protocol/node/node.types';
+import type {
+  PromptRefused,
+  PromptStarted,
+  QueueChanged,
+} from '@sheavly/protocol/queue/queue.types';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
 import type { SessionId } from '@sheavly/protocol/session/session.types';
 import type { TreeChannelEntry, TreeSnapshot, TreeView } from '@sheavly/protocol/tree/tree.types';
@@ -155,21 +159,17 @@ export class TreeChannelWriter
   }
 
   /** The conversation's queue changed: a line joined it, or a client replaced the lines. */
-  noteQueueChanged(queued: readonly string[]): void {
-    this.tell((stamp) => queueChangedEntry({ ...stamp, queued }));
+  noteQueueChanged(params: Omit<QueueChanged, 'type'>): void {
+    this.tell((stamp) => queueChangedEntry({ ...stamp, ...params }));
   }
 
   /** A queued line started as the conversation's next prompt. */
-  notePromptStarted(params: {
-    text: string;
-    messageId: MessageId;
-    queued: readonly string[];
-  }): void {
+  notePromptStarted(params: Omit<PromptStarted, 'type'>): void {
     this.tell((stamp) => promptStartedEntry({ ...stamp, ...params }));
   }
 
   /** A queued line left the queue without starting. */
-  notePromptRefused(params: { text: string; error: string; queued: readonly string[] }): void {
+  notePromptRefused(params: Omit<PromptRefused, 'type'>): void {
     this.tell((stamp) => promptRefusedEntry({ ...stamp, ...params }));
   }
 

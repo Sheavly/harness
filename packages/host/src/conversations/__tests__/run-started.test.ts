@@ -94,8 +94,9 @@ describe('where a user’s prompt starts on the main agent’s channel', () => {
     ]);
     // The channel reads run_started, the run's events, done, and again for the next run.
     expectOrderedRuns({ entries, starts: ['run_started:prompt', 'run_started:prompt'] });
-    // Each run answers its own user message.
+    // Each run answers its own user message, and a queued line's is the one it was answered with.
     expect(new Set(starts.map((entry) => entry.messageId)).size).toBe(2);
+    expect(starts.at(-1)?.messageId).toBe(second.messageId);
   });
 });
 

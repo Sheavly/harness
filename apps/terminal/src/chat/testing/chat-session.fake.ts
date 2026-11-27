@@ -1,4 +1,5 @@
 import type { EntryEvent } from '@sheavly/protocol/event/event.types';
+import { messageIdSchema } from '@sheavly/protocol/message/message.validator';
 import type { ModelEffort } from '@sheavly/protocol/model/model.types';
 import { modelIdSchema } from '@sheavly/protocol/model/model.validator';
 import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
@@ -15,6 +16,8 @@ import type { ChatConversation, RunState, TurnOutcome } from '../chat.types.js';
 
 export const MAIN_SESSION = sessionIdSchema.parse('main');
 const REF = { id: MAIN_SESSION, rootId: MAIN_SESSION, depth: 1 } as const;
+/** The message id every line the fake backend starts or refuses was accepted with. */
+const LINE_MESSAGE = messageIdSchema.parse('00000000-0000-4000-8000-0000000000cf');
 
 export const FAST = modelIdSchema.parse('4b1f9a52-3c5e-4a77-9d64-0e2b7f1c8a31');
 export const DEEP = modelIdSchema.parse('9d2c7e10-6a4b-4f38-b1e5-5c0a8d3f2b72');
@@ -171,10 +174,10 @@ export function backendStream(session = MAIN_SESSION) {
       },
     }),
     started: (text: string, queued: string[] = []) =>
-      queue({ type: 'prompt_started', text, queued }),
+      queue({ type: 'prompt_started', messageId: LINE_MESSAGE, text, queued }),
     changed: (queued: string[]) => queue({ type: 'queue_changed', queued }),
     refused: (text: string, error: string, queued: string[] = []) =>
-      queue({ type: 'prompt_refused', text, error, queued }),
+      queue({ type: 'prompt_refused', messageId: LINE_MESSAGE, text, error, queued }),
     text: (value: string, sessionId = session) =>
       event({ seq: 0, type: 'text_delta', text: value }, sessionId),
     done: (reason: RunOutcome = 'completed') =>

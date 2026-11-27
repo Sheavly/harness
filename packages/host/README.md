@@ -62,8 +62,12 @@ Lines kept with a stored conversation are parked when it is reopened, until the 
 next one; so is a queued line a stop reached while it prepared its skills.
 
 `submit` answers with the ids of what it made (`PromptSent`): the main agent's `node`, which carries
-every run, and for a prompt that started the `messageId` of the user message it became, read as the
-prompt starts. `cancelNode({ id, node })` and `messageNode({ id, node, text })` command a node by
+every run, and the `messageId` of the user message the prompt is. The host gives it when it accepts
+the line: a prompt that starts at once is given its id before it starts, and a queued line gets its
+id from the queue, which keeps it beside the line (never stored: lines a reopen restores get new
+ones) and hands it to the run when the line starts. A client's edit of the queue (`setQueue`)
+keeps the id of a line it leaves, makes one for a new line, and says which lines it dropped.
+`cancelNode({ id, node })` and `messageNode({ id, node, text })` command a node by
 its id: a command, a service or a sub-agent is killed and waited for, the main agent is stopped as
 `stop` does and is the one node that takes the user's message. They resolve the node first
 (`NodeCommands`, runtime) and refuse as `ConversationsError`: `not_found` for a node the
@@ -152,7 +156,8 @@ of a conversation that is still being closed waits for the close to finish its w
 The conversation's **tree channel** is kept beside them (`Harness.treeChannel`, a
 `TreeChannelWriter`): what exists (each agent, command and service opening, changing and ending),
 what waits for the user (an approval, with the node that asked), and the conversation's notices
-(its queue, a line starting with the message it became, a line refused, a storage failure). The
+(its queue, a line starting or refused with the message id it was accepted with, a storage
+failure). The
 host tells it the notices through `publishQueueUpdate`, which puts each queue change on the stream
 and on the tree. `await conversations.tree(id)` is the tree as it stands (`TreeSnapshot`), with the
 cursor to follow from, for a client that connects late; it is the same tree a replay of the whole

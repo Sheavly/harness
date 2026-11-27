@@ -1,5 +1,6 @@
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import { PROMPT_MESSAGE } from '../chat/testing/prompt-answers.fake.js';
 
 /** Test-only: the main session a fake conversation's entries are about. */
 const MAIN = sessionIdSchema.parse('main');
@@ -68,6 +69,6 @@ export function promptStarted(params: {
     at: 0,
     sessionId: MAIN,
     kind: 'queue',
-    update: { type: 'prompt_started', text, queued },
+    update: { type: 'prompt_started', messageId: PROMPT_MESSAGE, text, queued },
   };
 }

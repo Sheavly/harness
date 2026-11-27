@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { streamEntrySchema } from '../stream.validator.js';
 
+const MESSAGE_ID = '0f8fad5b-d9cb-469f-a165-70867728950e';
 const SESSION = {
   id: 'child',
   parentId: 'main',
@@ -167,8 +168,15 @@ describe('streamEntrySchema', () => {
     const entry = { seq: 8, at: 10, sessionId: 'main', kind: 'queue' };
     const updates = [
       { type: 'queue_changed', queued: ['first', 'second'] },
-      { type: 'prompt_started', text: 'first', queued: ['second'] },
-      { type: 'prompt_refused', text: 'second', error: 'No skill is called nope', queued: [] },
+      { type: 'queue_changed', queued: ['first'], dropped: [MESSAGE_ID] },
+      { type: 'prompt_started', messageId: MESSAGE_ID, text: 'first', queued: ['second'] },
+      {
+        type: 'prompt_refused',
+        messageId: MESSAGE_ID,
+        text: 'second',
+        error: 'No skill is called nope',
+        queued: [],
+      },
     ];
 
     for (const update of updates) {
@@ -176,12 +184,29 @@ describe('streamEntrySchema', () => {
     }
   });
 
+  it('rejects a started or refused line with no message id, and a dropped that is not ids', () => {
+    const entry = { seq: 8, at: 10, sessionId: 'main', kind: 'queue' };
+    const updates = [
+      { type: 'prompt_started', text: 'first', queued: [] },
+      { type: 'prompt_refused', text: 'second', error: 'no', queued: [] },
+      { type: 'prompt_started', messageId: 'm1', text: 'first', queued: [] },
+      { type: 'queue_changed', queued: [], dropped: ['first'] },
+      { type: 'queue_changed', queued: [], dropped: MESSAGE_ID },
+    ];
+
+    for (const update of updates) {
+      expect(streamEntrySchema.safeParse({ ...entry, update }).success).toBe(false);
+    }
+  });
+
   it('rejects a queue update without the queue it leaves, or with an empty line', () => {
     const entry = { seq: 8, at: 10, sessionId: 'main', kind: 'queue' };
 
     expect(
-      streamEntrySchema.safeParse({ ...entry, update: { type: 'prompt_started', text: 'hi' } })
-        .success,
+      streamEntrySchema.safeParse({
+        ...entry,
+        update: { type: 'prompt_started', messageId: MESSAGE_ID, text: 'hi' },
+      }).success,
     ).toBe(false);
     expect(
       streamEntrySchema.safeParse({ ...entry, update: { type: 'queue_changed', queued: [''] } })
@@ -191,7 +216,7 @@ describe('streamEntrySchema', () => {
     expect(
       streamEntrySchema.safeParse({
         ...entry,
-        update: { type: 'prompt_started', text: '', queued: [] },
+        update: { type: 'prompt_started', messageId: MESSAGE_ID, text: '', queued: [] },
       }).success,
     ).toBe(true);
   });

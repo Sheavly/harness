@@ -79,7 +79,9 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
 - **The tree channel** (`tree/`): its entries are numbered. `node_opened`, `node_updated` and
   `node_closed` carry a node; `approval_requested`, `approval_resolved` and `approval_cancelled`
   carry the node that asked; the queue's changes, a storage failure and an extension's event are
-  the conversation's own. `prompt_started` carries the user message it became. A snapshot is
+  the conversation's own. `prompt_started` and `prompt_refused` carry the message id the line was
+  accepted with, and `queue_changed` the ids of the lines a client's edit dropped, the same
+  definitions as the stream's `queue` entries (`QueueUpdate`). A snapshot is
   every node (an ended one included) and every waiting approval, with the cursor to continue
   from, and refuses a node twice, a parent that is not in it, parents in a circle, an approval
   twice or from a node that is not in it, and more than `MAX_TREE_NODES` nodes or as many
@@ -485,10 +487,11 @@ next prompt. Unknown conversation ids use the ordinary `not_found` error.
 - A prompt is `text`, as a script types it (`/<name>` mentions in it run those skills), or
   `parts`, as a UI builds it (exactly the skills picked run). Not both.
 - `POST /conversations/:id/prompts` answers at once with `PromptSent`, never with a stream:
-  `{ status: 'started', node, messageId, queued }` or `{ status: 'queued', node, queued }`, the
-  `node` being the agent whose channel carries the run and `messageId` the user message a started
-  prompt became (a queued one has none until it starts, and the tree channel's `prompt_started`
-  names it). A conversation that is busy (a prompt, or a
+  `{ status: 'started' | 'queued', node, messageId, queued }`, the `node` being the agent whose
+  channel carries the run and `messageId` the user message the prompt is: a started prompt has it
+  now, a queued one from the moment the conversation accepts the line, and the `prompt_started`
+  (or `prompt_refused`) update and the run's entries carry the same id when the line starts. A
+  conversation that is busy (a prompt, or a
   run it started itself for finished work) keeps the line in its queue and starts it when that
   run ends, following the flow rules: after the model has finished when the run waits on
   `await_tasks`, otherwise once the model finishes its turn. What the prompt does arrives on the
@@ -497,10 +500,14 @@ next prompt. Unknown conversation ids use the ordinary `not_found` error.
   or one that would take the queue past 100 lines or `MAX_QUEUED_CHARS` (100,000 characters
   together) is refused with `cannot_queue`; `PUT /queue` takes the same bounds.
 - A `queue` entry on the stream (`QueueUpdate`) carries the whole queue after each change, under
-  the main session: `queue_changed` (a line joined, or a client replaced the lines),
-  `prompt_started` (the line about to run, before its run's entries) and `prompt_refused` (a line
-  that left the queue without starting: its skill is gone, or the conversation can no longer be
-  stored). The newest one says what waits.
+  the main session: `queue_changed` (a line joined, or a client replaced the lines; `dropped`
+  holds the message ids of the lines the edit left out, and is absent when none),
+  `prompt_started` (the line about to run, with its `messageId`, before its run's entries) and
+  `prompt_refused` (a line that left the queue without starting, with its `messageId`: its skill
+  is gone, or the conversation can no longer be stored). The newest one says what waits. A line's
+  id is the one its answer gave, so a client finds what became of it by id and never by its text.
+  A line an edit keeps keeps its id, a line it adds gets one, and lines restored when a
+  conversation is reopened get new ones.
 - A normal prompt's user message keeps `content`, what the model saw (with a skill's
   instructions), and may keep `parts`, what the user typed, for a UI to show the skills as chips.
   Providers send only `content`.

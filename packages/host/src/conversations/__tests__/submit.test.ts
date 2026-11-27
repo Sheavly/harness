@@ -1,105 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { ConversationStore } from '@sheavly/core/store/store.types';
-import { streamAgent } from '@sheavly/loop/stream-agent/stream-agent.helper';
 import type { ConversationId } from '@sheavly/protocol/server/server.types';
-import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { MemoryConversationStore } from '@sheavly/testing/store/memory-store.fake';
 import { until } from '@sheavly/testing/wait/until.fake';
-import { createConversation } from '../../conversation/conversation.helper.js';
-import { createHarness } from '../../host/host.helper.js';
-import { twoModelRun } from '../../testing/run.fake.js';
-import { Conversations } from '../conversations.service.js';
+import {
+  NO_SKILLS,
+  follow,
+  heldConversations,
+  idle,
+  queueOf,
+  runningFirst,
+  stoppableSkills,
+} from '../../testing/held-conversations.fake.js';
+import type { Conversations } from '../conversations.service.js';
 import type { ConversationSkills, PromptFailure } from '../conversations.types.js';
-
-/** Skills that know none: a prompt `/nope` names one that does not exist. */
-const NO_SKILLS: ConversationSkills = {
-  list: async () => [],
-  prepare: async ({ prompt }) =>
-    'text' in prompt && prompt.text.startsWith('/nope')
-      ? { unknown: ['nope'] }
-      : { text: 'text' in prompt ? prompt.text : '' },
-};
-
-/**
- * `Conversations` on a model that answers each call with the prompt it was given, except that the
- * calls numbered in `held` (1-based) wait until `release(n)`. `prompts` is the last user message
- * of each call, in order.
- */
-function heldConversations(
-  params: {
-    held?: number[];
-    store?: ConversationStore;
-    skills?: ConversationSkills;
-    onPromptFailure?: (failure: PromptFailure) => void;
-  } = {},
-) {
-  const gates = new Map((params.held ?? []).map((n) => [n, Promise.withResolvers<undefined>()]));
-  const prompts: string[] = [];
-  const conversations = new Conversations({
-    ...(params.store && { store: params.store }),
-    ...(params.onPromptFailure && { onPromptFailure: params.onPromptFailure }),
-    create: async ({ storage }) => {
-      const harness = createHarness({
-        title: 'Chat',
-        provider: {
-          async *stream(request) {
-            const user = request.messages.findLast((m) => m.role === 'user');
-
-            prompts.push(user?.content ?? '');
-            await gates.get(prompts.length)?.promise;
-            yield { type: 'text_delta', text: 'ok' };
-            yield { type: 'done', stopReason: 'end_turn' };
-          },
-        },
-        ...(storage && { entries: storage.entries, resume: storage.resume }),
-      });
-
-      return {
-        harness,
-        conversation: createConversation({
-          harness,
-          run: streamAgent,
-          tools: [],
-          ...(storage && {
-            keepHistory: storage.keepHistory,
-            resumed: storage.resume !== undefined,
-          }),
-        }),
-        skills: params.skills ?? NO_SKILLS,
-        run: twoModelRun(),
-      };
-    },
-  });
-
-  return {
-    conversations,
-    prompts,
-    release: (n: number) => gates.get(n)?.resolve(undefined),
-  };
-}
-
-/** Every entry of conversation `id`'s stream from now on. */
-function follow(params: { conversations: Conversations; id: ConversationId }): StreamEntry[] {
-  const entries: StreamEntry[] = [];
-
-  params.conversations.get(params.id).harness.sessions.subscribeEntries((e) => entries.push(e));
-
-  return entries;
-}
-
-/** The queue entries of a stream, as `type text? [queued]`. */
-const queueOf = (entries: readonly StreamEntry[]) =>
-  entries.flatMap((entry) =>
-    entry.kind === 'queue'
-      ? [
-          `${entry.update.type}${'text' in entry.update ? ` ${entry.update.text}` : ''} [${entry.update.queued.join(', ')}]`,
-        ]
-      : [],
-  );
-
-/** Lets a run the test released end, so the conversation is idle again. */
-const idle = (params: { conversations: Conversations; id: ConversationId }) =>
-  until(() => params.conversations.get(params.id).conversation.state === 'idle');
 
 /** Starts finite work in conversation `id` that finishes at once, so the idle conversation wakes. */
 function finishWork(params: { conversations: Conversations; id: ConversationId }) {
@@ -159,23 +72,6 @@ function heldQueueStore() {
     },
     holding: () => waiting,
   };
-}
-
-/**
- * A conversation whose prompt `first` runs, held at its model call until `release(1)`; `send`
- * submits a text prompt to it.
- */
-async function runningFirst(
-  params: Omit<NonNullable<Parameters<typeof heldConversations>[0]>, 'held'> = {},
-) {
-  const held = heldConversations({ ...params, held: [1] });
-  const id = await held.conversations.start();
-  const send = (text: string) => held.conversations.submit({ id, prompt: { text } });
-
-  await send('first');
-  await until(() => held.prompts.length === 1);
-
-  return { ...held, id, send };
 }
 
 describe('submitting a prompt', () => {
@@ -356,28 +252,14 @@ describe('submitting a prompt, at the edges', () => {
   it('keeps a queued line a stop reaches while it prepares its skills, parked until the next send', async () => {
     const failures: PromptFailure[] = [];
     const store = new MemoryConversationStore();
-    const preparing = Promise.withResolvers<undefined>();
-    const skills: ConversationSkills = {
-      ...NO_SKILLS,
-      // As the backend's skill reader does: a stop while it reads aborts it.
-      prepare: async ({ prompt, signal }) => {
-        if ('text' in prompt && prompt.text === 'second') {
-          preparing.resolve(undefined);
-          await new Promise((_resolve, reject) =>
-            signal?.addEventListener('abort', () => reject(signal.reason as Error)),
-          );
-        }
-
-        return NO_SKILLS.prepare({ prompt });
-      },
-    };
+    const { skills, reached } = stoppableSkills({ text: 'second' });
     const held = await runningFirst({ store, skills, onPromptFailure: (f) => failures.push(f) });
     const { id } = held;
     const entries = follow({ conversations: held.conversations, id });
 
     await held.send('second');
     held.release(1);
-    await preparing.promise;
+    await reached;
     held.conversations.stop(id);
     await idle({ conversations: held.conversations, id });
     await new Promise((resolve) => setTimeout(resolve, 20));

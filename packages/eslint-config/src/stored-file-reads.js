@@ -1,7 +1,8 @@
 // A stored `profile.json`, conversation `index.json` and `stream.jsonl` are read through the
 // schemas that also take the files written before "mode" became "effort" (`legacy-effort/` in
-// `@sheavly/storage`); the plain protocol schemas reject those files, so a store that parsed with
-// them would lose old data.
+// `@sheavly/storage`, which also gives a queue line written before it had a message id its
+// placeholder); the plain protocol schemas reject those files, so a store that parsed with them
+// would lose old data.
 // A conversation's channel logs (`channels/<channel>.jsonl`) have no old form, but a log is read a
 // line at a time through the one stored entry (`storedChannelEntrySchema`, taken from the
 // protocol's schema once): `channelLogSchema` and `channelBoundarySchema` check a whole array of
@@ -39,7 +40,7 @@ export const storedFileReads = {
             name: '@sheavly/protocol/stream/stream.validator',
             importNames: ['streamEntrySchema'],
             message:
-              'Read a stored stream.jsonl with storedStreamEntrySchema (legacy-effort/legacy-effort.validator): streamEntrySchema rejects lines written before "mode" became "effort".',
+              'Read a stored stream.jsonl with storedStreamEntrySchema (legacy-effort/legacy-effort.validator): streamEntrySchema rejects lines written before "mode" became "effort" and queue lines written before a queued line had a message id.',
           },
           {
             name: '@sheavly/protocol/channel/channel.validator',
