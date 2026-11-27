@@ -1,5 +1,6 @@
 import type { ReconnectPolicy } from '@sheavly/client/client/client.types';
 import type { ApprovalRequest } from '@sheavly/protocol/approval/approval.types';
+import type { ContextFill, UsageFigures } from '@sheavly/protocol/usage/usage.types';
 
 /** The sub-agent that asked an approval, as the screen shows it: by its title, never by an id. */
 export type ApprovalAsker = { title: string };
@@ -34,6 +35,12 @@ export type FoundBackend = { url: string; token: string };
  * kind of node that is not one of the next two), sub-agents and services.
  */
 export type Background = { tasks: number; agents: number; services: number };
+
+/**
+ * What the status line shows of the conversation's usage: the figures of every model call, and how
+ * full the main agent's context is (unset until its first call).
+ */
+export type MainUsage = { total: UsageFigures; context: ContextFill | undefined };
 
 /**
  * A backend the terminal talks to; `stop` ends it if the terminal started it: SIGTERM to its

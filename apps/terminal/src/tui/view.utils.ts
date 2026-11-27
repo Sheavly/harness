@@ -182,7 +182,7 @@ export function statusText(params: { info: StatusInfo; palette?: Palette }): str
   const effort = info.modelEffort ? ` · ${info.modelEffort}` : '';
   const branch = info.workingBranch ? ` · ⎇ ${plainTerminalText(info.workingBranch)}` : '';
 
-  const usage = ` · ${usageText({ context: info.contextUsage, usage: info.usage })}`;
+  const usage = ` · ${usageText({ context: info.context, usage: info.usage })}`;
 
   return `${state}${text.secondary(` · ${plainTerminalText(info.model)}${effort}${branch} · mode: `)}${mode}${text.secondary(tasks + usage)}`;
 }
