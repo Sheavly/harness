@@ -294,7 +294,11 @@ Files written before "mode" became "effort" are read as the new form: `modelMode
 a session update and its session snapshot in `stream.jsonl` (`legacy-effort/`). Nothing rewrites
 them on its own; a profile or index is saved in the new form the next time its store writes it,
 and a stream, being append-only, keeps its old lines and is read this way every time. When both
-keys are present the new one wins.
+keys are present the new one wins. A queue line (`prompt_started`, `prompt_refused`) written before
+a queued line had a message id is read with a placeholder id, since nothing waits on a stored entry.
+A reader outside the package (the terminal's replay) reads a stored stream line, or a workbook run's
+`entry` frame, with `parseStoredStreamEntry`, which gives the entry in today's form or undefined; the
+protocol's `streamEntrySchema` is the wire's and refuses the old forms.
 
 **A tool outside the harness may read** `profiles/<profile-id>/profile.json` (its `id` and `name`)
 and each conversation's `index.json` (the fields of `StoredConversation`: `id`, `title`, `modelId`,
