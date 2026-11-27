@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { LAUNCHER_ENTRIES } from '../layout.js';
 import { serverStartConfinement } from '../server-start-confinement.js';
-import { expectRefusedIn, launcherReports as reported } from '../testing/launcher-lint.fake.js';
+import {
+  expectRefusedIn,
+  launcherReports as reported,
+  warmLauncherLint,
+} from '../testing/launcher-lint.fake.js';
+
+// The program the lints run on is built once, here, so no test's limit pays for it.
+beforeAll(warmLauncherLint, 180_000);
 
 const MODULE = '@sheavly/backend/run-server/embedded-server.helper';
 const START_LINES = [
