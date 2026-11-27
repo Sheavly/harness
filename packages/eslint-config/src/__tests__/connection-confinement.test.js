@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { connectionConfinement } from '../connection-confinement.js';
-import { launcherReports as reported } from '../testing/launcher-lint.fake.js';
+import { launcherReports as reported, warmLauncherLint } from '../testing/launcher-lint.fake.js';
+
+// The program the lints run on is built once, here, so no test's limit pays for it.
+beforeAll(warmLauncherLint, 180_000);
 
 const GLOBALS = 'no-restricted-globals';
 const PROPERTIES = 'no-restricted-properties';
@@ -117,6 +120,8 @@ describe('the launcher’s connection command', () => {
     }
   });
 
+  // Every line in every file the rule must leave alone, each a typed lint: about a hundred, which
+  // is the point of the test, so it has a limit of its own.
   it('leaves its tests and the rest of the app alone', async () => {
     const everything = [...START_LINES, ...CONTACT_LINES, ...ESCAPE_LINES];
 
@@ -137,7 +142,7 @@ describe('the launcher’s connection command', () => {
         expect(await reported({ code: line, file, rule: PROPERTIES }), file).toHaveLength(0);
       }
     }
-  });
+  }, 120_000);
 
   it('still refuses the real systemd tools in the rest of the app, as before', async () => {
     for (const file of OTHER_FILES) {

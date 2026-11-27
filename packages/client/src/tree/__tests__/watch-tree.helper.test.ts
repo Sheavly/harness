@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { conversationIdSchema } from '@sheavly/protocol/server/server.validator';
 import type { TreeView } from '@sheavly/protocol/tree/tree.types';
+import { emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { AnswerError, ChannelFailedError, RefusedError } from '../../errors/client.errors.js';
 import {
   agentNode,
+  agentUpdated,
   approvalRequest,
   endedAs,
   serviceNode,
@@ -11,7 +13,8 @@ import {
   treeSnapshot,
 } from '../../testing/frames.fake.js';
 import { DROP, served } from '../../testing/subscription-server.fake.js';
-import type { ServedSubscription } from '../../testing/testing.types.js';
+import type { FakeRefusal, SentFrames, ServedSubscription } from '../../testing/testing.types.js';
+import type { TreeEntryListener } from '../tree.types.js';
 import { watchTree } from '../watch-tree.helper.js';
 
 const ID = conversationIdSchema.parse('00000000-0000-4000-8000-0000000000ab');
@@ -29,6 +32,16 @@ const CLOSED = treeEntry({
 });
 const OVER = endedAs({ name: 'tree', reason: 'completed' });
 
+/**
+ * The connections of a server whose first one drops after the entry `OPENED`, and which no longer
+ * holds the position it is then asked from: what it sends after that is `again`.
+ */
+const losingItsPosition = (again: SentFrames): (SentFrames | FakeRefusal)[] => [
+  [treeSnapshot({ n: 1, nodes: [MAIN] }), OPENED, DROP],
+  { refuse: { status: 422, code: 'cursor_out_of_range' } },
+  again,
+];
+
 /** Watches the tree to its end, and answers the tree it ended with and each tree it was told of. */
 async function watched(params: { world: ServedSubscription; approvals?: boolean }) {
   const changes: TreeView[] = [];
@@ -43,6 +56,27 @@ async function watched(params: { world: ServedSubscription; approvals?: boolean 
   await watch.ended;
 
   return { tree: watch.tree(), changes };
+}
+
+/** Watches the tree to its end, and answers the log of what `onEntry` and `onChange` were told. */
+async function watchedEntries(params: { world: ServedSubscription; onEntry?: TreeEntryListener }) {
+  const log: string[] = [];
+  const entries: Parameters<TreeEntryListener>[0][] = [];
+  const watch = await watchTree({
+    client: params.world.client,
+    id: ID,
+    onChange: () => log.push('change'),
+    onEntry: (told) => {
+      entries.push(told);
+      log.push(told.entry.type);
+      params.onEntry?.(told);
+    },
+    signal: new AbortController().signal,
+  });
+
+  await watch.ended;
+
+  return { log, entries };
 }
 
 /** Starts watching a tree whose server sends `entries` after the snapshot with the main agent. */
@@ -121,11 +155,7 @@ describe('watchTree', () => {
 
   it('asks again from the snapshot when the server no longer holds its position, and the tree it gives replaces its own', async () => {
     const world = served({
-      connections: [
-        [treeSnapshot({ n: 1, nodes: [MAIN] }), OPENED, DROP],
-        { refuse: { status: 422, code: 'cursor_out_of_range' } },
-        [treeSnapshot({ n: 9, nodes: [MAIN] }), OVER],
-      ],
+      connections: losingItsPosition([treeSnapshot({ n: 9, nodes: [MAIN] }), OVER]),
     });
 
     const { tree, changes } = await watched({ world });
@@ -245,5 +275,173 @@ describe('watchTree', () => {
     await watch.ended;
 
     expect(summary(watch.tree()).nodes).toEqual(['main idle']);
+  });
+});
+
+/** Every entry kind of the tree channel after the snapshot (its opening is before it), as entries 2 to 14. */
+const EVERY_KIND = [
+  OPENED,
+  treeEntry({ n: 3, type: 'node_updated', fields: { node: serviceNode({ id: 'dev' }) } }),
+  treeEntry({
+    n: 4,
+    type: 'approval_requested',
+    fields: { node: 'main', request: approvalRequest('a-1') },
+  }),
+  treeEntry({
+    n: 5,
+    type: 'approval_resolved',
+    fields: { node: 'main', id: 'a-1', response: { decision: 'approve' } },
+  }),
+  treeEntry({
+    n: 6,
+    type: 'approval_requested',
+    fields: { node: 'main', request: approvalRequest('a-2') },
+  }),
+  treeEntry({ n: 7, type: 'approval_cancelled', fields: { node: 'main', id: 'a-2' } }),
+  treeEntry({ n: 8, type: 'queue_changed', fields: { queued: ['next'] } }),
+  treeEntry({
+    n: 9,
+    type: 'prompt_started',
+    fields: { text: 'go', messageId: '00000000-0000-4000-8000-000000000009', queued: [] },
+  }),
+  treeEntry({
+    n: 10,
+    type: 'prompt_refused',
+    fields: { text: 'rm', error: 'no skill', queued: [] },
+  }),
+  treeEntry({ n: 11, type: 'storage_failed', fields: { error: 'disk full' } }),
+  treeEntry({
+    n: 12,
+    type: 'extension_event',
+    fields: { extension: 'demo', kind: 'demo.note', version: 1, data: {}, text: 'a note' },
+  }),
+  treeEntry({
+    n: 13,
+    type: 'node_closed',
+    fields: { node: serviceNode({ id: 'dev', state: 'cancelled' }) },
+  }),
+  treeEntry({ n: 14, type: 'closed' }),
+];
+
+describe('watchTree: onEntry', () => {
+  it('tells of every entry once, in channel order, before the change it makes, with the tree before and after', async () => {
+    const world = served({
+      connections: [[treeSnapshot({ n: 1, nodes: [MAIN] }), ...EVERY_KIND, OVER]],
+    });
+
+    const { log, entries } = await watchedEntries({ world });
+
+    expect(entries.map(({ entry }) => entry.type)).toEqual(EVERY_KIND.map((each) => each.type));
+    // An entry is told before the change it makes, and a change is told only for a tree that changed.
+    expect(log).toEqual([
+      'change', // the snapshot
+      'node_opened',
+      'change',
+      'node_updated',
+      'change',
+      'approval_requested',
+      'change',
+      'approval_resolved',
+      'change',
+      'approval_requested',
+      'change',
+      'approval_cancelled',
+      'change',
+      'queue_changed',
+      'prompt_started',
+      'prompt_refused',
+      'storage_failed',
+      'extension_event',
+      'node_closed',
+      'change',
+      'closed',
+    ]);
+    // What changes nothing in the tree has the same tree before and after, and the rest does not.
+    expect(entries.map(({ before, after }) => before === after)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+    ]);
+    expect(summary(entries[0]?.before ?? emptyTree()).nodes).toEqual(['main idle']);
+    expect(summary(entries[0]?.after ?? emptyTree()).nodes).toEqual(['main idle', 'dev running']);
+  });
+
+  it('does not tell of the snapshot or of another channel’s frame', async () => {
+    const world = served({
+      connections: [
+        [
+          treeSnapshot({ n: 1, nodes: [MAIN] }),
+          agentUpdated({ name: 'main', n: 2 }),
+          treeEntry({ n: 3, type: 'queue_changed', fields: { queued: ['next'] } }),
+          OVER,
+        ],
+      ],
+    });
+
+    const { entries } = await watchedEntries({ world });
+
+    expect(entries.map(({ entry }) => `${entry.type} ${entry.cursor}`)).toEqual([
+      'queue_changed s3',
+    ]);
+  });
+
+  it('tells no entry twice when a dropped connection resumes after the last one', async () => {
+    const world = served({
+      connections: [
+        [treeSnapshot({ n: 1, nodes: [MAIN] }), OPENED, DROP],
+        [CLOSED, OVER],
+      ],
+    });
+
+    const { entries } = await watchedEntries({ world });
+
+    expect(entries.map(({ entry }) => entry.cursor)).toEqual(['s2', 's3']);
+    expect(world.asked()[1]).toEqual({ subscriptions: [{ channel: 'tree', from: 's2' }] });
+  });
+
+  it('does not tell of the entries in the gap when the server no longer holds its position: the snapshot replaces the tree', async () => {
+    const world = served({
+      connections: losingItsPosition([
+        treeSnapshot({ n: 9, nodes: [MAIN] }),
+        treeEntry({ n: 10, type: 'queue_changed', fields: { queued: [] } }),
+        OVER,
+      ]),
+    });
+
+    const { entries } = await watchedEntries({ world });
+
+    expect(entries.map(({ entry }) => entry.cursor)).toEqual(['s2', 's10']);
+  });
+
+  it('rejects `ended` with what the hook throws, and tells no more', async () => {
+    const failure = new Error('the hook failed');
+    const world = served({
+      connections: [[treeSnapshot({ n: 1, nodes: [MAIN] }), OPENED, CLOSED, OVER]],
+    });
+    let calls = 0;
+
+    await expect(
+      watchedEntries({
+        world,
+        onEntry: () => {
+          calls += 1;
+
+          throw failure;
+        },
+      }),
+    ).rejects.toBe(failure);
+    expect(calls).toBe(1);
+    // It is the end of the channel's following: nothing is asked again.
+    expect(world.asked()).toHaveLength(1);
   });
 });

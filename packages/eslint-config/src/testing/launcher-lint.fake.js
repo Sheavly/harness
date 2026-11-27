@@ -18,6 +18,14 @@ export async function launcherReports(params) {
 }
 
 /**
+ * Test-only: builds the launcher's typed lint program now. A test file calls it once in a
+ * `beforeAll` with a limit of its own: the first lint of any file builds the program, with the
+ * sources the launcher imports (the terminal's, the client's), so it is most of a file's time and
+ * grows with them, and left alone it counts against the first test's limit.
+ */
+export const warmLauncherLint = () => launcherReports({ code: '', file: 'src/cli.ts' });
+
+/**
  * Test-only: fails unless the launcher's real config reports `code` once under `rule` (as
  * `launcherReports`), with `why` in the message, in every one of `files`.
  */

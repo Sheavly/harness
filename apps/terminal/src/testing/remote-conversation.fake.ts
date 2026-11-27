@@ -4,6 +4,7 @@ import { conversationIdSchema } from '@sheavly/protocol/server/server.validator'
 import { sessionIdSchema } from '@sheavly/protocol/session/session.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import { RemoteConversation } from '../client/conversation.service.js';
+import { nodeFeeds, routeChannels } from './channels-feed.fake.js';
 import { liveFeed, promptStarted } from './live-feed.fake.js';
 import { treeFeed } from './tree-feed.fake.js';
 import { startedAnswer } from '../chat/testing/prompt-answers.fake.js';
@@ -38,14 +39,22 @@ export const doneAt = (
  * stream is `feed`, and each prompt sent starts the next of `runs` on it at once: its
  * `prompt_started` (at the seq before the run's first entry), then the run's entries.
  */
-export async function openOnFake(params: { handlers?: FakeHandlers; runs?: StreamEntry[][] }) {
+export async function openOnFake(params: {
+  handlers?: FakeHandlers;
+  runs?: StreamEntry[][];
+  /** The tree channel the backend serves: one main agent unless a test says what it holds. */
+  tree?: ReturnType<typeof treeFeed>;
+  /** The agents' channels the backend serves, by the node's id; a node with none is `not_found`. */
+  nodes?: ReturnType<typeof nodeFeeds>;
+}) {
   const feed = liveFeed();
-  const tree = treeFeed();
+  const tree = params.tree ?? treeFeed();
+  const nodes = params.nodes ?? nodeFeeds();
   const runs = [...(params.runs ?? [])];
   const server = fakeServer({
     startConversation: () => ({ id: FAKE_ID }),
     streamConversation: () => feed.follow(),
-    streamChannels: () => tree.follow(),
+    streamChannels: (call) => routeChannels({ call, tree, nodes }),
     sendPrompt: ({ body }) => {
       const run = runs.shift() ?? [];
       const text = (body as { text: string }).text;
@@ -69,7 +78,7 @@ export async function openOnFake(params: { handlers?: FakeHandlers; runs?: Strea
     },
   });
 
-  return { conversation, server, feed, tree };
+  return { conversation, server, feed, tree, nodes };
 }
 
 /**

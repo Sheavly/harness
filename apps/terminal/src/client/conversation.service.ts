@@ -18,6 +18,8 @@ import type { TreeView } from '@sheavly/protocol/tree/tree.types';
 import { emptyTree } from '@sheavly/protocol/tree/tree.utils';
 import { backgroundOf, sameBackground } from './background.utils.js';
 import type { AskedApproval, Backend, Background } from './client.types.js';
+import { watchTranscript } from './transcript-feed.helper.js';
+import type { ChatItem } from './transcript.types.js';
 import { BackendError } from '../errors/backend.errors.js';
 
 type Client = ReturnType<typeof createClient>;
@@ -275,6 +277,22 @@ export class RemoteConversation {
     })();
 
     return { ended };
+  }
+
+  /**
+   * Tells `onItem` what a chat shows of the conversation, from its tree channel and its main
+   * agent's channel (`watchTranscript`): the notices, the sub-agents, and the main agent's runs and
+   * events, from now on. Items of one channel are in order, between the two no order is defined.
+   * It is what a chat reads from channels instead of `follow`'s stream. Resolves once both
+   * connections are accepted: send the first prompt after it. `ended` resolves when `signal` aborts
+   * or either channel ends, and rejects when a channel fails or is refused, the conversation has no
+   * main agent, or `onItem` throws.
+   */
+  watchTranscript(params: {
+    onItem: (item: ChatItem) => void;
+    signal: AbortSignal;
+  }): Promise<{ ended: Promise<void> }> {
+    return watchTranscript({ client: this.#client, id: this.id, ...params });
   }
 
   /**

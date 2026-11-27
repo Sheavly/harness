@@ -73,8 +73,8 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   and what runs in the background (`2 tasks and 1 service running in background`: finite work
   and services counted apart, each only when some run). Without a terminal (piped input, or
   `SHEAVLY_PLAIN=1`) it reads and writes lines, as it always did.
-- **What the chat follows.** The transcript, a run's text and steps, is read from the conversation's
-  stream. What runs in the background and what waits for you are read from its tree channel
+- **What the chat follows.** The transcript, a run's text and steps, is still read from the
+  conversation's stream; the transcript feed below is a second source the chat does not read. What runs in the background and what waits for you are read from its tree channel
   (`QUERY /conversations/{id}/subscribe`), through the client's `watchTree` and `watchTreeApprovals`:
   the status line counts the nodes that run under the main agent (a sub-agent, a service, any other
   node a task), from their opening to their end, so a command that starts and ends while no prompt is
@@ -83,6 +83,16 @@ start it in (the default workspace), and calls the real API, so it costs money. 
   here or elsewhere. Each of them is a connection that resumes after a drop; one lost for good says
   so in the transcript (`✗ lost the background status`, `✗ lost the approval stream`). A tool that
   asks while the approvals connection is down is refused, not held.
+- **The transcript feed.** `RemoteConversation.watchTranscript` is a data source for the
+  transcript that is not the stream: it merges the conversation's tree channel (its
+  queue, a prompt that started or was refused, a storage failure, an extension's notice, and a card
+  for each sub-agent that starts, says what it does or ends, with its depth and top ancestor) and
+  the main agent's own channel (where each run starts, and its loop events, from the moment it is
+  followed) into `ChatItem`s. Items of one channel arrive in order; between the two no order is
+  defined, so a run's items are matched to its prompt by message id. It resolves once both
+  connections are accepted and ends when its signal aborts or when either channel ends, with the
+  other stopped. The chat does not read it yet: it still shows the transcript from the stream
+  (`follow`, `send`), which the workbook, the demo and replay read too.
 - **React and Ink draw the screen.** Completed lines are committed once with Ink's static output;
   the bounded live footer shows activity, elapsed time and `Ctrl+C to stop` while working.
   While a tool runs it also names the step and how long that step has run

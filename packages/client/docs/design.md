@@ -181,9 +181,16 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   more than 1,000 waiting approvals) is off the contract and is refused (`AnswerError`), not kept:
   the protocol's rule drops only an ended node nothing hangs from, so open nodes and the parents of
   kept ones would pile up without end, and each entry costs a pass over them all.
-- `watchTree({ client, id, approvals?, onChange, signal })` (`tree/`) keeps the tree: the snapshot,
-  then each entry folded in with the protocol's one rule (`applyTreeEntry`). `tree()` is what it is
-  now and `onChange` is told of each change, not of an entry that changes nothing in it. After a
+- `watchTree({ client, id, approvals?, onChange, onEntry?, signal })` (`tree/`) keeps the tree: the
+  snapshot, then each entry folded in with the protocol's one rule (`applyTreeEntry`). `tree()` is
+  what it is now and `onChange` is told of each change, not of an entry that changes nothing in it.
+  `onEntry` is told of every entry of the tree channel once, in channel order and before `onChange`
+  for it, with the tree before and after (the same object for an entry that changes nothing: the
+  queue, a prompt started or refused, a storage failure, an extension's event), so a reader of the
+  conversation's notices needs no second connection. It is not told of the snapshot, of another
+  channel's frame or of an entry off the contract; a resume tells no entry twice, and after
+  `cursor_out_of_range` the snapshot replaces the tree and the entries in the gap are not told. A
+  hook that throws ends `ended` as `onChange` does. After a
   reconnect the tree equals the snapshot of that moment; when the server no longer holds the position
   (`cursor_out_of_range`) it asks again from `snapshot`, which replaces the tree. `ended` resolves
   when the tree channel ends `completed` and when the signal aborts, and rejects with
@@ -212,8 +219,8 @@ const sent = await client.call('sendPrompt', { id, body: { text: 'hi' } }); // P
   refused. It replaces `watchApprovals`, which reads the whole stream and goes with it.
 - The old whole-stream readers (`followConversation`, `promptEntries`, `watchApprovals`) stay while
   the stream route does. The terminal has moved its approvals and its background counts to the tree
-  (`watchTreeApprovals`, `watchTree`); what still reads the stream is its transcript, which moves
-  once an agent's channel carries the loop's events, and the readers go with the stream route.
+  (`watchTreeApprovals`, `watchTree`) and has a transcript feed on the tree channel and the main
+  agent's channel; its chat still reads the stream, and the readers go with the stream route.
 
 ## Testing a UI
 

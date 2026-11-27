@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { launcherReports as reported } from '../testing/launcher-lint.fake.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { launcherReports as reported, warmLauncherLint } from '../testing/launcher-lint.fake.js';
 import { systemdConfinement } from '../systemd-confinement.js';
+
+// The program the lints run on is built once, here, so no test's limit pays for it.
+beforeAll(warmLauncherLint, 180_000);
 
 const SYNTAX = 'no-restricted-syntax';
 const WRAPPER = 'src/service/system.helper.ts';

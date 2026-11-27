@@ -13,9 +13,10 @@ import { liveFeed } from './live-feed.fake.js';
  * Test-only: a conversation's tree as a backend sends it to a subscriber of the tree channel: the
  * snapshot of the tree as it stands (the main agent, and what `nodes` adds), then each entry
  * published after, in order. Its stream never ends of its own, as the tree channel's does not. A
- * fake server's `streamChannels` answers with `follow()`.
+ * fake server's `streamChannels` answers with `follow()`. `mains` are the agents with no parent the
+ * snapshot starts with: the one main agent, unless a test says what a reopened conversation holds.
  */
-export function treeFeed(nodes: object[] = []) {
+export function treeFeed(nodes: object[] = [], mains: object[] = [MAIN_AGENT]) {
   const feed = liveFeed<SubscribeFrame>();
   let n = 1;
 
@@ -23,7 +24,7 @@ export function treeFeed(nodes: object[] = []) {
     // The snapshot is as the tree stands when the subscription opens, and what is published after
     // that is kept for it, so an entry told before the client reads its first frame is not lost
     // and never numbers below the snapshot's cursor.
-    const snapshot = treeSnapshot({ n, nodes: [MAIN_AGENT, ...nodes] });
+    const snapshot = treeSnapshot({ n, nodes: [...mains, ...nodes] });
     const live = feed.follow();
 
     async function* read(): AsyncGenerator<SubscribeFrame> {
@@ -40,6 +41,27 @@ export function treeFeed(nodes: object[] = []) {
     opened: (node: object) => {
       n += 1;
       feed.publish(treeEntry({ n, type: 'node_opened', fields: { node } }));
+    },
+    /** Tells subscribers a node changed while it lives: it is as `node` says now. */
+    updated: (node: object) => {
+      n += 1;
+      feed.publish(treeEntry({ n, type: 'node_updated', fields: { node } }));
+    },
+    /** Tells subscribers a queued line started as the next prompt, which became `messageId`. */
+    promptStarted: (params: { text: string; messageId: string; queued?: string[] }) => {
+      n += 1;
+      feed.publish(
+        treeEntry({
+          n,
+          type: 'prompt_started',
+          fields: { text: params.text, messageId: params.messageId, queued: params.queued ?? [] },
+        }),
+      );
+    },
+    /** Tells subscribers a notice of the conversation: an entry of `type` holding `fields`. */
+    notice: (params: { type: string; fields: object }) => {
+      n += 1;
+      feed.publish(treeEntry({ n, type: params.type, fields: params.fields }));
     },
     /** Tells subscribers a node ended, in the state `node` has. */
     closed: (node: object) => {
@@ -98,21 +120,45 @@ export const FAILED_TREE: FakeHandlers = {
   },
 };
 
+/** Test-only: an agent with no parent that was lost (the backend restarted under it). */
+export const lostAgent = (id: string) => ({
+  kind: 'agent',
+  id,
+  title: id,
+  state: 'lost',
+  startedAt: 1,
+  endedAt: 2,
+});
+
 /**
- * Test-only: a node under the main agent: a command, a service or a sub-agent, running unless
- * `state` says how it ended.
+ * Test-only: a node under the main agent, or under `parent`: a command, a service or a sub-agent,
+ * running unless `state` says how it ended, with `status` as what it says it is doing. An agent
+ * that ended says how its last run did with `outcome` (`completed` unless given; it must be the
+ * outcome of its state: a turn limit is a `failed` agent).
  */
 export function childNode(params: {
   id: string;
   kind: 'command' | 'service' | 'agent';
-  state?: 'running' | 'completed';
+  state?: 'running' | 'completed' | 'failed' | 'cancelled';
+  outcome?: string;
   title?: string;
+  parent?: string;
+  status?: string;
 }) {
-  const { id, kind, state = 'running', title = id } = params;
+  const {
+    id,
+    kind,
+    state = 'running',
+    outcome = 'completed',
+    title = id,
+    parent = 'main',
+    status,
+  } = params;
   const common = {
     id,
     kind,
-    parent: 'main',
+    parent,
+    ...(status !== undefined && { status }),
     title,
     state,
     startedAt: 1,
@@ -120,7 +166,7 @@ export function childNode(params: {
   };
 
   if (kind === 'agent') {
-    return { ...common, ...(state !== 'running' && { lastOutcome: 'completed' }) };
+    return { ...common, ...(state !== 'running' && { lastOutcome: outcome }) };
   }
 
   return { ...common, command: 'make', description: 'build', output: '' };
