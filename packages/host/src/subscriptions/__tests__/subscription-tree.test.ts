@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { callIdSchema } from '@sheavly/protocol/message/message.validator';
-import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
 import { treeSnapshotSchema } from '@sheavly/protocol/tree/tree.validator';
 import { ConversationChannels } from '@sheavly/runtime/nodes/conversation-channels.service';
 import { conversationId } from '@sheavly/runtime/testing/stored-conversation.fake';
 import { treeConversation } from '@sheavly/runtime/testing/tree-conversation.fake';
 import { HeldBytes } from '../held-bytes.service.js';
 import { Subscription } from '../subscription.service.js';
-import { take } from '../../testing/subscription-world.fake.js';
+import { tag, take } from '../../testing/subscription-world.fake.js';
 
 const CALL = callIdSchema.parse('call_1');
 const ROOMY = 1_000_000;
@@ -49,10 +48,6 @@ function openTree(params: {
     onClose: () => undefined,
   });
 }
-
-/** A frame as `type cursor`, or `end:reason`. */
-const tag = (frame: SubscribeFrame) =>
-  frame.type === 'end' ? `end:${frame.reason}` : `${frame.type} ${frame.cursor}`;
 
 /** A sub-agent of the main agent. */
 const spawn = (world: World) =>

@@ -112,12 +112,13 @@ approvals? }`. `from` is `start`, `now`, `snapshot` (a channel of the conversati
   `tail` of at most `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries
   on a channel of the conversation itself, and `approvals` only with the tree channel. A cursor the
   log cannot start at is `cursor_out_of_range`, which only the server can tell. What a frame of its
-  stream holds is `SubscribeFrame`, one of four: an entry of a channel (event `entry`, a node's or
+  stream holds is `SubscribeFrame`, one of five: an entry of a channel (event `entry`, a node's or
   one of the conversation's own; the envelope carries its own channel and cursor),
   `ChannelHeadFrame` (event `head`: where a channel stood when a subscription at `now` opened),
   `ChannelEndFrame` (event `end`: that channel ended, as `completed`, `cut_off` or `failed`, with the
   last cursor delivered), or a snapshot (`TreeSnapshot` or `UsageSnapshot`, event `snapshot`: the
-  view as it stands, sent first for `from: snapshot`). A frame has no `id`. `applyTreeEntry`
+  view as it stands, sent first for `from: snapshot`), or `LiveFrame` (event `live`: what an item
+  says as it happens, with no cursor; nothing sends it yet). A frame has no `id`. `applyTreeEntry`
   (`tree/`) and `applyUsageEntry` (`usage/`) are the rules from entries to a view: a snapshot
   followed by the entries after its cursor gives the view of every entry from the start, so a
   client folds both the same way.

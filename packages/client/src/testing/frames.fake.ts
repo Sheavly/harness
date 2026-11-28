@@ -1,7 +1,10 @@
 import { channelNameSchema } from '@sheavly/protocol/channel/channel.validator';
 import { nodeIdSchema } from '@sheavly/protocol/node/node.validator';
-import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
-import { subscribeFrameSchema } from '@sheavly/protocol/subscription/subscription.validator';
+import type { LiveFrame, SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
+import {
+  liveFrameSchema,
+  subscribeFrameSchema,
+} from '@sheavly/protocol/subscription/subscription.validator';
 
 /**
  * Test-only: the frames of a subscribe stream, each parsed with the contract's schema, so a test
@@ -132,6 +135,14 @@ export const commandClosed = (params: { name: string; bytes: number }) =>
 /** Where a channel stood when a subscription at `now` opened. */
 export const headAt = (params: { name: string; cursor: string }) =>
   frame({ type: 'head', channel: params.name, cursor: params.cursor });
+
+/** What an item says as it happens: a message of `name`'s channel started. It has no cursor. */
+export const liveMessageStarted = (params: { name: string; itemId: string }): LiveFrame =>
+  liveFrameSchema.parse({
+    type: 'live',
+    channel: params.name,
+    event: { type: 'item_started', itemId: params.itemId, kind: 'message' },
+  });
 
 /** A channel ended: `completed` (nothing follows), `failed`, or `cut_off` (resume after `cursor`). */
 export const endedAs = (params: {

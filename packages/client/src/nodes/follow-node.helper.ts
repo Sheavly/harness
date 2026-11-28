@@ -22,6 +22,9 @@ async function* entriesOf(params: {
       return;
     }
 
+    // A live frame is not an entry of the channel: only the entries are followed here.
+    if (frame.type === 'live') continue;
+
     const entry = channelEntrySchema.safeParse(frame);
 
     if (entry.success) yield entry.data;

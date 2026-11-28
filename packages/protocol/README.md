@@ -30,7 +30,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `channel/`           | A node's channel: cursors, its `opened`, `updated`, `event`, `closed` entries, a log's shape  |
 | `item/`              | `Item`, what an agent's channel holds for a reply, and `ItemEvent`, its live progress         |
 | `tree/`              | The tree channel: its entries, its snapshot, and the fold from entries to a tree              |
-| `subscription/`      | The subscribe request, its limits, and its stream's frames (entry, head, end, snapshot)       |
+| `subscription/`      | The subscribe request, its limits, and its stream's frames (entry, head, end, snapshot, live) |
 | `node-command/`      | Commands addressed by node: a message to an agent, and the ids a prompt send returns          |
 | `task/`              | Background task states                                                                        |
 | `status/`            | The one status table (session, run, task, node, turn stop) and `runEnd`: how a run ended      |

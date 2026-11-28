@@ -1965,6 +1965,151 @@
         "additionalProperties": {}
       }
     },
+    "ItemId": {
+      "type": "string",
+      "allOf": [
+        {
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        { "pattern": "^[0-9a-f-]{36}$" }
+      ]
+    },
+    "Item": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "message" },
+            "id": { "$ref": "#/$defs/ModelId" },
+            "text": { "type": "string", "maxLength": 8192 },
+            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+          },
+          "required": ["kind", "id", "text", "reason"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "reasoning" },
+            "id": { "$ref": "#/$defs/ModelId" },
+            "item": { "$ref": "#/$defs/ReasoningItem" },
+            "omitted": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+          },
+          "required": ["kind", "id", "reason"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "tool_call" },
+            "id": { "$ref": "#/$defs/ModelId" },
+            "callId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "$ref": "#/$defs/CallId"
+            },
+            "name": { "type": "string", "maxLength": 200 },
+            "description": { "type": "string", "maxLength": 300 },
+            "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+            "input": {},
+            "result": {
+              "type": "object",
+              "properties": {
+                "content": { "type": "string" },
+                "isError": { "type": "boolean" },
+                "artifacts": {
+                  "readOnly": true,
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/ToolArtifact" }
+                },
+                "durationMs": { "type": "number" }
+              },
+              "required": ["content", "isError", "durationMs"]
+            },
+            "task": {
+              "type": "object",
+              "properties": {
+                "info": { "$ref": "#/$defs/TaskInfo" },
+                "nodeId": { "$ref": "#/$defs/NodeId" },
+                "durationMs": { "type": "number" }
+              },
+              "required": ["info", "nodeId", "durationMs"]
+            },
+            "omitted": {
+              "type": "object",
+              "properties": {
+                "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                "result": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+              }
+            },
+            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+          },
+          "required": ["kind", "id", "name", "description", "turn", "reason"]
+        }
+      ]
+    },
+    "ItemEvent": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "item_started" },
+                "itemId": { "$ref": "#/$defs/ModelId" },
+                "kind": { "type": "string", "const": "message" }
+              },
+              "required": ["type", "itemId", "kind"]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "item_started" },
+                "itemId": { "$ref": "#/$defs/ModelId" },
+                "kind": { "type": "string", "const": "reasoning" }
+              },
+              "required": ["type", "itemId", "kind"]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "item_started" },
+                "itemId": { "$ref": "#/$defs/ModelId" },
+                "kind": { "type": "string", "const": "tool_call" },
+                "callId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "$ref": "#/$defs/CallId"
+                },
+                "name": { "type": "string", "maxLength": 200 },
+                "description": { "type": "string", "maxLength": 300 },
+                "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+              },
+              "required": ["type", "itemId", "kind", "name", "description", "turn"]
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "item_delta" },
+            "itemId": { "$ref": "#/$defs/ModelId" },
+            "offset": { "type": "integer", "minimum": 0, "maximum": 8192 },
+            "text": { "type": "string", "maxLength": 8192 }
+          },
+          "required": ["type", "itemId", "offset", "text"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "item_completed" },
+            "item": { "$ref": "#/$defs/Item" }
+          },
+          "required": ["type", "item"]
+        }
+      ]
+    },
     "TreeChannelEntry": {
       "oneOf": [
         {
@@ -2154,151 +2299,6 @@
         }
       ]
     },
-    "ItemId": {
-      "type": "string",
-      "allOf": [
-        {
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-        },
-        { "pattern": "^[0-9a-f-]{36}$" }
-      ]
-    },
-    "Item": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "message" },
-            "id": { "$ref": "#/$defs/ModelId" },
-            "text": { "type": "string", "maxLength": 8192 },
-            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
-          },
-          "required": ["kind", "id", "text", "reason"]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "reasoning" },
-            "id": { "$ref": "#/$defs/ModelId" },
-            "item": { "$ref": "#/$defs/ReasoningItem" },
-            "omitted": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
-          },
-          "required": ["kind", "id", "reason"]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": { "type": "string", "const": "tool_call" },
-            "id": { "$ref": "#/$defs/ModelId" },
-            "callId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 200,
-              "$ref": "#/$defs/CallId"
-            },
-            "name": { "type": "string", "maxLength": 200 },
-            "description": { "type": "string", "maxLength": 300 },
-            "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-            "input": {},
-            "result": {
-              "type": "object",
-              "properties": {
-                "content": { "type": "string" },
-                "isError": { "type": "boolean" },
-                "artifacts": {
-                  "readOnly": true,
-                  "type": "array",
-                  "items": { "$ref": "#/$defs/ToolArtifact" }
-                },
-                "durationMs": { "type": "number" }
-              },
-              "required": ["content", "isError", "durationMs"]
-            },
-            "task": {
-              "type": "object",
-              "properties": {
-                "info": { "$ref": "#/$defs/TaskInfo" },
-                "nodeId": { "$ref": "#/$defs/NodeId" },
-                "durationMs": { "type": "number" }
-              },
-              "required": ["info", "nodeId", "durationMs"]
-            },
-            "omitted": {
-              "type": "object",
-              "properties": {
-                "input": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
-                "result": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
-              }
-            },
-            "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
-          },
-          "required": ["kind", "id", "name", "description", "turn", "reason"]
-        }
-      ]
-    },
-    "ItemEvent": {
-      "anyOf": [
-        {
-          "oneOf": [
-            {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "const": "item_started" },
-                "itemId": { "$ref": "#/$defs/ModelId" },
-                "kind": { "type": "string", "const": "message" }
-              },
-              "required": ["type", "itemId", "kind"]
-            },
-            {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "const": "item_started" },
-                "itemId": { "$ref": "#/$defs/ModelId" },
-                "kind": { "type": "string", "const": "reasoning" }
-              },
-              "required": ["type", "itemId", "kind"]
-            },
-            {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "const": "item_started" },
-                "itemId": { "$ref": "#/$defs/ModelId" },
-                "kind": { "type": "string", "const": "tool_call" },
-                "callId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 200,
-                  "$ref": "#/$defs/CallId"
-                },
-                "name": { "type": "string", "maxLength": 200 },
-                "description": { "type": "string", "maxLength": 300 },
-                "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
-              },
-              "required": ["type", "itemId", "kind", "name", "description", "turn"]
-            }
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "item_delta" },
-            "itemId": { "$ref": "#/$defs/ModelId" },
-            "offset": { "type": "integer", "minimum": 0, "maximum": 8192 },
-            "text": { "type": "string", "maxLength": 8192 }
-          },
-          "required": ["type", "itemId", "offset", "text"]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": { "type": "string", "const": "item_completed" },
-            "item": { "$ref": "#/$defs/Item" }
-          },
-          "required": ["type", "item"]
-        }
-      ]
-    },
     "TreeSnapshot": {
       "type": "object",
       "properties": {
@@ -2370,6 +2370,69 @@
       },
       "required": ["type", "channel", "reason"]
     },
+    "LiveFrame": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "live" },
+        "channel": { "$ref": "#/$defs/ChannelName" },
+        "event": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "const": "item_started" },
+                    "itemId": { "$ref": "#/$defs/ModelId" },
+                    "kind": { "type": "string", "const": "message" }
+                  },
+                  "required": ["type", "itemId", "kind"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "const": "item_started" },
+                    "itemId": { "$ref": "#/$defs/ModelId" },
+                    "kind": { "type": "string", "const": "reasoning" }
+                  },
+                  "required": ["type", "itemId", "kind"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "const": "item_started" },
+                    "itemId": { "$ref": "#/$defs/ModelId" },
+                    "kind": { "type": "string", "const": "tool_call" },
+                    "callId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "$ref": "#/$defs/CallId"
+                    },
+                    "name": { "type": "string", "maxLength": 200 },
+                    "description": { "type": "string", "maxLength": 300 },
+                    "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                  },
+                  "required": ["type", "itemId", "kind", "name", "description", "turn"]
+                }
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "const": "item_delta" },
+                "itemId": { "$ref": "#/$defs/ModelId" },
+                "offset": { "type": "integer", "minimum": 0, "maximum": 8192 },
+                "text": { "type": "string", "maxLength": 8192 }
+              },
+              "required": ["type", "itemId", "offset", "text"]
+            }
+          ]
+        }
+      },
+      "required": ["type", "channel", "event"],
+      "additionalProperties": false
+    },
     "SubscribeFrame": {
       "anyOf": [
         { "$ref": "#/$defs/ChannelEntry" },
@@ -2377,6 +2440,7 @@
         { "$ref": "#/$defs/UsageChannelEntry" },
         { "$ref": "#/$defs/ChannelHeadFrame" },
         { "$ref": "#/$defs/ChannelEndFrame" },
+        { "$ref": "#/$defs/LiveFrame" },
         { "$ref": "#/$defs/TreeSnapshot" },
         { "$ref": "#/$defs/UsageSnapshot" }
       ]

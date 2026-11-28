@@ -14,7 +14,7 @@ import {
 } from '../../subscriptions/subscriptions.constants.js';
 import { say, scriptedConversations } from '../../testing/conversations.fake.js';
 import { ranOnePrompt } from '../../testing/stored-conversation.fake.js';
-import { refusalOf, requestOf } from '../../testing/subscription-world.fake.js';
+import { refusalOf, requestOf, tag } from '../../testing/subscription-world.fake.js';
 import type { Conversations } from '../conversations.service.js';
 
 /** Asks for `from` once more than a conversation may hold connections, and gives each refusal. */
@@ -60,10 +60,6 @@ async function drain(subscription: Subscription) {
 
   return all;
 }
-
-/** A frame as `type cursor`; an end frame has the reason in its type's place. */
-const tag = (frame: SubscribeFrame) =>
-  frame.type === 'end' ? `end:${frame.reason}` : `${frame.type} ${frame.cursor}`;
 
 /**
  * A kept conversation that ran a prompt, and the name of its main agent's channel. `store` and

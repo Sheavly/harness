@@ -10,6 +10,7 @@ import {
   commandClosed,
   endedAs,
   headAt,
+  liveMessageStarted,
   outputText,
 } from '../../testing/frames.fake.js';
 import { DROP, served } from '../../testing/subscription-server.fake.js';
@@ -45,6 +46,10 @@ async function followed(params: {
 
   return seen;
 }
+
+/** Follows channel `a` from its start, which the server never lets end, and expects the client to give up. */
+const givesUp = (world: ServedSubscription) =>
+  expect(followed({ world, channels: [['a', 'start']] })).rejects.toBeInstanceOf(StreamLostError);
 
 /** A frame as a test reads it: its channel, and its type with the cursor. */
 const brief = (frame: SubscribeFrame) =>
@@ -275,10 +280,21 @@ describe('subscribeChannels, when it cannot go on', () => {
       reconnect: { attempts: 2 },
     });
 
-    await expect(followed({ world, channels: [['a', 'start']] })).rejects.toBeInstanceOf(
-      StreamLostError,
-    );
+    await givesUp(world);
     // The first connection, then two attempts that the server answered with a 503.
+    expect(world.asked()).toHaveLength(3);
+  });
+
+  it('does not take a live frame for progress: a server that sends one and drops cannot keep it reconnecting for ever', async () => {
+    const live = liveMessageStarted({ name: 'a', itemId: '3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d' });
+    const dropping = [live, DROP];
+    const world = served({
+      connections: [dropping, dropping, dropping, dropping, dropping],
+      reconnect: { attempts: 2 },
+    });
+
+    await givesUp(world);
+    // The first connection, then two attempts: each live frame was told, none reset the count.
     expect(world.asked()).toHaveLength(3);
   });
 
@@ -289,9 +305,7 @@ describe('subscribeChannels, when it cannot go on', () => {
       reconnect: { attempts: 3 },
     });
 
-    await expect(followed({ world, channels: [['a', 'start']] })).rejects.toBeInstanceOf(
-      StreamLostError,
-    );
+    await givesUp(world);
   });
 
   it('does not ask again for a frame that is off the contract', async () => {

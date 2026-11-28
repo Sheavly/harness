@@ -62,7 +62,12 @@ describe('following a conversation’s channels over HTTP', () => {
     expect(closed).toMatchObject({ event: 'entry', frame: { type: 'closed' } });
     expect(end).toMatchObject({
       event: 'end',
-      frame: { type: 'end', channel, reason: 'completed', cursor: closed?.frame.cursor },
+      frame: {
+        type: 'end',
+        channel,
+        reason: 'completed',
+        cursor: closed?.frame.type === 'closed' ? closed.frame.cursor : undefined,
+      },
     });
     expect(await next()).toBeUndefined();
   });

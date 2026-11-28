@@ -50,12 +50,16 @@ const entryFrame = (entry: StreamEntry) =>
   `event: ${ENTRY_EVENT}\nid: ${String(entry.seq)}\ndata: ${JSON.stringify(entry)}\n\n`;
 
 /**
- * Test-only: a subscribe stream's frame as the backend sends it: `head`, `end` and `snapshot` under
- * their own event names, every entry as `entry`, and no id, since one id cannot carry the cursors of
- * several channels.
+ * Test-only: a subscribe stream's frame as the backend sends it: `head`, `end`, `snapshot` and
+ * `live` under their own event names, every entry as `entry`, and no id, since one id cannot carry
+ * the cursors of several channels.
  */
 function subscribeFrame(frame: SubscribeFrame): string {
-  const named = frame.type === 'head' || frame.type === 'end' || frame.type === 'snapshot';
+  const named =
+    frame.type === 'head' ||
+    frame.type === 'end' ||
+    frame.type === 'snapshot' ||
+    frame.type === 'live';
 
   return `event: ${named ? frame.type : ENTRY_EVENT}\ndata: ${JSON.stringify(frame)}\n\n`;
 }

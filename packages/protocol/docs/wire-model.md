@@ -342,11 +342,11 @@ start in each:
 `from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, for a channel of the
 conversation itself (the tree, usage) only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and the
 last `n` bytes of a byte-offset channel. The response is a stream of server-sent events, and
-each frame is one envelope: it carries its **channel and its cursor**. A closed channel delivers
-what remains and then completes. A slow consumer is cut off per channel and resumes from its
-cursor.
+each frame is one envelope: it carries its **channel and its cursor**, except the `live` frame,
+which has no cursor. A closed channel delivers what remains and then completes. A slow consumer is
+cut off per channel and resumes from its cursor.
 
-A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
+A stream has five kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
 
 - **`entry`**: one entry of a channel, as it is stored (`opened`, an agent's `updated`, `closed`,
   as `ChannelEntry` says; on the tree channel, `TreeChannelEntry`). Its own `channel` and `cursor`
@@ -360,6 +360,12 @@ A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFra
   the cursor of its newest entry, sent first, once per such channel. A client that hears no entry
   before the connection drops still has a cursor to resume after, and misses nothing written
   meanwhile. It is not an entry of the channel's log.
+- **`live`** (`LiveFrame`): `{ type: 'live', channel, event }`, where `event` is an `item_started`
+  or an `item_delta` (`ItemEvent`, above). It has **no cursor and no frame id**, and its schema is
+  strict, so a cursor on it is refused: it is outside the cursor rules. A client's progress for the
+  channel neither moves nor drops it, its last-cursor reading skips it (an `end` frame's `cursor`
+  is that of the last frame that has one), and a resume by cursor never replays one. The frame is
+  defined and nothing sends it yet.
 - **`end`** (`ChannelEndFrame`): one channel of the subscription ended, and no more frames of it
   follow. `completed`: its `closed` entry was delivered. `cut_off`: this consumer did not keep up
   with it, or the conversation's subscriptions hold as much as they may. `failed`: no more of its
@@ -562,8 +568,7 @@ take the conversation's subscriptions past what they may hold, is cut off on tha
 with `cut_off`), and a channel whose storage failed, or that no writer has, ends as `failed`. A
 conversation that closes ends its node channels with their `closed` entries, which a client reads
 like any other, and its tree and usage channels as `failed`: the writer stopped, and the channel is not closed,
-so that a reopen goes on from it. The client has no reader for these frames yet: they carry no `id`,
-which its stream reader requires.
+so that a reopen goes on from it.
 
 The snapshot is held in memory by the server, so it counts against what a conversation's
 subscriptions may hold (128 MiB) and not against the 8 MiB of stored history a request may read:

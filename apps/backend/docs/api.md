@@ -276,6 +276,10 @@ channel's last cursor and sends them again as `from` when it reconnects.
   after that cursor follow as `entry` frames.
 - **`head`**: a channel asked from `now` opens with where it stands, the cursor of its newest entry,
   so a client that hears nothing before the connection drops can still resume after it.
+- **`live`**: what an item says as it happens and the channel does not store: an item started
+  (`item_started`) or a message's text grew (`item_delta`). It has no cursor, and no `id` like every
+  frame, so a client's last cursor for a channel is never one of its and a resume by cursor does not
+  replay it. The frame is defined, and the server sends none yet: no channel holds items.
 - **`end`**: one channel is over, and no more frames of it follow: `completed` (its `closed` entry
   was sent), `cut_off` (the client did not keep up with that channel, or the conversation's
   subscriptions hold as much as they may, and the client resumes after the `cursor` the frame

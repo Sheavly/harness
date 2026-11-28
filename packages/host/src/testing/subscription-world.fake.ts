@@ -93,11 +93,24 @@ export async function rest(frames: AsyncGenerator<SubscribeFrame>) {
   return all;
 }
 
-/** Test-only: a frame as one line: its channel, then `type cursor`, or `end:reason cursor` for an end. */
-export const line = (frame: SubscribeFrame) =>
-  frame.type === 'end'
-    ? `${frame.channel} end:${frame.reason} ${frame.cursor ?? '-'}`
+/**
+ * Test-only: a frame as one line: its channel, then `type cursor`, `end:reason cursor` for an end,
+ * or `live` for a live frame, which has no cursor.
+ */
+export const line = (frame: SubscribeFrame) => {
+  if (frame.type === 'end') return `${frame.channel} end:${frame.reason} ${frame.cursor ?? '-'}`;
+
+  return frame.type === 'live'
+    ? `${frame.channel} live`
     : `${frame.channel} ${frame.type} ${frame.cursor}`;
+};
+
+/** Test-only: a frame as `type cursor`; an end frame has `end:reason`, and a live frame, which has no cursor, `live`. */
+export const tag = (frame: SubscribeFrame) => {
+  if (frame.type === 'end') return `end:${frame.reason}`;
+
+  return frame.type === 'live' ? frame.type : `${frame.type} ${frame.cursor}`;
+};
 
 /** Test-only: the frames of a one-channel subscription without the channel, which only a test names. */
 export const plain = (frames: SubscribeFrame[]) =>

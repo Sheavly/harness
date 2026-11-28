@@ -5,6 +5,7 @@ import type { UsageChannelEntry, UsageSnapshot } from '../usage/usage.types.js';
 import type {
   channelEndFrameSchema,
   channelHeadFrameSchema,
+  liveFrameSchema,
   subscribeFrameSchema,
   subscribeRequestSchema,
 } from './subscription.validator.js';
@@ -33,5 +34,8 @@ export type ChannelHeadFrame = z.infer<typeof channelHeadFrameSchema>;
 /** One channel of a subscription ended, and why. */
 export type ChannelEndFrame = z.infer<typeof channelEndFrameSchema>;
 
-/** One frame of a subscribe stream: an entry, a head, an end, or a snapshot. */
+/** What an item says as it happens, with no cursor: an item started, or a message's text grew. */
+export type LiveFrame = z.infer<typeof liveFrameSchema>;
+
+/** One frame of a subscribe stream: an entry, a head, an end, a snapshot, or a live frame. */
 export type SubscribeFrame = z.infer<typeof subscribeFrameSchema>;

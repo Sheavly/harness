@@ -79,7 +79,8 @@ export class SubscribeProgress {
   /**
    * Takes `frame` in, and returns it when the reader is to see it: a frame already delivered (the
    * connection resumed a little before the cursor), a frame of a channel that was not asked for and
-   * a cut-off (the client's to handle, not the reader's) are not returned.
+   * a cut-off (the client's to handle, not the reader's) are not returned. A live frame is returned
+   * as it is and moves nothing, since it has no cursor.
    */
   accept(frame: SubscribeFrame): SubscribeFrame | undefined {
     const progress = this.#channels.get(frame.channel);
@@ -93,6 +94,9 @@ export class SubscribeProgress {
 
       return frame;
     }
+
+    // A live frame has no cursor: it is neither dropped as delivered nor a position to resume from.
+    if (frame.type === 'live') return frame;
 
     if (frame.type === 'head') return this.#moveTo({ progress, frame, closes: false });
 
