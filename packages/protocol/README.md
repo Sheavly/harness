@@ -103,6 +103,8 @@ never enter model history.
 - [The wire contract](docs/contract.md): what is in it, what stays out, and how it is checked.
 - [The wire model](docs/wire-model.md): the decided, not yet built, replacement for the single
   combined stream: nodes, channels and subscriptions.
+- [The item model](docs/item-model.md): the design for agent channels that carry items with a
+  lifecycle: what is there today, what the logs cost, the three kinds of item, and the layers.
 - [Where each current entry goes](docs/wire-model-mapping.md): every entry of today's stream and
   the channel and entry type it becomes.
 - [Who changes with the wire model](docs/wire-model-consumers.md): every workspace that reads or

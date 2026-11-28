@@ -33,7 +33,9 @@ phase 2 (#434) changes how some are shaped, and is not repeated here.
 
 All stay on the agent channel of the session that produced them, in phase 1, unless the row says
 otherwise. A row marked "live" is stored in phase 1 like every entry (the entry log keeps all of
-them today) and becomes live only, outside the durable log, in the item model (#434).
+them today). In the item model (#434), `text_delta` becomes live only, as the deltas of a message
+item; the other rows marked live stay stored entries in that work, and may become live frames
+later ([the item model](item-model.md)).
 
 | Event                 | Where and how                                                                                                                                                                                                                                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

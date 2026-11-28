@@ -173,9 +173,10 @@ late subscriber gets the completed items plus a snapshot of the item in progress
 That is the principle. The work is scheduled in two phases so nothing waits for it: the first
 phase wraps today's events, unchanged in content, in the new per-channel envelope, and stores
 every entry as today does (the entry log keeps all of them, live-only ones included). That phase is
-its own issue, #511. The item model comes later (#434). `text_delta`, `reasoning_activity`,
-`model_connection` and `run_state` are the entries that become live only in the item model, and
-before it they are stored with the rest.
+its own issue, #511. The item model comes later (#434), designed in [the item model](item-model.md).
+`text_delta` is the entry that becomes live only in the item model (as the deltas of a message
+item); `reasoning_activity`, `model_connection` and `run_state` stay stored entries in the work
+that builds it, and may become live frames later.
 
 **The first phase's entries.** An agent's channel holds its lifecycle (`opened`, `updated`,
 `closed`), where each run starts (`run_started`) and one entry that wraps a loop event, `event`: the event as the stream carries it (its
