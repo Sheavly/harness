@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import {
-  channelEntrySchema,
-  channelNameSchema,
-  cursorSchema,
-} from '../channel/channel.validator.js';
+import { channelEntrySchema, channelNameSchema } from '../channel/channel.validator.js';
+import { cursorSchema } from '../channel/cursor.validator.js';
 import { cursorKind, isConversationChannel } from '../channel/channel.utils.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';

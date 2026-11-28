@@ -59,6 +59,15 @@ const summarySectionSchema = z.object({
   body: z.string(),
 });
 
+/** A tool's result as the model reads it: the call it answers, its text, and whether it failed. */
+export const toolMessageSchema = z.object({
+  role: z.literal('tool'),
+  toolCallId: callIdSchema,
+  content: z.string(),
+  isError: z.boolean(),
+  at: messageTimeSchema,
+});
+
 /**
  * What a model is sent: user, assistant and tool messages. A `summary` is not one of them: the
  * loop renders the latest checkpoint as text in the view, so a provider never has to know the
@@ -87,13 +96,7 @@ export const messageSchema = z.discriminatedUnion('role', [
     reasoning: z.array(reasoningItemSchema).exactOptional(),
     at: messageTimeSchema,
   }),
-  z.object({
-    role: z.literal('tool'),
-    toolCallId: callIdSchema,
-    content: z.string(),
-    isError: z.boolean(),
-    at: messageTimeSchema,
-  }),
+  toolMessageSchema,
 ]);
 
 /**

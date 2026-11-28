@@ -6,11 +6,8 @@ import {
   cursorNumber,
   isConversationChannel,
 } from '@sheavly/protocol/channel/channel.utils';
-import {
-  channelLogSchema,
-  channelNameSchema,
-  cursorSchema,
-} from '@sheavly/protocol/channel/channel.validator';
+import { channelLogSchema, channelNameSchema } from '@sheavly/protocol/channel/channel.validator';
+import { cursorSchema } from '@sheavly/protocol/channel/cursor.validator';
 import { MAX_TAIL } from '@sheavly/protocol/subscription/subscription.constants';
 import type { ChannelEntry, ChannelFrom } from './store.types.js';
 

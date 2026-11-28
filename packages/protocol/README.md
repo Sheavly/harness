@@ -28,6 +28,7 @@ belong to the backend app; this package defines and validates only their wire sh
 | `queue/`             | `QueueUpdate`: a conversation's queued lines joining, starting or refused, on the stream      |
 | `node/`              | `NodeInfo`: one unit of work of any kind (agent, command, service, extension kind), its state |
 | `channel/`           | A node's channel: cursors, its `opened`, `updated`, `event`, `closed` entries, a log's shape  |
+| `item/`              | `Item`, what an agent's channel holds for a reply, and `ItemEvent`, its live progress         |
 | `tree/`              | The tree channel: its entries, its snapshot, and the fold from entries to a tree              |
 | `subscription/`      | The subscribe request, its limits, and its stream's frames (entry, head, end, snapshot)       |
 | `node-command/`      | Commands addressed by node: a message to an agent, and the ids a prompt send returns          |

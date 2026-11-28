@@ -3,13 +3,11 @@ import { MAX_NODE_ERROR_CHARS } from '../../node/node.constants.js';
 import { NODE_END_STATES, NODE_STATES, STATUS_TABLE } from '../../status/status.constants.js';
 import { MAX_ENTRY_TYPE_CHARS } from '../channel.constants.js';
 import {
-  byteCursorSchema,
   channelBoundarySchema,
   channelEntrySchema,
   channelLogSchema,
-  cursorSchema,
-  sequenceCursorSchema,
 } from '../channel.validator.js';
+import { byteCursorSchema, cursorSchema, sequenceCursorSchema } from '../cursor.validator.js';
 
 const AGENT = { kind: 'agent', id: 'agent-1', title: 'Main', state: 'running', startedAt: 1 };
 const COMMAND = {

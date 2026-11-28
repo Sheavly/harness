@@ -226,6 +226,35 @@ loop event is added without deciding which it is.
   never read as whole. A reopened conversation closes it as
   `lost`. The combined stream still has everything.
 
+**The item schemas.** The contract defines the item and its entry, and nothing writes or sends
+them yet: an agent's channel holds the entries above and no `item`.
+
+- **An item** (`Item`) is a `message` (its `text`, at most `MAX_ITEM_TEXT_CHARS`, 8,192 UTF-16 code
+  units, never cut inside a surrogate pair), a `reasoning` (the opaque replay state, `item`, or
+  `omitted`, its size, when it was left out) or a `tool_call` (the call's `name`, `description`,
+  `turn` and `input`, and what became of it: a `result`, as a `tool_result` event carries it, or a
+  `task` and the node it launched, as `task_running` does, never both; `omitted` says the size of an
+  `input` or a `result` that was left out). Each has an `id` (`ItemId`, a lowercase UUID, never a
+  provider's id) and a `reason`: `completed`, `interrupted` or `failed`. A tool call's `callId` is
+  the provider's id, at most `MAX_OMITTED_CALL_CHARS` (200) characters and left out when longer,
+  never cut; its `name` is held to the same bound and its `description` to
+  `MAX_ITEM_DESCRIPTION_CHARS` (300), because a provider controls them. The other fields (a tool's
+  `input` and `result`, a launched task, the replay state) have no bound of their own, as the
+  events they come from have none: the bound of a stored item is the store's entry limit, and of a
+  frame the client's limit on a frame. An item does not hold what it says it left out, and a
+  reasoning item is its state or its `omitted` size, never both. Text is untrusted: it is not
+  cleaned of control characters or escape sequences, and a reader that prints it escapes it.
+- **The `item` entry** is one completed item under the channel's own cursor, numbered after
+  `opened`, with the originating `messageId` where there is one. It is a member of `ChannelEntry`.
+- **`ItemEvent`** is what an item says as it happens: `item_started` (the item's id and kind, and
+  for a tool call its header, never its `input`), `item_delta` (a message's text added, with the
+  `offset` in UTF-16 code units of the item's text before it) and `item_completed` (the item). It
+  is a union of its own: it is not a loop event, an entry of the combined stream or a member of
+  `ChannelEntry`.
+- **`format`** on a node's `opened` entry is a positive whole number naming the form the channel's
+  entries are in. It is absent in the earlier form, so a channel written before it existed reads as
+  it did. Nothing sets it yet, and no reader refuses a form it does not know.
+
 A subscription to an agent's channel from `start`, a cursor, `tail` or `now` reads them as it reads
 any channel's entries.
 

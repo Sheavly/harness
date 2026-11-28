@@ -105,14 +105,17 @@ import { streamEntrySchema } from '../stream/stream.validator.js';
 import { queueUpdateSchema } from '../queue/queue.validator.js';
 import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.validator.js';
 import {
-  byteCursorSchema,
   channelBoundarySchema,
   channelEntrySchema,
   channelLogSchema,
   channelNameSchema,
+} from '../channel/channel.validator.js';
+import {
+  byteCursorSchema,
   cursorSchema,
   sequenceCursorSchema,
-} from '../channel/channel.validator.js';
+} from '../channel/cursor.validator.js';
+import { itemEventSchema, itemIdSchema, itemSchema } from '../item/item.validator.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import {
   messageNodeRequestSchema,
@@ -225,6 +228,9 @@ function contractSchemas(): Record<string, z.ZodType> {
     ChannelEntry: channelEntrySchema,
     ChannelLog: channelLogSchema,
     TreeChannelEntry: treeChannelEntrySchema,
+    ItemId: itemIdSchema,
+    Item: itemSchema,
+    ItemEvent: itemEventSchema,
     TreeSnapshot: treeSnapshotSchema,
     SubscribeFrom: subscribeFromSchema,
     SubscribeRequest: subscribeRequestSchema,

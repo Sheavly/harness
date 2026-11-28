@@ -15,12 +15,10 @@ import { MAX_QUEUED_LINE_CHARS } from '../server/server.constants.js';
 import { NODE_END_STATES, NODE_STATE_OF_OUTCOME } from '../status/status.constants.js';
 import { timestampSchema } from '../time/time.validator.js';
 import {
-  BYTE_CURSOR_PATTERN,
   MAX_ENTRY_TYPE_CHARS,
   MAX_OMITTED_CALL_CHARS,
   MAX_OUTPUT_CHUNK_BYTES,
   RUN_START_CAUSES,
-  SEQUENCE_CURSOR_PATTERN,
   TREE_ONLY_EVENT_TYPES,
 } from './channel.constants.js';
 import type { ConversationChannelName } from './channel.types.js';
@@ -30,35 +28,20 @@ import {
   cursorNumber,
   isWellFormedChannelLog,
 } from './channel.utils.js';
-
-/**
- * A position in a channel that numbers its entries: `s` and the position, 0, 1, 2, … with no gaps.
- * The tree channel and an agent's channel use it. Opaque to a client, which keeps the last one it
- * saw and sends it back.
- */
-export const sequenceCursorSchema = z
-  .string()
-  .regex(SEQUENCE_CURSOR_PATTERN, 'must be s and a position');
-
-/**
- * A position in the output of a command or a service: `b` and an offset in bytes. Opaque to a
- * client, which asks for "from here" and gets the bytes after it with no re-framing.
- */
-export const byteCursorSchema = z
-  .string()
-  .regex(BYTE_CURSOR_PATTERN, 'must be b and a byte offset');
-
-/** A cursor of either kind. Which kind a channel has is the channel's, and a client never builds one. */
-export const cursorSchema = z.union([sequenceCursorSchema, byteCursorSchema]);
+import {
+  byteCursorSchema,
+  cursorSchema,
+  entrySchema,
+  isAfterOpened,
+  sequenceCursorSchema,
+} from './cursor.validator.js';
+import { nodeItemSchema } from './item-entry.validator.js';
 
 /**
  * A channel's name: the id of the node it belongs to, or the name of one of the conversation's own
  * channels (`CONVERSATION_CHANNEL_NAMES`).
  */
 export const channelNameSchema = z.union([z.enum(CONVERSATION_CHANNEL_NAMES), nodeIdSchema]);
-
-/** What every entry of every channel has: where it is and when it was written. */
-const entrySchema = z.object({ cursor: cursorSchema, at: timestampSchema });
 
 /** Where a channel stood when something else was written: the link between two channels. */
 const channelPositionSchema = z.object({ channel: channelNameSchema, cursor: cursorSchema });
@@ -75,6 +58,12 @@ const nodeOpenedSchema = entrySchema
     type: z.literal('opened'),
     node: nodeInfoSchema,
     spawnedAt: channelPositionSchema.exactOptional(),
+    /**
+     * The form the channel's entries are in, a positive whole number that a later form raises.
+     * Absent means the earlier form, so a channel written before it existed reads as it always
+     * did; a form is named only when it is not the earlier one.
+     */
+    format: z.number().int().positive().exactOptional(),
   })
   .refine(
     ({ channel, cursor, node, spawnedAt }) =>
@@ -187,10 +176,6 @@ const nodeUpdatedSchema = entrySchema
       cursorNumber(cursor) >= 1,
     { error: 'an updated entry is a live agent, numbered after its opened entry', path: ['node'] },
   );
-
-/** Whether `cursor` numbers an entry after the first: what an agent's entries between its `opened` and `closed` have. */
-const isAfterOpened = (cursor: string) =>
-  sequenceCursorSchema.safeParse(cursor).success && cursorNumber(cursor) >= 1;
 
 /**
  * A loop event of an agent, as its session's stream carried it: the event unchanged (it keeps its
@@ -355,7 +340,7 @@ export const channelBoundarySchema = z.union([
 /**
  * Every entry of a node's channel a subscription serves: the two boundary entries, an agent's
  * `updated`, where each of its runs starts (`run_started`), its loop events (`event`, or
- * `event_omitted` for one too large to store) and a
+ * `event_omitted` for one too large to store), its completed items (`item`) and a
  * command's or a service's `output`. The output is not stored in the channel (the complete output
  * is the output store's): a subscription makes its entries between the stored `opened` and
  * `closed`. The tree channel's other entries are the tree's (`treeChannelEntrySchema`).
@@ -366,6 +351,7 @@ export const channelEntrySchema = z.union([
   runStartedSchema,
   nodeEventSchema,
   nodeEventOmittedSchema,
+  nodeItemSchema,
   nodeOutputSchema,
 ]);
 
