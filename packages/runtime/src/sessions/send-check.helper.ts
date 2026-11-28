@@ -19,6 +19,20 @@ export function assertOpen(params: { session: SessionInfo; consequence: string }
 }
 
 /**
+ * Throws a `SessionError` unless `session` is idle: only an idle session can take its next
+ * prompt, and a running or ended one says which it is.
+ */
+export function assertIdle(session: SessionInfo): void {
+  if (session.state === 'idle') return;
+
+  throw new SessionError({
+    reason: session.state === 'running' ? 'session_running' : 'session_ended',
+    sessionId: session.id,
+    message: `Session ${session.id} is ${session.state}; only an idle session can take its next prompt`,
+  });
+}
+
+/**
  * Throws a `SessionError` unless `from` may message `session`: it must still be open, and a
  * sender other than the user must be one of its ancestors (`lineage` is the session and every
  * ancestor), since a session steers only its own sub-agents and theirs.

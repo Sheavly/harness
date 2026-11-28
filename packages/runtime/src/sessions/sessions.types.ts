@@ -4,6 +4,7 @@ import type { PersistentNotice } from '@sheavly/protocol/notice/notice.types';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TokenUsage } from '@sheavly/protocol/usage/usage.types';
 import type { MessageId } from '@sheavly/protocol/message/message.types';
+import type { ItemEvent } from '@sheavly/protocol/item/item.types';
 
 /**
  * An extension's notice, already checked by the extension host, waiting in a session's outbox
@@ -13,6 +14,20 @@ export type QueuedNotice = Extract<PersistentNotice, { kind: 'extension-notice' 
 
 /** A session's originating user message, retained when its parent starts another prompt. */
 export type SessionMessage = { sessionId: SessionId; messageId: MessageId };
+
+/**
+ * An item event of a session's loop, with the user message the session's activity is associated
+ * with at that moment (`SessionRegistry.messageOf`), if any.
+ */
+export type PublishedItem = {
+  sessionId: SessionId;
+  /** Undefined when the session has no user message yet. */
+  messageId: MessageId | undefined;
+  event: ItemEvent;
+};
+
+/** What hears the items a registry publishes (`SessionRegistry.subscribeItems`). */
+export type ItemListener = (item: PublishedItem) => void;
 
 /** The tokens a session's last model call reported. */
 export type SessionTokens = { sessionId: SessionId; tokens: TokenUsage };
