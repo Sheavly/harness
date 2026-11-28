@@ -1,5 +1,5 @@
-import { streamEntrySchema } from '@sheavly/protocol/stream/stream.validator';
 import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
+import { parseStoredStreamEntry } from '@sheavly/storage/conversation-store/stored-stream.utils';
 import type { StoredStream, StreamSource } from './replay.types.js';
 
 type Parsed = Pick<StoredStream, 'entries' | 'truncatedLastLine' | 'invalidLines'>;
@@ -18,7 +18,11 @@ export function parseStreamText(params: { text: string; source: StreamSource }):
   return source === 'conversation' ? parseLines(text) : parseFrames(text);
 }
 
-/** `text` as an entry, or undefined when it is not JSON or not an entry. */
+/**
+ * `text` as an entry, or undefined when it is not JSON or not an entry. A line an older version
+ * wrote is read as today's entry (the storage package's reader), so replaying an old conversation
+ * does not drop what it holds as "not an entry".
+ */
 function entryOf(text: string): StreamEntry | undefined {
   let json: unknown;
 
@@ -31,9 +35,7 @@ function entryOf(text: string): StreamEntry | undefined {
     return undefined;
   }
 
-  const parsed = streamEntrySchema.safeParse(json);
-
-  return parsed.success ? parsed.data : undefined;
+  return parseStoredStreamEntry(json);
 }
 
 /** Reads `pieces` (already split at their terminators) with `read`, and files what is wrong. */

@@ -610,6 +610,20 @@ throw e; logger.warn(…)` is fine). A function inside the catch is its own scop
   storage, and tests; `workspace-coverage.test.js` fails a `files:` override that turns it off. It cannot see `createRequire(…)(…)` or a specifier whose start is
   computed ([#456](https://github.com/Sheavly/harness/issues/456)), and the terminal's
   `connectBackend` folder is held to more, the finder included, by the block below.
+- **The terminal's replay reads a stored stream and nothing else** (`replayConfinement`, a config
+  block the terminal app spreads into its config, not a `harness/*` rule): the files of
+  `apps/terminal/src/replay/` and `replay.ts` (tests and fakes excepted) may not import a built-in
+  that reaches the network or starts a process, thread or script (`net`, `http`, `child_process`,
+  `worker_threads`, `vm`, `module` and the like), `undici`, the client, providers, loop or host
+  packages or the terminal's own client, call `fetch` or another network global (also through
+  `globalThis`), use `require` or
+  `import()`, or read a stored stream line with the protocol's `streamEntrySchema`
+  (`@sheavly/protocol/stream/stream.validator`): that is the wire's schema, and refuses the forms
+  older versions wrote (`mode` before `effort`, a queue line with no message id), so replay reads
+  each line or frame with `parseStoredStreamEntry` (`@sheavly/storage`), which the store's own read
+  agrees with. `replay-confinement.test.js` pins each refused form, what replay may import, that
+  every replay source is covered, and that its tests and the rest of the app are not. A stored
+  stream read elsewhere in the terminal is not held to the last rule; it stays with review.
 - **The terminal's own backend** (`connectBackendConfinement`, a config block the terminal app
   spreads into its config, not a `harness/*` rule: it is `no-restricted-imports` and a
   `no-restricted-syntax` selector for `import('…')`, each with a message, as `replayConfinement`
