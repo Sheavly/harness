@@ -123,6 +123,52 @@ When the run is over its session ends with the outcome (`completed`, `interrupte
 `max_tokens`, `context_window_exceeded`, `failed`). With `keepSession: true` it goes idle instead, keeping the outcome as `lastOutcome`, so
 a conversation's next prompt can resume it; the host ends it when the conversation closes.
 
+## Items
+
+Beside its events the loop makes **items**: what a model call said, in pieces that start and
+complete (`ItemEvent`, `@sheavly/protocol/item/`). A provider marks no boundaries, so the loop
+derives them from the order of the chunks it already sees (`ReplyItems`, `items/`), one model call
+at a time:
+
+| Item        | Starts when                                  | Completes when                                                          |
+| ----------- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| `message`   | the first non-empty text of the reply        | a reasoning or tool call chunk follows it, at the cap, or the call ends |
+| `reasoning` | the `reasoning` chunk arrives, whole         | at once                                                                 |
+| `tool_call` | the model's call arrives, as the tool starts | the tool settles, or it is stopped                                      |
+
+- **Ids** are minted by the loop (a lowercase UUID per item), never taken from a provider, whose
+  call ids repeat. A tool item carries the provider's id as `callId` only when it is 1 to 200
+  characters, never cut, and `turn`, the ordinal of the model call in the run.
+- **A message holds at most 8,192 UTF-16 code units.** A chunk that would pass the cap is split:
+  what fits is a delta, the message completes, and the rest starts a new one. A split never falls
+  inside a surrogate pair, and a chunk that ends in a lone high surrogate waits for the next one
+  (still alone when the message completes, it is replaced with U+FFFD), so no delta holds half a pair.
+  Each delta says the `offset` of the text before it. `reasoning_activity` and `model_connection`
+  are not content: text on either side of one is one message.
+- **A tool item completes when its tool settles**, not when the turn releases the result, so a
+  fast tool's item is complete while the model still streams. It holds the call's input and its
+  result, or, for a call that launched a node, the task and the node and no result. A tool stopped
+  before it settled holds the placeholder result history holds: `interrupted` when the user
+  stopped the run, `failed` when the model call it came from failed.
+- **A message's reason** is `completed`, `interrupted` (the run was stopped, or the connection was
+  lost, while it streamed) or `failed` (any other failure of the model call, or the model ending
+  the call with `context_window_exceeded`, after which the loop may drop the reply and try again:
+  the message was told as it streamed, so it says how the call ended, not whether the loop kept
+  the reply). A message cut by a stop keeps its partial text. After a lost connection the turn that goes on makes new items, with
+  new ids, and the tools the cut call started keep running.
+- **Order.** A message completes after the model call's last chunk and before that call's `usage`
+  event; the Messages mapping sends its reasoning when the reply ends, so that item is the last of
+  the reply.
+- **Where they go.** Each item event is told to the run's session registry at the moment it
+  happens (`SessionRegistry.publishItem`, heard through `subscribeItems`), so a listener hears them
+  in the order the loop made them. They are not in the ordered event queue: the events, their
+  `seq`, `tool_batch`, the release of results and the combined stream are as they were, and no
+  item is ever an entry of the stream. Every item of a run is told before its `done` reaches the
+  consumer: the turn waits for the tools it started, a stopped or failed call's included, before
+  it ends or rethrows. An item of a session the registry no longer knows is dropped, and costs the
+  run nothing: the run fails at its next event, as before. Each listener is handed a frozen copy,
+  so none can change the run's own objects. Nothing in the repository stores or sends items yet.
+
 ## Running tasks
 
 Immediately before each model call, after summaries and model-input hooks, the loop reads

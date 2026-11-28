@@ -23,6 +23,7 @@ import { orderContributions } from './contributions.helper.js';
 import { freezeUniqueTools } from './tool-names.utils.js';
 import type { AgentEvent, AgentEventBody, DoneReason } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
+import type { ItemEvent } from '@sheavly/protocol/item/item.types';
 import type { RunOutcome } from '@sheavly/protocol/session/session.types';
 
 /**
@@ -44,7 +45,11 @@ export async function* streamAgent(options: AgentOptions): AsyncGenerator<AgentE
     onRelease: (event) => session.registry.publish({ sessionId: session.ref.id, event }),
   });
 
-  drive({ options, session, signal, aborted: whenAborted(signal), events }).then(
+  // Items are told at once, beside the events and never through their queue (its `seq` has no gaps).
+  const publishItem = (event: ItemEvent) =>
+    session.registry.publishItem({ sessionId: session.ref.id, event });
+
+  drive({ options, session, signal, aborted: whenAborted(signal), events, publishItem }).then(
     () => events.close(),
     (caughtError: unknown) => {
       // A session its registry doesn't know (the run's first check) has nothing to end.

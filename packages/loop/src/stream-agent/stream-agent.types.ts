@@ -7,6 +7,7 @@ import type { ToolOutcome } from '../events/events.types.js';
 import type { HookFailures, OnHookError } from '../hooks/hooks.types.js';
 import type { TurnContributions } from './contributions.types.js';
 import type { OrderedQueue } from '../queue/queue.service.js';
+import type { ItemReason, PublishItem } from '../items/items.types.js';
 import type { RunSession } from '@sheavly/runtime/sessions/sessions.types';
 import type {
   AgentEvent,
@@ -14,7 +15,7 @@ import type {
   DescribedCall,
 } from '@sheavly/protocol/event/event.types';
 import type { HistoryMessage } from '@sheavly/protocol/history/history.types';
-import type { Message } from '@sheavly/protocol/message/message.types';
+import type { Message, ToolMessage } from '@sheavly/protocol/message/message.types';
 import type { SessionRef } from '@sheavly/protocol/session/session.types';
 import type { HarnessNotice } from '@sheavly/protocol/notice/notice.types';
 import type { SummaryOptions } from '@sheavly/core/summary/summary.types';
@@ -103,6 +104,11 @@ export type RunContext = {
   /** Resolves when `signal` aborts. */
   aborted: Promise<void>;
   events: AgentEvents;
+  /**
+   * Tells the session registry an item of this run, at once. Items are beside the events and not
+   * in their queue: they never reach the combined stream or the run's own iterator.
+   */
+  publishItem: PublishItem;
 };
 
 export type TurnContext = RunContext & {
@@ -165,6 +171,20 @@ export type SampleContext = ToolStart & {
   /** Resolves when `signal` (the run's) aborts. */
   aborted: Promise<void>;
   events: AgentEvents;
+  /** The ordinal of this model call in the run, which its tool calls' items carry. */
+  turn: number;
+  publishItem: PublishItem;
+};
+
+/** Why a tool was stopped before it settled, and the placeholder result it gets. */
+export type ToolStop = { content: string; by: Extract<ItemReason, 'interrupted' | 'failed'> };
+
+/** What starting a tool came to: its outcome and, when it was stopped, by whom. */
+export type StartedTool = {
+  outcome: ToolOutcome;
+  /** The message of `outcome` as history holds it. */
+  message: ToolMessage;
+  stoppedBy?: ToolStop['by'];
 };
 
 /**

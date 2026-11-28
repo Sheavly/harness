@@ -6,11 +6,21 @@ import { untilAborted, whenAborted } from '../abort/abort.utils.js';
 import { contextNotice } from '../context/context.utils.js';
 import type { ToolOutcome } from '../events/events.types.js';
 import { runToolCall } from '../hooks/hooks.helper.js';
+import { messageReason } from '../items/items.utils.js';
+import { ReplyItems } from '../items/reply-items.service.js';
 import { createReasoningActivity } from './reasoning-activity.helper.js';
 import { runningTasksNotice } from './running-tasks-notice.helper.js';
 import { INTERRUPTED_BY_USER, STOPPED_BY_FAILURE } from './stream-agent.constants.js';
-import type { RunningCall, SampleContext, SampleFailure, ToolStart } from './stream-agent.types.js';
+import type {
+  RunningCall,
+  SampleContext,
+  SampleFailure,
+  StartedTool,
+  ToolStart,
+  ToolStop,
+} from './stream-agent.types.js';
 import type { DescribedCall } from '@sheavly/protocol/event/event.types';
+import type { ItemId } from '@sheavly/protocol/item/item.types';
 import type { TransientNotice } from '@sheavly/protocol/notice/notice.types';
 import type { ModelUsage } from '@sheavly/protocol/usage/usage.types';
 import type {
@@ -53,10 +63,14 @@ export async function sample(context: SampleContext) {
   const stopTools = new AbortController();
   const toolSignal = AbortSignal.any([signal, stopTools.signal]);
   const stopped = Promise.race([
-    aborted.then(() => INTERRUPTED_BY_USER),
-    whenAborted(stopTools.signal).then(() => STOPPED_BY_FAILURE),
+    aborted.then((): ToolStop => ({ content: INTERRUPTED_BY_USER, by: 'interrupted' })),
+    whenAborted(stopTools.signal).then((): ToolStop => ({
+      content: STOPPED_BY_FAILURE,
+      by: 'failed',
+    })),
   ]);
   const start = { ...context, signal: toolSignal };
+  const items = new ReplyItems({ publish: context.publishItem, turn: context.turn });
 
   try {
     // Notices go beside the history snapshot, never in it. Every UI receives the same data
@@ -77,10 +91,12 @@ export async function sample(context: SampleContext) {
       switch (event.type) {
         case 'text_delta':
           content += event.text;
+          items.text(event.text);
           events.enqueue(event);
           break;
         case 'reasoning':
           reasoning.push(event.item);
+          items.reasoning(event.item);
           events.enqueue(event);
           break;
         case 'reasoning_activity':
@@ -92,10 +108,12 @@ export async function sample(context: SampleContext) {
 
         case 'tool_call': {
           const described = { call: event.call, description: describeCall(event.call) };
+          // First, so a call is in history only once its item has started.
+          const itemId = items.toolCall(described);
 
           toolCalls.push(event.call);
           events.enqueue({ type: 'tool_call_started', ...described });
-          running.push(trackFinish({ described, start, stopped, finished }));
+          running.push(trackFinish({ described, itemId, start, stopped, finished, items }));
           break;
         }
 
@@ -111,6 +129,8 @@ export async function sample(context: SampleContext) {
   }
 
   activity.close();
+  // Before `usage`, so what a store keeps in order is the message, `usage`, `turn_end`.
+  items.finish({ reason: messageReason({ signal, failure, stopReason }) });
 
   // The window the call ran against: the reading taken before the call, the same the agent was
   // told. A window a provider put on its own usage is dropped, since it was never checked.
@@ -164,20 +184,31 @@ function stopReasonOfFailure(params: {
 }
 
 /**
- * Starts a tool and notes, the moment it finishes, where it came among the turn's calls. The
- * turn releases results in that order, so one that finished while the model still streamed is
- * not put back in call order.
+ * Starts a tool, with its item, and notes, the moment it finishes, where it came among the turn's
+ * calls. The turn releases results in that order, so one that finished while the model still
+ * streamed is not put back in call order. The item completes here, when the tool settles, not
+ * when the turn releases the result.
  */
 function trackFinish(params: {
   described: DescribedCall;
+  /** The id the call's item started under (`ReplyItems.toolCall`). */
+  itemId: ItemId;
   start: ToolStart;
-  stopped: Promise<string>;
+  stopped: Promise<ToolStop>;
   finished: { count: number };
+  items: ReplyItems;
 }): RunningCall {
-  const { described, start, stopped, finished } = params;
+  const { described, itemId, start, stopped, finished, items } = params;
   const call: RunningCall = {
     described,
-    outcome: startTool({ start, described, stopped }).then((outcome) => {
+    outcome: startTool({ start, described, stopped }).then(({ outcome, message, stoppedBy }) => {
+      items.completeTool({
+        id: itemId,
+        described,
+        outcome,
+        message,
+        reason: stoppedBy ?? 'completed',
+      });
       call.settled = { order: finished.count++, outcome };
 
       return outcome;
@@ -187,25 +218,30 @@ function trackFinish(params: {
   return call;
 }
 
+/** What a tool run that was stopped came to: the placeholder, and who stopped it. */
+type ToolRun = Awaited<ReturnType<typeof runToolCall>> & { stoppedBy: ToolStop['by'] };
+
 /**
  * Starts a tool now, through the run's hooks. `runToolCall` never throws, so one failure can't
  * sink the others.
  * When `stopped` resolves (the run aborted, or the model call failed) the tool is told to stop
  * (via `signal`) and its result becomes that placeholder right away, even if it ignores the signal.
  * If the call launched a background task, the outcome is `task_running` instead of a result.
+ * `stoppedBy` says who stopped it when the placeholder won the race, for the item's reason; it is
+ * not a field of the outcome, which is an event body.
  */
 async function startTool(params: {
   start: ToolStart;
   described: DescribedCall;
-  stopped: Promise<string>;
-}): Promise<ToolOutcome> {
+  stopped: Promise<ToolStop>;
+}): Promise<StartedTool> {
   const { start, described, stopped } = params;
   const { tools, hooks = [], tasks, session, signal, onHookError } = start;
   const { call, description } = described;
   const started = performance.now();
-  const { message, artifacts } = await Promise.race([
+  const raced = await Promise.race([
     runToolCall({ hooks, tools, call, signal, session, onHookError }),
-    stopped.then((content) => {
+    stopped.then(({ content, by }): ToolRun => {
       const placeholder: ToolMessage = {
         role: 'tool',
         toolCallId: call.id,
@@ -214,9 +250,11 @@ async function startTool(params: {
         at: now(),
       };
 
-      return { message: placeholder, artifacts: undefined };
+      return { message: placeholder, artifacts: undefined, stoppedBy: by };
     }),
   ]);
+  const { message, artifacts } = raced;
+  const stoppedBy = 'stoppedBy' in raced ? raced.stoppedBy : undefined;
   const durationMs = performance.now() - started;
 
   // The registry is shared by the run's sessions, and a provider's call ids are only unique within
@@ -227,16 +265,30 @@ async function startTool(params: {
   // the registry's one map), so the check only narrows the type.
   const nodeId = task && tasks?.nodeIdOf(task.id);
 
+  const stop = stoppedBy ? { stoppedBy } : {};
+
   if (task && nodeId !== undefined && !message.isError) {
-    return { type: 'task_running', task, nodeId, call, description, message, durationMs };
+    const outcome = {
+      type: 'task_running',
+      task,
+      nodeId,
+      call,
+      description,
+      message,
+      durationMs,
+    } satisfies ToolOutcome;
+
+    return { outcome, message, ...stop };
   }
 
-  return {
+  const outcome = {
     type: 'tool_result',
     call,
     description,
     message,
     durationMs,
     ...(artifacts?.length ? { artifacts } : {}),
-  };
+  } satisfies ToolOutcome;
+
+  return { outcome, message, ...stop };
 }

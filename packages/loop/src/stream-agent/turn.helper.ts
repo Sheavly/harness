@@ -84,6 +84,8 @@ export async function runTurn(context: TurnContext): Promise<DoneReason | undefi
     signal,
     aborted,
     events,
+    turn,
+    publishItem: context.publishItem,
     onHookError: context.hookFailures.report,
   });
 
@@ -269,6 +271,9 @@ async function recoverOrStopTools(params: {
     return recovered;
   } catch (caughtError) {
     failure.stopTools();
+    // They settle at once with the placeholder; waiting completes their items before the run's
+    // `done`, since this path rethrows without releasing results.
+    await Promise.all(sampled.running.map((call) => call.outcome));
 
     throw caughtError;
   }
