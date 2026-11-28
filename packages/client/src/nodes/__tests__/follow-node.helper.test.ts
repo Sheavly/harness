@@ -11,6 +11,7 @@ import {
   commandOpened,
   endedAs,
   headAt,
+  liveMessageStarted,
   nodeIdOf,
   outputText,
 } from '../../testing/frames.fake.js';
@@ -108,6 +109,20 @@ describe('followNode', () => {
       size: 90_000,
       call: { id: 'call_1', name: 'read_file' },
     });
+  });
+
+  it('does not yield a live frame, and a drop after one resumes after the last stored entry', async () => {
+    const live = liveMessageStarted({
+      name: 'main',
+      itemId: '3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+    });
+    const { world, seen } = await followedMain([
+      [agentOpened('main'), agentUpdated({ name: 'main', n: 1 }), live, DROP],
+      [live, agentClosed({ name: 'main', n: 2 }), endedAs({ name: 'main', reason: 'completed' })],
+    ]);
+
+    expect(shape(seen)).toEqual(['opened s0', 'updated s1', 'closed s2']);
+    expect(world.asked()[1]).toEqual({ subscriptions: [{ channel: 'main', from: 's1' }] });
   });
 
   it('resumes an agent’s events after the last one it had when the connection drops, with no gap and no repeat', async () => {

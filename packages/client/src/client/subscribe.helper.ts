@@ -32,7 +32,8 @@ async function* readSubscribeFrames(
 /**
  * The frames of one open stream that the reader is to see, until it ends or a channel is cut off on
  * it (then it is left, and the next one asks for that channel from its cursor). A frame that is
- * delivered ends the run of failed attempts.
+ * delivered ends the run of failed attempts, except a live one: it is told once and never replayed,
+ * so a server that sent one and dropped would otherwise keep the client reconnecting for ever.
  */
 async function* deliver(params: {
   stream: OpenedStream;
@@ -45,7 +46,7 @@ async function* deliver(params: {
     const delivered = progress.accept(frame);
 
     if (delivered) {
-      stopFailing(failing);
+      if (delivered.type !== 'live') stopFailing(failing);
       yield delivered;
     }
 
@@ -86,8 +87,9 @@ async function pauseAfter(params: {
 /**
  * Follows the channels of conversation `id` that `subscriptions` name (`QUERY /subscribe`), and
  * yields their frames: an entry of a channel, where a channel stood (`head`), the tree as it
- * stands (`snapshot`) and the end of a channel (`end`, `completed` or `failed`). The server keeps
- * no state, so the client does: it holds the cursor of the last frame of each channel, and a dropped
+ * stands (`snapshot`), what an item says as it happens (`live`, which has no cursor: it is yielded
+ * as it comes and moves nothing) and the end of a channel (`end`, `completed` or `failed`). The
+ * server keeps no state, so the client does: it holds the cursor of the last frame of each channel, and a dropped
  * connection (or a channel the server cut off because this reader did not keep up) is opened again
  * with each channel that has not ended asked from its cursor, so no frame is missed and none comes
  * twice. A channel that had no frame yet is asked from where it was first asked, so a drop before

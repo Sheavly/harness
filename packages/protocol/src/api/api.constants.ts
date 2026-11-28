@@ -196,7 +196,7 @@ export const API_ROUTES = {
     method: 'query',
     path: '/conversations/{id}/subscribe',
     summary:
-      "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames",
+      "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames, and a live frame for what is told and not stored",
     body: subscribeRequestSchema,
     response: { status: 200, stream: subscribeFrameSchema },
   },

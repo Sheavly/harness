@@ -1,9 +1,6 @@
 import { z } from 'zod';
-import {
-  sequenceCursorSchema,
-  usageClosedSchema,
-  usageOpenedSchema,
-} from '../channel/channel.validator.js';
+import { usageClosedSchema, usageOpenedSchema } from '../channel/channel.validator.js';
+import { sequenceCursorSchema } from '../channel/cursor.validator.js';
 import { MAX_TREE_NODES, USAGE_CHANNEL_NAME } from '../node/node.constants.js';
 import { nodeIdSchema } from '../node/node.validator.js';
 import { timestampSchema } from '../time/time.validator.js';

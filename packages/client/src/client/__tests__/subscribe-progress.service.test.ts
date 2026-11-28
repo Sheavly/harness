@@ -7,6 +7,7 @@ import {
   commandClosed,
   endedAs,
   headAt,
+  liveMessageStarted,
   outputText,
 } from '../../testing/frames.fake.js';
 import { SubscribeProgress } from '../subscribe-progress.service.js';
@@ -96,6 +97,55 @@ describe('SubscribeProgress: which frames the reader sees', () => {
 
     // Resumed after the output, with the close still to come.
     expect(resumed.accept(commandClosed({ name: 'cmd', bytes: 5 }))).toBeDefined();
+  });
+});
+
+describe('SubscribeProgress: a live frame, which has no cursor', () => {
+  const ITEM = '3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+
+  it('is given to the reader as it is, and moves no cursor', () => {
+    const progress = new SubscribeProgress(subscriptions(['a', 'start']));
+    const live = liveMessageStarted({ name: 'a', itemId: ITEM });
+
+    // Before any frame: the channel is still asked from where it was first asked.
+    expect(progress.accept(live)).toBe(live);
+    expect(progress.nextRequest()).toEqual([{ channel: 'a', from: 'start' }]);
+
+    progress.accept(agentUpdated({ name: 'a', n: 4 }));
+
+    expect(progress.accept(live)).toBe(live);
+    expect(progress.nextRequest()).toEqual([{ channel: 'a', from: 's4' }]);
+  });
+
+  it('is not dropped as a repeat, and does not make the stored entry after it one', () => {
+    const progress = new SubscribeProgress(subscriptions(['a', 'start']));
+    const live = liveMessageStarted({ name: 'a', itemId: ITEM });
+    const stored = agentUpdated({ name: 'a', n: 2 });
+
+    expect(progress.accept(stored)).toBe(stored);
+    // The same live frame twice is two frames: nothing identifies one.
+    expect(progress.accept(live)).toBe(live);
+    expect(progress.accept(live)).toBe(live);
+    // A stored entry at the cursor of the last one is still a duplicate, with live frames between.
+    expect(progress.accept(stored)).toBeUndefined();
+    expect(progress.accept(agentUpdated({ name: 'a', n: 3 }))).toBeDefined();
+  });
+
+  it('is not shown for a channel that was not asked for', () => {
+    const progress = new SubscribeProgress(subscriptions(['a', 'start']));
+
+    expect(progress.accept(liveMessageStarted({ name: 'b', itemId: ITEM }))).toBeUndefined();
+  });
+
+  it('does not end the run of a channel that was cut off, nor change where it resumes', () => {
+    const progress = new SubscribeProgress(subscriptions(['a', 'start']));
+
+    progress.accept(agentUpdated({ name: 'a', n: 1 }));
+    progress.accept(endedAs({ name: 'a', reason: 'cut_off', cursor: 's3' }));
+    progress.accept(liveMessageStarted({ name: 'a', itemId: ITEM }));
+
+    expect(progress.finished).toBe(false);
+    expect(progress.nextRequest()).toEqual([{ channel: 'a', from: 's3' }]);
   });
 });
 

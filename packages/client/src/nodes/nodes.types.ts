@@ -8,7 +8,8 @@ import type { channelEntrySchema } from '@sheavly/protocol/channel/channel.valid
  * for streamed text, `lastSeq` when several deltas were stored as one; or `event_omitted`, in its
  * place, when it was too large to store: its type, `seq` and size, and for an event of one tool call
  * the call's `id` and tool `name`, never its content), a command's or a service's output (`output`, a piece of
- * its text at a byte offset), and its end (`closed`). A reader that follows an agent by the
+ * its text at a byte offset), one completed item of an agent (`item`: a reply's text, its reasoning
+ * or a tool call with its result), and its end (`closed`). A reader that follows an agent by the
  * events' `seq` reads it from `event.seq` to `lastSeq`.
  */
 export type NodeChannelEntry = z.infer<typeof channelEntrySchema>;

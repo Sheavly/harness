@@ -1,3 +1,4 @@
+import { LIVE_EVENT } from '@sheavly/protocol/subscription/subscription.constants';
 import { cursorOfFrame } from './subscription-frames.utils.js';
 import { COMPACT_AFTER } from './subscriptions.constants.js';
 import type { QueuedFrame } from './subscriptions.types.js';
@@ -77,12 +78,17 @@ export class FrameQueue {
     return held;
   }
 
-  /** The cursor of the newest frame of `channel` that waits, if one does. */
+  /**
+   * The cursor of the newest frame of `channel` that waits, if one does. A live frame has none and
+   * is no position to resume from, so it is passed over for the frame before it.
+   */
   lastCursor(channel: string): string | undefined {
     for (let index = this.#items.length - 1; index >= this.#head; index -= 1) {
       const item = this.#items[index];
 
-      if (item?.channel === channel) return cursorOfFrame(item.frame);
+      if (item?.channel === channel && item.frame.type !== LIVE_EVENT) {
+        return cursorOfFrame(item.frame);
+      }
     }
 
     return undefined;

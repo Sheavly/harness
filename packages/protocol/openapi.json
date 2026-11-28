@@ -397,7 +397,7 @@
     "/conversations/{id}/subscribe": {
       "query": {
         "operationId": "streamChannels",
-        "summary": "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames",
+        "summary": "Follow channels, a node's or one of the conversation's own (its tree, its usage): the stored history each position asks for (the view as it stands, for one of those from snapshot), then what is stored next, as entry, head, end and snapshot frames, and a live frame for what is told and not stored",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -3002,7 +3002,8 @@
                   "cursor": { "$ref": "#/components/schemas/Cursor" }
                 },
                 "required": ["channel", "cursor"]
-              }
+              },
+              "format": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
             },
             "required": ["cursor", "at", "channel", "type", "node"]
           },
@@ -3149,6 +3150,18 @@
               "cursor": { "$ref": "#/components/schemas/Cursor" },
               "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "channel": { "$ref": "#/components/schemas/NodeId" },
+              "type": { "type": "string", "const": "item" },
+              "item": { "$ref": "#/components/schemas/Item" },
+              "messageId": { "$ref": "#/components/schemas/ModelId" }
+            },
+            "required": ["cursor", "at", "channel", "type", "item"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cursor": { "$ref": "#/components/schemas/Cursor" },
+              "at": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "channel": { "$ref": "#/components/schemas/NodeId" },
               "type": { "type": "string", "const": "output" },
               "offset": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
               "text": { "type": "string", "minLength": 1, "maxLength": 16384 }
@@ -3170,6 +3183,159 @@
           "required": ["cursor", "at", "channel", "type"],
           "additionalProperties": {}
         }
+      },
+      "ItemId": {
+        "type": "string",
+        "allOf": [
+          {
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          { "pattern": "^[0-9a-f-]{36}$" }
+        ]
+      },
+      "Item": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "message" },
+              "id": { "$ref": "#/components/schemas/ModelId" },
+              "text": { "type": "string", "maxLength": 8192 },
+              "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+            },
+            "required": ["kind", "id", "text", "reason"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "reasoning" },
+              "id": { "$ref": "#/components/schemas/ModelId" },
+              "item": { "$ref": "#/components/schemas/ReasoningItem" },
+              "omitted": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+              "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+            },
+            "required": ["kind", "id", "reason"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "tool_call" },
+              "id": { "$ref": "#/components/schemas/ModelId" },
+              "callId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "$ref": "#/components/schemas/CallId"
+              },
+              "name": { "type": "string", "maxLength": 200 },
+              "description": { "type": "string", "maxLength": 300 },
+              "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "input": {},
+              "result": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string" },
+                  "isError": { "type": "boolean" },
+                  "artifacts": {
+                    "readOnly": true,
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/ToolArtifact" }
+                  },
+                  "durationMs": { "type": "number" }
+                },
+                "required": ["content", "isError", "durationMs"]
+              },
+              "task": {
+                "type": "object",
+                "properties": {
+                  "info": { "$ref": "#/components/schemas/TaskInfo" },
+                  "nodeId": { "$ref": "#/components/schemas/NodeId" },
+                  "durationMs": { "type": "number" }
+                },
+                "required": ["info", "nodeId", "durationMs"]
+              },
+              "omitted": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "result": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                }
+              },
+              "reason": { "type": "string", "enum": ["completed", "interrupted", "failed"] }
+            },
+            "required": ["kind", "id", "name", "description", "turn", "reason"]
+          }
+        ]
+      },
+      "ItemEvent": {
+        "anyOf": [
+          {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "const": "item_started" },
+                  "itemId": { "$ref": "#/components/schemas/ModelId" },
+                  "kind": { "type": "string", "const": "message" }
+                },
+                "required": ["type", "itemId", "kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "const": "item_started" },
+                  "itemId": { "$ref": "#/components/schemas/ModelId" },
+                  "kind": { "type": "string", "const": "reasoning" }
+                },
+                "required": ["type", "itemId", "kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "const": "item_started" },
+                  "itemId": { "$ref": "#/components/schemas/ModelId" },
+                  "kind": { "type": "string", "const": "tool_call" },
+                  "callId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "$ref": "#/components/schemas/CallId"
+                  },
+                  "name": { "type": "string", "maxLength": 200 },
+                  "description": { "type": "string", "maxLength": 300 },
+                  "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                },
+                "required": ["type", "itemId", "kind", "name", "description", "turn"]
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "item_delta" },
+              "itemId": { "$ref": "#/components/schemas/ModelId" },
+              "offset": { "type": "integer", "minimum": 0, "maximum": 8192 },
+              "text": { "type": "string", "maxLength": 8192 }
+            },
+            "required": ["type", "itemId", "offset", "text"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "const": "item_completed" },
+              "item": { "$ref": "#/components/schemas/Item" }
+            },
+            "required": ["type", "item"]
+          }
+        ]
       },
       "TreeChannelEntry": {
         "oneOf": [
@@ -3439,6 +3605,69 @@
         },
         "required": ["type", "channel", "reason"]
       },
+      "LiveFrame": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "const": "live" },
+          "channel": { "$ref": "#/components/schemas/ChannelName" },
+          "event": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "const": "item_started" },
+                      "itemId": { "$ref": "#/components/schemas/ModelId" },
+                      "kind": { "type": "string", "const": "message" }
+                    },
+                    "required": ["type", "itemId", "kind"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "const": "item_started" },
+                      "itemId": { "$ref": "#/components/schemas/ModelId" },
+                      "kind": { "type": "string", "const": "reasoning" }
+                    },
+                    "required": ["type", "itemId", "kind"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "const": "item_started" },
+                      "itemId": { "$ref": "#/components/schemas/ModelId" },
+                      "kind": { "type": "string", "const": "tool_call" },
+                      "callId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "$ref": "#/components/schemas/CallId"
+                      },
+                      "name": { "type": "string", "maxLength": 200 },
+                      "description": { "type": "string", "maxLength": 300 },
+                      "turn": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                    },
+                    "required": ["type", "itemId", "kind", "name", "description", "turn"]
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "const": "item_delta" },
+                  "itemId": { "$ref": "#/components/schemas/ModelId" },
+                  "offset": { "type": "integer", "minimum": 0, "maximum": 8192 },
+                  "text": { "type": "string", "maxLength": 8192 }
+                },
+                "required": ["type", "itemId", "offset", "text"]
+              }
+            ]
+          }
+        },
+        "required": ["type", "channel", "event"],
+        "additionalProperties": false
+      },
       "SubscribeFrame": {
         "anyOf": [
           { "$ref": "#/components/schemas/ChannelEntry" },
@@ -3446,6 +3675,7 @@
           { "$ref": "#/components/schemas/UsageChannelEntry" },
           { "$ref": "#/components/schemas/ChannelHeadFrame" },
           { "$ref": "#/components/schemas/ChannelEndFrame" },
+          { "$ref": "#/components/schemas/LiveFrame" },
           { "$ref": "#/components/schemas/TreeSnapshot" },
           { "$ref": "#/components/schemas/UsageSnapshot" }
         ]

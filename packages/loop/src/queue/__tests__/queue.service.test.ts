@@ -4,10 +4,10 @@ import { OrderedQueue } from '../queue.service.js';
 const later = <T>(value: T, ms: number) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
-type Item = {
+type Named = {
   name: string;
 };
-const item = (name: string): Item => ({ name });
+const item = (name: string): Named => ({ name });
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const out: T[] = [];
@@ -20,7 +20,7 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 describe('OrderedQueue', () => {
   it('releases an item with nothing ahead of it as it is enqueued, and tells onRelease', () => {
     const released: string[] = [];
-    const queue = new OrderedQueue<Item>({
+    const queue = new OrderedQueue<Named>({
       onRelease: (next) => released.push(`${String(next.seq)}:${next.name}`),
     });
 
@@ -32,7 +32,7 @@ describe('OrderedQueue', () => {
 
   it('tells onRelease in release order, a pending item holding back the ones behind it', async () => {
     const released: string[] = [];
-    const queue = new OrderedQueue<Item>({ onRelease: (next) => released.push(next.name) });
+    const queue = new OrderedQueue<Named>({ onRelease: (next) => released.push(next.name) });
 
     queue.enqueue(later(item('slow'), 10));
     queue.enqueue(item('sync'));
@@ -46,8 +46,8 @@ describe('OrderedQueue', () => {
     const broken = () => {
       throw new Error('observer broke');
     };
-    const now = new OrderedQueue<Item>({ onRelease: broken });
-    const queued = new OrderedQueue<Item>({ onRelease: broken });
+    const now = new OrderedQueue<Named>({ onRelease: broken });
+    const queued = new OrderedQueue<Named>({ onRelease: broken });
 
     expect(() => now.enqueue(item('now'))).not.toThrow();
     queued.enqueue(later(item('slow'), 1));
@@ -58,7 +58,7 @@ describe('OrderedQueue', () => {
   });
 
   it('yields in enqueue order, not resolve order, with contiguous seq numbers', async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
 
     queue.enqueue(later(item('slow'), 30));
     queue.enqueue(later(item('fast'), 1));
@@ -73,10 +73,10 @@ describe('OrderedQueue', () => {
   });
 
   it('holds plain items behind a pending one', async () => {
-    const queue = new OrderedQueue<Item>();
-    let release!: (value: Item) => void;
+    const queue = new OrderedQueue<Named>();
+    let release!: (value: Named) => void;
 
-    queue.enqueue(new Promise<Item>((resolve) => (release = resolve)));
+    queue.enqueue(new Promise<Named>((resolve) => (release = resolve)));
     queue.enqueue(item('after'));
     queue.close();
 
@@ -94,7 +94,7 @@ describe('OrderedQueue', () => {
   });
 
   it("yields items as they're released, before the queue is closed", async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
     const iterator = queue[Symbol.asyncIterator]();
 
     queue.enqueue(item('a'));
@@ -108,7 +108,7 @@ describe('OrderedQueue', () => {
   });
 
   it('fail() ends the stream with the error, after already-enqueued items', async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
 
     queue.enqueue(item('a'));
     queue.fail(new Error('boom'));
@@ -124,7 +124,7 @@ describe('OrderedQueue', () => {
   });
 
   it('a rejected item ends the stream with its error', async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
 
     queue.enqueue(item('a'));
     queue.enqueue(Promise.reject(new Error('bad item')));
@@ -135,7 +135,7 @@ describe('OrderedQueue', () => {
   });
 
   it('consumed() waits until the consumer has handled everything enqueued so far', async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
 
     queue.enqueue(item('a'));
     queue.enqueue(item('b'));
@@ -168,7 +168,7 @@ describe('OrderedQueue', () => {
   });
 
   it('consumed() resolves if the consumer stops early', async () => {
-    const queue = new OrderedQueue<Item>();
+    const queue = new OrderedQueue<Named>();
 
     queue.enqueue(item('a'));
     queue.enqueue(item('b'));

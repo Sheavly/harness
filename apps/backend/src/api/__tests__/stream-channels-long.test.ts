@@ -102,7 +102,7 @@ async function readFrom(params: { world: Awaited<ReturnType<typeof served>>; fro
   for (let got = await next(); got; got = await next()) {
     if (got.frame.type === 'end') return { cursors, ended: got.frame.reason };
 
-    if (got.event === 'entry') cursors.push(got.frame.cursor);
+    if (got.event === 'entry' && got.frame.type !== 'live') cursors.push(got.frame.cursor);
   }
 
   return { cursors, ended: undefined };

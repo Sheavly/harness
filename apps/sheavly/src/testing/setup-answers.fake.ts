@@ -1,4 +1,4 @@
-type Item = { value: string };
+type Choice = { value: string };
 
 /** What the wizard asks of the user; the same shape as the terminal's `SetupUi`, structurally. */
 type Ui = {
@@ -6,13 +6,13 @@ type Ui = {
   text: (question: { title: string; secret?: boolean; initial?: string }) => Promise<string>;
   choose: (question: {
     title: string;
-    items: readonly Item[];
+    items: readonly Choice[];
     initial?: string;
   }) => Promise<string>;
   notice: (message: string) => void;
 };
 
-type ChoiceAnswer = string | ((items: readonly Item[]) => string);
+type ChoiceAnswer = string | ((items: readonly Choice[]) => string);
 
 /**
  * Test-only: answers the setup wizard's questions by their title, so a test states what it cares

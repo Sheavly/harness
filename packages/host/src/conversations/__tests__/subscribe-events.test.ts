@@ -11,13 +11,17 @@ import { say, scriptedConversations } from '../../testing/conversations.fake.js'
 import { refusalOf, requestOf } from '../../testing/subscription-world.fake.js';
 import type { Conversations } from '../conversations.service.js';
 
-/** The cursors of the entries among `frames`: everything but the head and the end. */
+/** The cursors of the entries among `frames`: everything but the head, the end and a live frame. */
 const cursorsOf = (frames: SubscribeFrame[]) =>
-  frames.flatMap((frame) => (frame.type === 'head' || frame.type === 'end' ? [] : [frame.cursor]));
+  frames.flatMap((frame) =>
+    frame.type === 'head' || frame.type === 'end' || frame.type === 'live' ? [] : [frame.cursor],
+  );
 
 /** A frame as `type cursor`, or `event cursor eventType` for an entry that wraps an event. */
 const tag = (frame: SubscribeFrame) => {
   if (frame.type === 'end') return `end:${frame.reason}`;
+
+  if (frame.type === 'live') return 'live';
 
   if (frame.type === 'event') return `event ${frame.cursor} ${frame.event.type}`;
 

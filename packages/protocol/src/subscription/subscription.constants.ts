@@ -32,6 +32,12 @@ export const HEAD_EVENT = 'head';
 export const END_EVENT = 'end';
 
 /**
+ * The event name, and the `type`, of the frame that carries what an item says as it happens and
+ * the channel does not store. It has no cursor and no `id`.
+ */
+export const LIVE_EVENT = 'live';
+
+/**
  * The event name, and the `type`, of the frame that holds the tree as it stands: what a
  * subscription to the tree channel from `snapshot` sends first, before the entries after its
  * cursor.

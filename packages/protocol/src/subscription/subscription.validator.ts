@@ -1,10 +1,8 @@
 import { z } from 'zod';
-import {
-  channelEntrySchema,
-  channelNameSchema,
-  cursorSchema,
-} from '../channel/channel.validator.js';
+import { channelEntrySchema, channelNameSchema } from '../channel/channel.validator.js';
+import { cursorSchema } from '../channel/cursor.validator.js';
 import { cursorKind, isConversationChannel } from '../channel/channel.utils.js';
+import { itemDeltaEventSchema, itemStartedEventSchema } from '../item/item.validator.js';
 import { TREE_CHANNEL_NAME } from '../node/node.constants.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import { usageChannelEntrySchema, usageSnapshotSchema } from '../usage/usage-channel.validator.js';
@@ -12,6 +10,7 @@ import {
   CHANNEL_END_REASONS,
   END_EVENT,
   HEAD_EVENT,
+  LIVE_EVENT,
   MAX_SUBSCRIPTIONS,
   MAX_TAIL_BYTES,
   TAIL_PATTERN,
@@ -129,12 +128,25 @@ export const channelEndFrameSchema = z.object({
 });
 
 /**
+ * What an item says as it happens and the channel does not store: an item started, or a message's
+ * text grew. It has no cursor and no `id`, so it is outside the cursor rules: a client's last
+ * cursor for the channel is never one of its, and a resume by cursor never replays one. The object
+ * is strict, so a cursor on it is refused, not dropped.
+ */
+export const liveFrameSchema = z.strictObject({
+  type: z.literal(LIVE_EVENT),
+  channel: channelNameSchema,
+  event: z.union([itemStartedEventSchema, itemDeltaEventSchema]),
+});
+
+/**
  * What one frame of a subscribe stream holds, as JSON: an entry of a channel (event `entry`; its
  * envelope carries its own channel and cursor), where a channel stood (`head`), the end of a
- * channel (`end`), or a conversation channel's view as it stands (`snapshot`: the tree's or
- * usage's). An entry is a node's channel's, or one of the conversation's own channels'. A frame has
- * no `id`: one id cannot carry several cursors, so a client keeps the last cursor of each channel
- * and sends them again on a reconnect.
+ * channel (`end`), a conversation channel's view as it stands (`snapshot`: the tree's or
+ * usage's), or what an item says as it happens (`live`, which has no cursor). An entry is a node's
+ * channel's, or one of the conversation's own channels'. A frame has no `id`: one id cannot carry
+ * several cursors, so a client keeps the last cursor of each channel and sends them again on a
+ * reconnect.
  */
 export const subscribeFrameSchema = z.union([
   channelEntrySchema,
@@ -142,6 +154,7 @@ export const subscribeFrameSchema = z.union([
   usageChannelEntrySchema,
   channelHeadFrameSchema,
   channelEndFrameSchema,
+  liveFrameSchema,
   treeSnapshotSchema,
   usageSnapshotSchema,
 ]);

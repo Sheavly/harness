@@ -4,11 +4,8 @@ import {
   approvalRequestSchema,
   approvalResponseSchema,
 } from '../approval/approval.validator.js';
-import {
-  sequenceCursorSchema,
-  treeClosedSchema,
-  treeOpenedSchema,
-} from '../channel/channel.validator.js';
+import { treeClosedSchema, treeOpenedSchema } from '../channel/channel.validator.js';
+import { sequenceCursorSchema } from '../channel/cursor.validator.js';
 import {
   extensionEnvelopeShape,
   extensionQualifiedNameSchema,

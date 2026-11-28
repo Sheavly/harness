@@ -41,7 +41,8 @@ The schemas of [the wire model](wire-model.md) are in the contract beside the st
 `QUERY /conversations/{id}/subscribe` reads and answers, and `TreeSnapshot` is what
 `GET /conversations/{id}/tree` answers; no route reads the rest yet (a node command).
 They are in `contract.schema.json` by name (`NodeInfo`, `Cursor`, `ChannelBoundary`,
-`ChannelEntry`, `ChannelLog`, `TreeChannelEntry`, `TreeSnapshot`, `SubscribeRequest`,
+`ChannelEntry`, `ChannelLog`, `ItemId`, `Item`, `ItemEvent`, `TreeChannelEntry`, `TreeSnapshot`,
+`SubscribeRequest`,
 `ChannelHeadFrame`, `ChannelEndFrame`, `SubscribeFrame`, `MessageNodeRequest`, `PromptSent`).
 JSON Schema cannot say what a refinement says, so a client that is not TypeScript reads the
 shapes, patterns and caps from it and takes the rest from the zod schemas and this page: the
@@ -74,8 +75,9 @@ and `approvals` rules and its caps by channel; and the reserved extension names.
   bytes). The log is not bounded: it has no length cap, its entries keep any extra field, and only
   a type name is capped, so whoever feeds it bounds the input. `ChannelEntry` is every entry a
   node's channel holds today: `opened`, `closed` and an agent's `updated` (the node as it is now,
-  numbered after `opened`, never a command's). What an entry of another type holds is the schema
-  of the issue that serves it.
+  numbered after `opened`, never a command's), and the `item` entry, one completed item (see
+  [the wire model](wire-model.md#agent-channels); nothing writes it yet). What an entry of another
+  type holds is the schema of the issue that serves it.
 - **The tree channel** (`tree/`): its entries are numbered. `node_opened`, `node_updated` and
   `node_closed` carry a node; `approval_requested`, `approval_resolved` and `approval_cancelled`
   carry the node that asked; the queue's changes, a storage failure and an extension's event are
@@ -110,12 +112,13 @@ approvals? }`. `from` is `start`, `now`, `snapshot` (a channel of the conversati
   `tail` of at most `MAX_TAIL_BYTES` (the output store's read bound) and at most `MAX_TAIL` entries
   on a channel of the conversation itself, and `approvals` only with the tree channel. A cursor the
   log cannot start at is `cursor_out_of_range`, which only the server can tell. What a frame of its
-  stream holds is `SubscribeFrame`, one of four: an entry of a channel (event `entry`, a node's or
+  stream holds is `SubscribeFrame`, one of five: an entry of a channel (event `entry`, a node's or
   one of the conversation's own; the envelope carries its own channel and cursor),
   `ChannelHeadFrame` (event `head`: where a channel stood when a subscription at `now` opened),
   `ChannelEndFrame` (event `end`: that channel ended, as `completed`, `cut_off` or `failed`, with the
   last cursor delivered), or a snapshot (`TreeSnapshot` or `UsageSnapshot`, event `snapshot`: the
-  view as it stands, sent first for `from: snapshot`). A frame has no `id`. `applyTreeEntry`
+  view as it stands, sent first for `from: snapshot`), or `LiveFrame` (event `live`: what an item
+  says as it happens, with no cursor; nothing sends it yet). A frame has no `id`. `applyTreeEntry`
   (`tree/`) and `applyUsageEntry` (`usage/`) are the rules from entries to a view: a snapshot
   followed by the entries after its cursor gives the view of every entry from the start, so a
   client folds both the same way.

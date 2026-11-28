@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { channelEntrySchema } from '../../channel/channel.validator.js';
 import { MAX_READ_BYTES } from '../../output/output.constants.js';
 import { serverErrorCodeSchema } from '../../server/server.validator.js';
 import {
   CHANNEL_END_REASONS,
   END_EVENT,
   HEAD_EVENT,
+  LIVE_EVENT,
   MAX_SUBSCRIPTIONS,
   MAX_TAIL,
   MAX_TAIL_BYTES,
@@ -235,6 +237,57 @@ describe('a frame of a subscribe stream', () => {
   it('names its event the way its data names its type, for the three frames that are not entries', () => {
     expect([HEAD_EVENT, END_EVENT, SNAPSHOT_EVENT]).toEqual(['head', 'end', 'snapshot']);
     expect(CHANNEL_END_REASONS).toEqual(['completed', 'cut_off', 'failed']);
+  });
+});
+
+describe('a live frame', () => {
+  const ITEM = '3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+  const live = (event: object, more: object = {}) => ({
+    type: LIVE_EVENT,
+    channel: 'agent-1',
+    event,
+    ...more,
+  });
+  const started = { type: 'item_started', itemId: ITEM, kind: 'message' };
+  const delta = { type: 'item_delta', itemId: ITEM, offset: 0, text: 'He' };
+  const accepted = (value: unknown) => subscribeFrameSchema.safeParse(value).success;
+
+  it.each([
+    ['an item started', live(started)],
+    ['a message’s text growing', live(delta)],
+    [
+      'a tool call started, with its header',
+      live({
+        type: 'item_started',
+        itemId: ITEM,
+        kind: 'tool_call',
+        name: 'read_file',
+        turn: 1,
+        description: 'reading index.ts',
+      }),
+    ],
+  ])('is %s', (_name, value) => {
+    expect(accepted(value)).toBe(true);
+  });
+
+  it.each([
+    ['a cursor', live(started, { cursor: 's4' })],
+    ['an id', live(started, { id: '4' })],
+    ['any other field', live(started, { at: 1 })],
+    ['a completed item, which the channel stores', live({ type: 'item_completed' })],
+    ['an event that is not an item’s', live({ type: 'turn_end', turn: 0 })],
+    ['no event', { type: LIVE_EVENT, channel: 'agent-1' }],
+    ['no channel', { type: LIVE_EVENT, event: started }],
+    ['a channel that is not a name', live(started, { channel: 'a/b' })],
+  ])('is not a frame with %s', (_name, value) => {
+    expect(accepted(value)).toBe(false);
+  });
+
+  it('is named `live`, and is not a head, an end or an entry', () => {
+    expect(LIVE_EVENT).toBe('live');
+    expect(channelHeadFrameSchema.safeParse(live(started)).success).toBe(false);
+    expect(channelEndFrameSchema.safeParse(live(started)).success).toBe(false);
+    expect(channelEntrySchema.safeParse(live(started)).success).toBe(false);
   });
 });
 

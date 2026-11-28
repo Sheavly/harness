@@ -105,14 +105,17 @@ import { streamEntrySchema } from '../stream/stream.validator.js';
 import { queueUpdateSchema } from '../queue/queue.validator.js';
 import { nodeIdSchema, nodeInfoSchema, nodeStateSchema } from '../node/node.validator.js';
 import {
-  byteCursorSchema,
   channelBoundarySchema,
   channelEntrySchema,
   channelLogSchema,
   channelNameSchema,
+} from '../channel/channel.validator.js';
+import {
+  byteCursorSchema,
   cursorSchema,
   sequenceCursorSchema,
-} from '../channel/channel.validator.js';
+} from '../channel/cursor.validator.js';
+import { itemEventSchema, itemIdSchema, itemSchema } from '../item/item.validator.js';
 import { treeChannelEntrySchema, treeSnapshotSchema } from '../tree/tree.validator.js';
 import {
   messageNodeRequestSchema,
@@ -121,6 +124,7 @@ import {
 import {
   channelEndFrameSchema,
   channelHeadFrameSchema,
+  liveFrameSchema,
   subscribeFrameSchema,
   subscribeFromSchema,
   subscribeRequestSchema,
@@ -224,12 +228,16 @@ function contractSchemas(): Record<string, z.ZodType> {
     ChannelBoundary: channelBoundarySchema,
     ChannelEntry: channelEntrySchema,
     ChannelLog: channelLogSchema,
+    ItemId: itemIdSchema,
+    Item: itemSchema,
+    ItemEvent: itemEventSchema,
     TreeChannelEntry: treeChannelEntrySchema,
     TreeSnapshot: treeSnapshotSchema,
     SubscribeFrom: subscribeFromSchema,
     SubscribeRequest: subscribeRequestSchema,
     ChannelHeadFrame: channelHeadFrameSchema,
     ChannelEndFrame: channelEndFrameSchema,
+    LiveFrame: liveFrameSchema,
     SubscribeFrame: subscribeFrameSchema,
     MessageNodeRequest: messageNodeRequestSchema,
     PromptSent: promptSentSchema,

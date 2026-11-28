@@ -41,14 +41,14 @@ export function endFrame(params: {
 }
 
 /**
- * What a frame counts against the conversation's held bytes: the JSON of an entry, or of a
- * snapshot. The two control frames count nothing, so an `end` can always be queued however much is
- * held.
+ * What a frame counts against the conversation's held bytes: the JSON of an entry, of a snapshot
+ * or of a live frame. The two control frames count nothing, so an `end` can always be queued
+ * however much is held.
  */
 export function bytesOfFrame(frame: SubscribeFrame): number {
   return frame.type === HEAD_EVENT || frame.type === END_EVENT ? 0 : JSON.stringify(frame).length;
 }
 
-/** The cursor a frame carries: an entry's, a head's, or an end's when it has one. */
+/** The cursor a frame carries: an entry's, a head's, or an end's when it has one. A live frame has none. */
 export const cursorOfFrame = (frame: SubscribeFrame): string | undefined =>
   'cursor' in frame ? frame.cursor : undefined;

@@ -226,6 +226,35 @@ loop event is added without deciding which it is.
   never read as whole. A reopened conversation closes it as
   `lost`. The combined stream still has everything.
 
+**The item schemas.** The contract defines the item and its entry, and nothing writes or sends
+them yet: an agent's channel holds the entries above and no `item`.
+
+- **An item** (`Item`) is a `message` (its `text`, at most `MAX_ITEM_TEXT_CHARS`, 8,192 UTF-16 code
+  units, never cut inside a surrogate pair), a `reasoning` (the opaque replay state, `item`, or
+  `omitted`, its size, when it was left out) or a `tool_call` (the call's `name`, `description`,
+  `turn` and `input`, and what became of it: a `result`, as a `tool_result` event carries it, or a
+  `task` and the node it launched, as `task_running` does, never both; `omitted` says the size of an
+  `input` or a `result` that was left out). Each has an `id` (`ItemId`, a lowercase UUID, never a
+  provider's id) and a `reason`: `completed`, `interrupted` or `failed`. A tool call's `callId` is
+  the provider's id, at most `MAX_OMITTED_CALL_CHARS` (200) characters and left out when longer,
+  never cut; its `name` is held to the same bound and its `description` to
+  `MAX_ITEM_DESCRIPTION_CHARS` (300), because a provider controls them. The other fields (a tool's
+  `input` and `result`, a launched task, the replay state) have no bound of their own, as the
+  events they come from have none: the bound of a stored item is the store's entry limit, and of a
+  frame the client's limit on a frame. An item does not hold what it says it left out, and a
+  reasoning item is its state or its `omitted` size, never both. Text is untrusted: it is not
+  cleaned of control characters or escape sequences, and a reader that prints it escapes it.
+- **The `item` entry** is one completed item under the channel's own cursor, numbered after
+  `opened`, with the originating `messageId` where there is one. It is a member of `ChannelEntry`.
+- **`ItemEvent`** is what an item says as it happens: `item_started` (the item's id and kind, and
+  for a tool call its header, never its `input`), `item_delta` (a message's text added, with the
+  `offset` in UTF-16 code units of the item's text before it) and `item_completed` (the item). It
+  is a union of its own: it is not a loop event, an entry of the combined stream or a member of
+  `ChannelEntry`.
+- **`format`** on a node's `opened` entry is a positive whole number naming the form the channel's
+  entries are in. It is absent in the earlier form, so a channel written before it existed reads as
+  it did. Nothing sets it yet, and no reader refuses a form it does not know.
+
 A subscription to an agent's channel from `start`, a cursor, `tail` or `now` reads them as it reads
 any channel's entries.
 
@@ -313,11 +342,11 @@ start in each:
 `from` is `start`, `now`, `tail:<n>`, a cursor the client was given, or, for a channel of the
 conversation itself (the tree, usage) only, `snapshot` (see above). `tail:<n>` is the last `n` entries of a sequence channel and the
 last `n` bytes of a byte-offset channel. The response is a stream of server-sent events, and
-each frame is one envelope: it carries its **channel and its cursor**. A closed channel delivers
-what remains and then completes. A slow consumer is cut off per channel and resumes from its
-cursor.
+each frame is one envelope: it carries its **channel and its cursor**, except the `live` frame,
+which has no cursor. A closed channel delivers what remains and then completes. A slow consumer is
+cut off per channel and resumes from its cursor.
 
-A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
+A stream has five kinds of frame, each a JSON `data` with no `id` (`SubscribeFrame`):
 
 - **`entry`**: one entry of a channel, as it is stored (`opened`, an agent's `updated`, `closed`,
   as `ChannelEntry` says; on the tree channel, `TreeChannelEntry`). Its own `channel` and `cursor`
@@ -331,6 +360,12 @@ A stream has four kinds of frame, each a JSON `data` with no `id` (`SubscribeFra
   the cursor of its newest entry, sent first, once per such channel. A client that hears no entry
   before the connection drops still has a cursor to resume after, and misses nothing written
   meanwhile. It is not an entry of the channel's log.
+- **`live`** (`LiveFrame`): `{ type: 'live', channel, event }`, where `event` is an `item_started`
+  or an `item_delta` (`ItemEvent`, above). It has **no cursor and no frame id**, and its schema is
+  strict, so a cursor on it is refused: it is outside the cursor rules. A client's progress for the
+  channel neither moves nor drops it, its last-cursor reading skips it (an `end` frame's `cursor`
+  is that of the last frame that has one), and a resume by cursor never replays one. The frame is
+  defined and nothing sends it yet.
 - **`end`** (`ChannelEndFrame`): one channel of the subscription ended, and no more frames of it
   follow. `completed`: its `closed` entry was delivered. `cut_off`: this consumer did not keep up
   with it, or the conversation's subscriptions hold as much as they may. `failed`: no more of its
@@ -533,8 +568,7 @@ take the conversation's subscriptions past what they may hold, is cut off on tha
 with `cut_off`), and a channel whose storage failed, or that no writer has, ends as `failed`. A
 conversation that closes ends its node channels with their `closed` entries, which a client reads
 like any other, and its tree and usage channels as `failed`: the writer stopped, and the channel is not closed,
-so that a reopen goes on from it. The client has no reader for these frames yet: they carry no `id`,
-which its stream reader requires.
+so that a reopen goes on from it.
 
 The snapshot is held in memory by the server, so it counts against what a conversation's
 subscriptions may hold (128 MiB) and not against the 8 MiB of stored history a request may read:

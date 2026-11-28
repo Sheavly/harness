@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MAX_ENTRY_TYPE_CHARS } from '@sheavly/protocol/channel/channel.constants';
-import { cursorSchema } from '@sheavly/protocol/channel/channel.validator';
+import { cursorSchema } from '@sheavly/protocol/channel/cursor.validator';
 import { MAX_NODE_ID_CHARS } from '@sheavly/protocol/node/node.constants';
 
 /**

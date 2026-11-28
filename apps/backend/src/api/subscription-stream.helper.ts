@@ -4,6 +4,7 @@ import { ENTRY_EVENT } from '@sheavly/protocol/api/api.constants';
 import {
   END_EVENT,
   HEAD_EVENT,
+  LIVE_EVENT,
   SNAPSHOT_EVENT,
 } from '@sheavly/protocol/subscription/subscription.constants';
 import type { SubscribeFrame } from '@sheavly/protocol/subscription/subscription.types';
@@ -16,11 +17,16 @@ type FrameSource = {
 };
 
 /**
- * The event name a frame travels under: `head`, `end` and `snapshot` for the frames that are not
- * entries, else `entry`.
+ * The event name a frame travels under: `head`, `end`, `snapshot` and `live` for the frames that
+ * are not entries, else `entry`.
  */
 function eventOf(frame: SubscribeFrame): string {
-  if (frame.type === HEAD_EVENT || frame.type === END_EVENT || frame.type === SNAPSHOT_EVENT) {
+  if (
+    frame.type === HEAD_EVENT ||
+    frame.type === END_EVENT ||
+    frame.type === SNAPSHOT_EVENT ||
+    frame.type === LIVE_EVENT
+  ) {
     return frame.type;
   }
 
@@ -29,8 +35,9 @@ function eventOf(frame: SubscribeFrame): string {
 
 /**
  * A subscription's frames as server-sent events, one `data` JSON per frame under its event name
- * (`entry`, `head`, `end` or `snapshot`) and no `id`: one id cannot carry the cursors of several channels, so
- * a client keeps each channel's last cursor and sends them again on a reconnect. The stream ends
+ * (`entry`, `head`, `end`, `snapshot` or `live`) and no `id`: one id cannot carry the cursors of
+ * several channels, so a client keeps each channel's last cursor and sends them again on a
+ * reconnect (a `live` frame has no cursor to keep). The stream ends
  * when the subscription does (every channel ended) or when the client leaves, and the subscription
  * is closed either way, so the connection it held is free again. A heartbeat comment keeps a quiet
  * stream open through proxies.
