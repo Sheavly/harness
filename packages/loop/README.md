@@ -55,7 +55,9 @@ while that assistant tool call remains in the view; stored notice snapshots are 
 
 Internal (closed in `exports`): `events/` (the event bodies), `queue/` (the `OrderedQueue` every
 event goes through), `hooks/` (running each hook point), `history/` (`assertValidHistory`, the
-one check for the messages a model call sends) and `abort/`.
+one check for the messages a model call sends), `abort/` and `items/` (`ReplyItems`, which turns
+a model call's chunks into the item events the loop tells the session registry beside its events;
+see [items](docs/run.md#items)).
 
 ## Docs
 

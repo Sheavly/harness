@@ -15,15 +15,15 @@ import { lineageIds, lineageOf } from './lineage-ids.helper.js';
 import { missingSession } from './missing-session.helper.js';
 import { readStoredLog } from './stored-log.helper.js';
 import { Inboxes } from './inboxes.service.js';
+import { ItemFeed } from './item-feed.service.js';
 import { LastTokens } from './last-tokens.service.js';
 import { MessageContexts } from './message-contexts.service.js';
 import { ApprovalSessions } from './approval-sessions.service.js';
-import { assertCanSend, assertOpen } from './send-check.helper.js';
+import { assertCanSend, assertIdle, assertOpen } from './send-check.helper.js';
 import { notifyAll } from './listeners.helper.js';
 import { updateStream } from './update-stream.helper.js';
 import { announceStorageFailure } from './storage-failure.helper.js';
 import { isOpen, refOf, toEntryEvent } from './sessions.utils.js';
-import { SessionError } from '../errors/sessions.errors.js';
 import type {
   InboxMessage,
   RunOutcome,
@@ -42,6 +42,7 @@ import type { StreamEntry } from '@sheavly/protocol/stream/stream.types';
 import type { TaskUpdate } from '@sheavly/protocol/task/task.types';
 import type { QueueUpdate } from '@sheavly/protocol/queue/queue.types';
 import type { TokenUsage } from '@sheavly/protocol/usage/usage.types';
+import type { ItemEvent } from '@sheavly/protocol/item/item.types';
 import type { EntryFilter, QueuedNotice, SessionMessage, StoredLog } from './sessions.types.js';
 
 type Listener = (update: SessionUpdate) => void;
@@ -68,6 +69,8 @@ export class SessionRegistry {
   readonly #messageContexts: MessageContexts;
   /** What was released, in process or before a reopen: a released session is not a live one. */
   readonly #released = new ReleasedSessions();
+  /** The items sessions publish: heard in order as they happen, and not part of the entry log. */
+  readonly #items = new ItemFeed();
 
   /**
    * Only the newest entries of the combined stream stay in memory (`EntryLog`); with a `store`
@@ -240,16 +243,7 @@ export class SessionRegistry {
 
   /** The next prompt of a conversation starts: an idle session runs again. Throws otherwise. */
   resume(id: SessionId): void {
-    const session = this.#require(id);
-
-    if (session.state !== 'idle') {
-      throw new SessionError({
-        reason: session.state === 'running' ? 'session_running' : 'session_ended',
-        sessionId: id,
-        message: `Session ${id} is ${session.state}; only an idle session can take its next prompt`,
-      });
-    }
-
+    assertIdle(this.#require(id));
     this.#sessions.resume(id);
     this.#emit({ type: 'session_resumed', session: this.#require(id) });
   }
@@ -408,6 +402,30 @@ export class SessionRegistry {
     this.#lastTokens.observe({ sessionId, event });
     this.#addEntry((seq) => ({ seq, sessionId, kind: 'event', event }));
   }
+
+  /**
+   * Tells the item listeners (`subscribeItems`) about an item event of session `sessionId`'s loop,
+   * at once, with the user message the session is associated with now. Items are beside the
+   * combined stream: nothing is added to its entries. An item of a session the registry does not
+   * know (unknown or released) is dropped, where `publish` refuses an event: an event is what a run
+   * is made of, so one that cannot be published fails the run, but an item is told as it happens and
+   * nothing waits for it, so one that cannot be told must not fail the run or leave its tools
+   * running.
+   */
+  publishItem(params: { sessionId: SessionId; event: ItemEvent }): void {
+    const { sessionId, event } = params;
+
+    if (!this.#sessions.get(sessionId)) return;
+
+    this.#items.publish({ sessionId, event, messageId: this.#messageContexts.get(sessionId) });
+  }
+
+  /**
+   * Calls `listener` for every item published (`publishItem`) from now on, synchronously and in
+   * the order published. An item is never in the entries `subscribeEntries` hears. A listener
+   * that throws is isolated as the others are. Returns a function that stops it.
+   */
+  readonly subscribeItems: ItemFeed['subscribe'] = (listener) => this.#items.subscribe(listener);
 
   /**
    * What the session's last model call reported, for its loop to tell the agent how full its

@@ -267,3 +267,29 @@ listener that throws doesn't reach the run or the other listeners; its error is 
 own as an uncaught error, so it still fails loudly.
 
 Not built yet: an HTTP server that serves the combined stream (the demo is a CLI).
+
+## Items, beside the stream
+
+A session's loop also makes **items** (a reply's text, the model's reasoning, a tool call with its
+result; `ItemEvent` in `@sheavly/protocol/item/`). The registry publishes them on a path of their
+own, apart from the combined stream:
+
+- `sessions.publishItem({ sessionId, event })` hands an item event to the listeners at once, with
+  the user message the session is associated with now (`messageId`, undefined when there is none).
+  An item of an unknown or released session is dropped, where `publish` refuses an event: an event
+  is what a run is made of and one that cannot be published fails it, but nothing waits for an
+  item, so one that cannot be told must not fail the run or leave its tools running.
+- `sessions.subscribeItems(listener)` hears each `PublishedItem` (`sessionId`, `messageId`,
+  `event`) from then on and returns a function that stops it. Listeners are called synchronously,
+  so what one hears is in the order the loop made the items in. There is no replay and nothing is
+  kept: an item that happened before the subscription is not told.
+- An item is never an entry of the combined stream: it takes no `seq`, is not in the entry log or
+  the store, and does not count as the session's last tokens. A listener of `subscribeEntries`
+  hears exactly what it heard before.
+- A listener that throws is isolated as the others are: it reaches neither the publisher nor the
+  other listeners, and its error is rethrown on its own as an uncaught error. Every listener is
+  handed one frozen copy of the item, as entries are: a tool call's item holds the call's input,
+  the reasoning state and the artifacts, which are the run's own objects (the history's and the
+  next model call's), and a listener must not be able to change them.
+
+Nothing in the repository subscribes to items yet.
